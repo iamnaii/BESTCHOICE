@@ -1,4 +1,4 @@
-import { Sun, Sunset, Moon, Phone, MessageCircle, Smartphone, Circle } from 'lucide-react';
+import { Sun, Sunset, Moon, Phone, MessageCircle, Smartphone, Circle } from '@/lib/icons';
 import type { CustomerInsights, ContactTimeBucket, InsightChannel } from '../hooks/useCustomerInsights';
 
 interface Props {

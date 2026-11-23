@@ -1,6 +1,6 @@
 import { formatNumericText } from '@/utils/numericText';
 import Decimal from 'decimal.js';
-import { AlertCircle, CheckCircle2, Info, Lock } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Info, Lock } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import { formatThaiDate } from '@/lib/date';
 import type { PendingPayment } from '../types';

@@ -1,6 +1,13 @@
+import {
+  Database as InlineDatabaseIcon,
+  Lightbulb as InlineLightbulbIcon,
+  Monitor as InlineMonitorIcon,
+  RefreshCw as InlineRefreshCwIcon,
+  Server as InlineServerIcon,
+} from '@/lib/icons';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Check, X } from 'lucide-react';
+import { Check, X } from '@/lib/icons';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
@@ -89,7 +96,7 @@ export default function SystemStatusPage() {
             disabled={isRefreshing}
             className="px-4 py-2 text-sm border border-input rounded-lg hover:bg-muted/50 disabled:opacity-50 flex items-center gap-2 print:hidden"
           >
-            <svg aria-hidden="true" className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+            <InlineRefreshCwIcon aria-hidden="true" className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
             รีเฟรช
           </button>
         }
@@ -509,14 +516,14 @@ function ServiceCard({
 
 /* ─── Icons ─── */
 function MonitorIcon() {
-  return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>;
+  return <InlineMonitorIcon className="w-5 h-5" aria-hidden="true" />;
 }
 function ServerIcon() {
-  return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" /></svg>;
+  return <InlineServerIcon className="w-5 h-5" aria-hidden="true" />;
 }
 function DatabaseIcon() {
-  return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" /></svg>;
+  return <InlineDatabaseIcon className="w-5 h-5" aria-hidden="true" />;
 }
 function AiIcon() {
-  return <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>;
+  return <InlineLightbulbIcon className="w-5 h-5" aria-hidden="true" />;
 }

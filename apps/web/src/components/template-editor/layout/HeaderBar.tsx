@@ -1,6 +1,6 @@
 import { NativeSelect } from '@/components/ui/native-select';
 import { useState, useRef } from 'react';
-import { ArrowLeft, Settings, Plus, Save, Undo2, Download, Loader2, BookOpen, Columns2, PenLine, Eye, FileUp } from 'lucide-react';
+import { ArrowLeft, Settings, Plus, Save, Undo2, Download, Loader2, BookOpen, Columns2, PenLine, Eye, FileUp } from '@/lib/icons';
 import { useTemplateStore } from '@/store/templateStore';
 import api from '@/lib/api';
 import { toast } from 'sonner';

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { StickyNote, X } from 'lucide-react';
+import { StickyNote, X } from '@/lib/icons';
 import { formatChatTimestamp } from '@/lib/chat-time';
 import {
   AlertDialog,

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Camera, ImageOff } from 'lucide-react';
+import { Camera, ImageOff } from '@/lib/icons';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { fetchPunchPhotoUrl } from '@/hooks/useAttendance';
 

@@ -8,7 +8,7 @@ import { useId as useUiFieldId, useState, useMemo, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { FileSpreadsheet, FileText, Printer, Search, BookOpen } from 'lucide-react';
+import { FileSpreadsheet, FileText, Printer, Search, BookOpen } from '@/lib/icons';
 import PageHeader from '@/components/ui/PageHeader';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';

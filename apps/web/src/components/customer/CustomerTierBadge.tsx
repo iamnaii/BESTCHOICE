@@ -1,4 +1,4 @@
-import { Crown, Check, User, AlertTriangle, XCircle } from 'lucide-react';
+import { Crown, Check, User, AlertTriangle, XCircle } from '@/lib/icons';
 import type { CustomerTier } from '@/types/customer-tier';
 import { TIER_LABELS } from '@/types/customer-tier';
 

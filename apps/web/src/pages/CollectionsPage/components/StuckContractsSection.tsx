@@ -3,7 +3,7 @@ import { Combobox } from '@/components/ui/combobox';
 import { formLabelClass } from '@/components/ui/form-styles';
 import { useId as useUiFieldId, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { UserPlus, Clock } from 'lucide-react';
+import { UserPlus, Clock } from '@/lib/icons';
 import { toast } from 'sonner';
 import api from '@/lib/api';
 import { Card, CardContent } from '@/components/ui/card';

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Pause } from 'lucide-react';
+import { Pause } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import SessionTimer from './SessionTimer';

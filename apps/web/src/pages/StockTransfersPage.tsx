@@ -1,3 +1,4 @@
+import { ChevronRight as InlineChevronRightIcon } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import { isStockInventoryScope } from '@installment/shared';
 import { inventoryScopeLabels } from './StockPage/components/InventoryScopeFilter';
@@ -15,7 +16,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import Modal from '@/components/ui/Modal';
 import { Badge } from '@/components/ui/badge';
 import { exportToExcel } from '@/utils/excel.util';
-import { Download } from 'lucide-react';
+import { Download } from '@/lib/icons';
 import QueryBoundary from '@/components/QueryBoundary';
 import { getStatusBadgeProps, transferStatusMap } from '@/lib/status-badges';
 
@@ -435,12 +436,7 @@ export default function StockTransfersPage() {
                       }}
                       className="w-full px-4 py-3 flex items-center gap-4 hover:bg-muted/50 transition-colors text-left cursor-pointer"
                     >
-                      <svg
-                        className={`w-4 h-4 text-muted-foreground transition-transform shrink-0 ${isExpanded ? 'rotate-90' : ''}`}
-                        fill="none" viewBox="0 0 24 24" stroke="currentColor"
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
+                      <InlineChevronRightIcon className={`w-4 h-4 text-muted-foreground transition-transform shrink-0 ${isExpanded ? 'rotate-90' : ''}`} aria-hidden="true" />
                       <div className="flex-1 min-w-0 flex items-center gap-3 flex-wrap">
                         <span className="font-mono text-sm font-semibold text-primary">
                           {batch.batchNumber || '-'}
@@ -585,12 +581,7 @@ export default function StockTransfersPage() {
                       }}
                       className="w-full px-4 py-3 flex items-center gap-4 hover:bg-warning/5 dark:bg-warning/10 transition-colors text-left cursor-pointer"
                     >
-                      <svg
-                        className={`w-4 h-4 text-muted-foreground transition-transform shrink-0 ${isExpanded ? 'rotate-90' : ''}`}
-                        fill="none" viewBox="0 0 24 24" stroke="currentColor"
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
+                      <InlineChevronRightIcon className={`w-4 h-4 text-muted-foreground transition-transform shrink-0 ${isExpanded ? 'rotate-90' : ''}`} aria-hidden="true" />
                       <div className="flex-1 min-w-0 flex items-center gap-3 flex-wrap">
                         <span className="font-mono text-sm font-semibold text-primary">
                           {batch.batchNumber || '-'}

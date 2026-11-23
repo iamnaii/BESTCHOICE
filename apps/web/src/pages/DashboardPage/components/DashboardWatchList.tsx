@@ -6,7 +6,7 @@ import {
   ArrowRight,
   Phone,
   Sparkles,
-} from 'lucide-react';
+} from '@/lib/icons';
 import type { WatchList, UpsellCandidates } from '../types';
 import { Badge } from '@/components/ui/badge';
 import { getStatusBadgeProps, riskLevelMap } from '@/lib/status-badges';

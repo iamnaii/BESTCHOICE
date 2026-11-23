@@ -1,5 +1,5 @@
 import { Link } from 'react-router';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight } from '@/lib/icons';
 import type { ShopHomeWatchItem } from '../types';
 import { baht } from '../format';
 import { SEVERITY_CHIP_CLASS, SEVERITY_LABEL, WATCH_LABEL, watchHref } from '../watch-links';

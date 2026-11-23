@@ -19,7 +19,7 @@ import {
   Receipt,
   FileText,
   Send,
-} from 'lucide-react';
+} from '@/lib/icons';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { RejectModal } from './components/RejectModal';

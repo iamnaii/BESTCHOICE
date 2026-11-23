@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import QueryBoundary from '@/components/QueryBoundary';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { ChevronLeft } from 'lucide-react';
+import { ChevronLeft } from '@/lib/icons';
 import { usersApi, userKeys, type EmploymentType } from '@/lib/api/users';
 import { roleLabels, inputClass, labelClass, MIN_PASSWORD_LENGTH } from './types';
 import PersonalFields, { type PersonalForm } from './components/PersonalFields';

@@ -14,7 +14,7 @@ import {
   Eye,
   Copy,
   Check,
-} from 'lucide-react';
+} from '@/lib/icons';
 import api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import QueryBoundary from '@/components/QueryBoundary';

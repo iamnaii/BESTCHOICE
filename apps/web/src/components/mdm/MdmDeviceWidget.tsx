@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Lock, Unlock, MapPin, Loader2, ExternalLink, Smartphone } from 'lucide-react';
+import { Lock, Unlock, MapPin, Loader2, ExternalLink, Smartphone } from '@/lib/icons';
 import { useAuth } from '@/contexts/AuthContext';
 import api from '@/lib/api';
 import { Badge } from '@/components/ui/badge';

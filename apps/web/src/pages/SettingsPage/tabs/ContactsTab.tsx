@@ -2,7 +2,7 @@ import { useMemo, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useDebounce } from '@/hooks/useDebounce';
-import { Plus, ChevronDown, Search } from 'lucide-react';
+import { Plus, ChevronDown, Search } from '@/lib/icons';
 import DataTable, { type Column } from '@/components/ui/DataTable';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Badge } from '@/components/ui/badge';

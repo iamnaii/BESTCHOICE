@@ -2,7 +2,7 @@ import { useId as useUiFieldId, useState } from 'react';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Loader2, Phone, Banknote } from 'lucide-react';
+import { Loader2, Phone, Banknote } from '@/lib/icons';
 import api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import PageHeader from '@/components/ui/PageHeader';

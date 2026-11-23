@@ -56,7 +56,7 @@ function MobileBottomNav() {
                 )}
                 aria-label="ออกจากตั้งค่า"
               >
-                <tab.icon className="size-[22px]" strokeWidth={1.75} />
+                <tab.icon className="size-[22px]" aria-hidden="true" data-nav-icon />
                 <span className="text-xs leading-snug whitespace-nowrap font-medium">{tab.label}</span>
               </button>
             );
@@ -74,7 +74,7 @@ function MobileBottomNav() {
                 )}
                 aria-label="เปิดเมนูเพิ่มเติม"
               >
-                <tab.icon className="size-[22px]" strokeWidth={1.75} />
+                <tab.icon className="size-[22px]" aria-hidden="true" data-nav-icon />
                 <span className="text-xs leading-snug whitespace-nowrap font-medium">{tab.label}</span>
               </button>
             );
@@ -101,7 +101,7 @@ function MobileBottomNav() {
               <div className="relative">
                 <tab.icon
                   className="size-[22px] transition-all duration-150"
-                  strokeWidth={1.75}
+                  aria-hidden="true" data-nav-icon
                 />
                 {tab.badgeKey === 'chat-unread' && <ChatBadgeDot />}
               </div>

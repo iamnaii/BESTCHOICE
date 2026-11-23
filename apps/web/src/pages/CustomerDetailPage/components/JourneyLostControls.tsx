@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { RotateCcw, UserX } from 'lucide-react';
+import { RotateCcw, UserX } from '@/lib/icons';
 import { toast } from 'sonner';
 import {
   JOURNEY_LOST_REASONS,

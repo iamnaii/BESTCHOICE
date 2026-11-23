@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, Search, X } from 'lucide-react';
+import { AlertTriangle, Search, X } from '@/lib/icons';
 import { useDebounce } from '@/hooks/useDebounce';
 import Modal from '@/components/ui/Modal';
 import { formLabelClass } from '@/components/ui/form-styles';

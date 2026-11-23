@@ -9,8 +9,8 @@ import {
   KeyRound,
   Lock,
   Undo2,
-  type LucideIcon,
-} from 'lucide-react';
+  type AppIcon,
+} from '@/lib/icons';
 import { FLAG_LABEL, flagChipClass, fmtOt, statusView, thaiShortDate } from '@/pages/attendance/attendance.util';
 import type { PayrollSystemNotes, PayrollSystemWarning } from '../types';
 import {
@@ -74,7 +74,7 @@ export function AttendanceDayLink({
   );
 }
 
-function flagView(flag: string): { label: string; icon: LucideIcon } {
+function flagView(flag: string): { label: string; icon: AppIcon } {
   if (FLAG_LABEL[flag]) return FLAG_LABEL[flag];
   if (flag === 'MISSING_OUT') {
     const v = statusView('MISSING_OUT');
@@ -85,7 +85,7 @@ function flagView(flag: string): { label: string; icon: LucideIcon } {
 
 interface WarningItem {
   key: string;
-  icon: LucideIcon;
+  icon: AppIcon;
   iconClass: string;
   body: ReactNode;
 }

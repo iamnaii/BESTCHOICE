@@ -1,4 +1,4 @@
-import { Printer, Truck, X, AlertTriangle } from 'lucide-react';
+import { Printer, Truck, X, AlertTriangle } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import type { LetterStatus } from '../types';
 

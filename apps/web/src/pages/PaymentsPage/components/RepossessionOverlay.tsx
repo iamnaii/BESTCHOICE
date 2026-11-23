@@ -14,7 +14,7 @@ import {
   X,
   AlertTriangle,
   Lock,
-} from 'lucide-react';
+} from '@/lib/icons';
 import api, { getErrorMessage } from '@/lib/api';
 import { formatDateShort, formatNumberDecimal } from '@/utils/formatters';
 import { useAuth } from '@/contexts/AuthContext';

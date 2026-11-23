@@ -10,7 +10,7 @@ import {
   ResponsiveContainer,
   ReferenceLine,
 } from 'recharts';
-import { TrendingUp, TrendingDown, Minus, Users, BarChart3, Calendar } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, Users, BarChart3, Calendar } from '@/lib/icons';
 import api from '@/lib/api';
 import QueryBoundary from '@/components/QueryBoundary';
 import PageHeader from '@/components/ui/PageHeader';

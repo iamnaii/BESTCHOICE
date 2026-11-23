@@ -1,7 +1,7 @@
 import { OVERDUE_BUCKETS } from '@/lib/aging-presentation';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router';
-import { AlertTriangle, ArrowRight } from 'lucide-react';
+import { AlertTriangle, ArrowRight } from '@/lib/icons';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import QueryBoundary from '@/components/QueryBoundary';
 import api from '@/lib/api';

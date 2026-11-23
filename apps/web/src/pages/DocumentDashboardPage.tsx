@@ -1,7 +1,7 @@
 import { NativeSelect } from '@/components/ui/native-select';
 import { useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { FileText, CheckCircle2, Paperclip, PenLine, Clock, AlertCircle } from 'lucide-react';
+import { FileText, CheckCircle2, Paperclip, PenLine, Clock, AlertCircle } from '@/lib/icons';
 import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';

@@ -1,4 +1,4 @@
-import type { LucideIcon } from 'lucide-react';
+import type { AppIcon } from '@/lib/icons';
 import {
   FileClock,
   Truck,
@@ -6,7 +6,7 @@ import {
   PackageCheck,
   Camera,
   Wallet,
-} from 'lucide-react';
+} from '@/lib/icons';
 
 /**
  * Compute-on-read purchasing counts from GET /purchase-orders/summary (B0).
@@ -34,7 +34,7 @@ export type SummaryTone = 'primary' | 'warning' | 'destructive' | 'success' | 'i
 export interface SummaryCardDef {
   key: keyof PurchasingSummary;
   label: string;
-  icon: LucideIcon;
+  icon: AppIcon;
   tone: SummaryTone;
   action: SummaryFilterAction;
 }

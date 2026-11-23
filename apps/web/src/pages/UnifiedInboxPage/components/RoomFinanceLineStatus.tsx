@@ -1,4 +1,4 @@
-import { CircleCheck, Info, ShieldAlert, Unlink } from 'lucide-react';
+import { CircleCheck, Info, ShieldAlert, Unlink } from '@/lib/icons';
 import { formatThaiDate } from '@/lib/date';
 import { cn } from '@/lib/utils';
 

@@ -1,5 +1,5 @@
 import { Link } from 'react-router';
-import { Receipt, AlertTriangle } from 'lucide-react';
+import { Receipt, AlertTriangle } from '@/lib/icons';
 import { Badge } from '@/components/ui/badge';
 import { formatDateShort, formatNumberDecimal } from '@/utils/formatters';
 import { canSeeInputVat, INPUT_VAT_AGE_WARN_MONTHS, type ContractInputVat } from '@/lib/input-vat';

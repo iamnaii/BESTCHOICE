@@ -1,7 +1,7 @@
 import { useId, useState, type KeyboardEvent } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, CheckCircle2, Scale } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Scale } from '@/lib/icons';
 import api from '@/lib/api';
 import { NAV_LABELS } from '@/config/work-navigation';
 import { computeDefaultTimeRange } from '@/lib/date';

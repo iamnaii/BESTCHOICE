@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Minus, Plus, X } from 'lucide-react';
+import { Minus, Plus, X } from '@/lib/icons';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 
 const ZOOM_MIN = 0.5;

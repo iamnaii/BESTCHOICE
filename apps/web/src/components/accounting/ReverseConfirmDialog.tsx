@@ -1,7 +1,7 @@
 import { NativeSelect } from '@/components/ui/native-select';
 import { ComponentProps, useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, Undo2 } from 'lucide-react';
+import { AlertTriangle, Undo2 } from '@/lib/icons';
 import {
   Dialog,
   DialogContent,

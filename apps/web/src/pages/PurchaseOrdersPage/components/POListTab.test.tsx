@@ -146,8 +146,8 @@ describe('POListTab — ผู้จัดจำหน่าย filter (Combobox
     expect(screen.getByRole('button', { name: `ลบ ผู้จัดจำหน่าย: ${idea.name}` })).toBeInTheDocument();
     // renderOption keeps the mark on the current value
     const list = await openCombobox(user, 'ผู้จัดจำหน่าย');
-    expect(within(list).getByRole('option', { name: idea.name }).querySelector('svg.lucide-check')).not.toBeNull();
-    expect(within(list).getByRole('option', { name: 'ทุกผู้จัดจำหน่าย' }).querySelector('svg.lucide-check')).toBeNull();
+    expect(within(list).getByRole('option', { name: idea.name }).querySelector('svg.app-icon-check')).not.toBeNull();
+    expect(within(list).getByRole('option', { name: 'ทุกผู้จัดจำหน่าย' }).querySelector('svg.app-icon-check')).toBeNull();
     await user.keyboard('{Escape}');
 
     await pickComboOption(user, 'ผู้จัดจำหน่าย', 'ทุกผู้จัดจำหน่าย');

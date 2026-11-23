@@ -6,8 +6,8 @@ import {
   TrendingUp,
   TrendingDown,
   Users,
-  type LucideIcon,
-} from 'lucide-react';
+  type AppIcon,
+} from '@/lib/icons';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatNumber } from '@/utils/formatters';
 import { useCollectionsKpi } from '../hooks/useCollectionsKpi';
@@ -19,7 +19,7 @@ interface Props {
 }
 
 interface MetricProps {
-  icon: LucideIcon;
+  icon: AppIcon;
   iconBg: string;
   iconColor: string;
   label: string;

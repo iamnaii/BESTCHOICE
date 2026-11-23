@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronLeft, ClipboardCheck, LoaderCircle, Smartphone, X } from 'lucide-react';
+import { ChevronLeft, ClipboardCheck, LoaderCircle, Smartphone, X } from '@/lib/icons';
 import { toast } from 'sonner';
 import type {
   BuybackAnswer,

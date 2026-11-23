@@ -1,6 +1,6 @@
 import ScreenTable from '@/components/ui/ScreenTable';
 import { Link } from 'react-router';
-import { Clock } from 'lucide-react';
+import { Clock } from '@/lib/icons';
 import {
   OUTCOME_LABEL,
   PAYER_LABEL,

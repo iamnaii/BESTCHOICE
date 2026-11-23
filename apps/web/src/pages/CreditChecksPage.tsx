@@ -38,7 +38,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { formatDateShort } from '@/utils/formatters';
-import { ShieldCheck, Loader2 } from 'lucide-react';
+import { ShieldCheck, Loader2 } from '@/lib/icons';
 import CreditAffordabilityForm, { type CreditApprovalPayload, type CreditApprovalSnapshot } from '@/components/credit-check/CreditAffordabilityForm';
 
 interface CreditCheckRow {

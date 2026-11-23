@@ -1,5 +1,5 @@
 import { cn } from '@/lib/utils';
-import { Globe } from 'lucide-react';
+import { Globe } from '@/lib/icons';
 import { ALL_CHANNELS, CHANNEL_LABELS, type Channel } from './types';
 
 export type ChannelTabValue = Channel | 'ALL';

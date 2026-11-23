@@ -7,7 +7,7 @@ import { NAV_LABELS } from '../work-navigation';
 
 /**
  * ช่วง 3 (สเปค 2026-11-19 ข้อ 6) — หน้า "ราคาและเรทผ่อน" ทุกตำแหน่งที่ทำงานหน้าร้านเปิดได้ (รวมพนักงานขาย)
- * เมนูอยู่ถัดจาก "คลังสินค้า" ในกลุ่มเดียวกัน · ACCOUNTANT ไม่มีกลุ่มคลังในโซนร้าน — คลังของบัญชีอยู่ "ข้อมูลอ้างอิง" โซนการเงิน
+ * เมนู SHOP อยู่ใน "ขายและบริการ" ตามแบบที่อนุมัติ 2026-11-23 · ACCOUNTANT ไม่มีกลุ่มคลังในโซนร้าน — คลังของบัญชีอยู่ "ข้อมูลอ้างอิง" โซนการเงิน
  */
 const ROLES = ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES'];
 const PATH = '/prices';
@@ -17,13 +17,14 @@ describe('เมนู ราคาและเรทผ่อน', () => {
     expect(NAV_LABELS.prices).toBe('ราคาและเรทผ่อน');
   });
 
-  it.each(ROLES)('%s เห็นเมนูถัดจากคลังสินค้าในกลุ่มเดียวกัน', (role) => {
+  it.each(ROLES)('%s เห็นราคาในหมวดงานที่เหมาะสม', (role) => {
     const zone = resolveZoneForPath(role, PATH);
     expect(zone).toBe(role === 'ACCOUNTANT' ? 'fin' : 'shop');
     const section = getSidebarForRole(role, zone!).find((s) => s.items.some((i) => i.path === PATH));
     expect(section).toBeDefined();
     const paths = section!.items.map((i) => i.path);
-    expect(paths.indexOf(PATH)).toBe(paths.indexOf('/stock') + 1);
+    if (role === 'ACCOUNTANT') expect(paths.indexOf(PATH)).toBe(paths.indexOf('/stock') + 1);
+    else expect(section!.label).toBe('ขายและบริการ');
     expect(section!.items.find((i) => i.path === PATH)?.label).toBe(NAV_LABELS.prices);
   });
 

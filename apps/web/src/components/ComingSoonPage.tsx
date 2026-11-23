@@ -1,4 +1,4 @@
-import { Construction, ArrowLeft, ExternalLink } from 'lucide-react';
+import { Construction, ArrowLeft, ExternalLink } from '@/lib/icons';
 import { Link } from 'react-router';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';

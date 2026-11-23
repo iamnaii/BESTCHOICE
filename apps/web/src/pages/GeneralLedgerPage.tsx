@@ -9,7 +9,7 @@ import QueryBoundary from '@/components/QueryBoundary';
 import PageHeader from '@/components/ui/PageHeader';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, BookOpen, Download, FileSpreadsheet } from 'lucide-react';
+import { ArrowLeft, BookOpen, Download, FileSpreadsheet } from '@/lib/icons';
 import { formatDateMedium } from '@/utils/formatters';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { DateRangeChips } from '@/components/ui/DateRangeChips';

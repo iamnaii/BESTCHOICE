@@ -5,8 +5,8 @@ import {
   Inbox,
   Wrench,
   XCircle,
-  type LucideIcon,
-} from 'lucide-react';
+  type AppIcon,
+} from '@/lib/icons';
 export {
   baht,
   timeOf,
@@ -203,7 +203,7 @@ export const STAGE_LABEL: Record<AfterSalesStage, string> = {
   CLOSED: 'ปิดเคส',
   CANCELLED: 'ยกเลิก',
 };
-export const STAGE_ICON: Record<AfterSalesStage, LucideIcon> = {
+export const STAGE_ICON: Record<AfterSalesStage, AppIcon> = {
   RECEIVED: Inbox,
   IN_REPAIR: Wrench,
   AWAITING_APPROVAL: Clock,

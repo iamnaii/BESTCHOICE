@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Search, SearchX } from 'lucide-react';
+import { Search, SearchX } from '@/lib/icons';
 import type { GfinDeviceOrigin } from '@installment/shared';
 import QueryBoundary from '@/components/QueryBoundary';
 import PageHeader from '@/components/ui/PageHeader';

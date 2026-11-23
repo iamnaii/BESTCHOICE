@@ -16,7 +16,7 @@ import { printDocument } from '@/lib/print-document';
 import { useEffect, type ReactNode } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Printer } from 'lucide-react';
+import { ArrowLeft, Printer } from '@/lib/icons';
 import { QRCodeSVG } from 'qrcode.react';
 import Decimal from 'decimal.js';
 import api from '@/lib/api';

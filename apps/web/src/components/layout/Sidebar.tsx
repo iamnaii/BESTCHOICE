@@ -3,23 +3,14 @@ import { useUnreadChat } from '@/hooks/useUnreadChat';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
+import { WORK_ZONE_ICONS, MENU_GROUP_ICONS } from '@/config/navigation-icons';
+
 import {
   LogOut,
   ChevronsRight,
   ChevronsLeft,
   ChevronRight,
-  ShoppingCart,
-  CircleDollarSign,
-  Settings,
-} from 'lucide-react';
-import {
-  AccordionMenu,
-  AccordionMenuClassNames,
-  AccordionMenuItem,
-  AccordionMenuSub,
-  AccordionMenuSubTrigger,
-  AccordionMenuSubContent,
-} from '@/components/ui/accordion-menu';
+} from '@/lib/icons';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Tooltip,
@@ -42,24 +33,10 @@ import { useStockAdjustmentPendingCount } from '@/hooks/useStockAdjustmentPendin
 import { VersionBadge } from './VersionBadge';
 import { PillSwitcher } from './PillSwitcher';
 import { GearButton } from './GearButton';
+import { WorkNavigation } from './WorkNavigation';
 import { ExitSettingsBar, SettingsNavList, SettingsZoneHeader, useSettingsZone } from './SettingsNav';
 
-/* ── NavBullet — small dot in place of leaf-item icons ──
- * Owner directive: ลด icon รก — เก็บ icon เฉพาะที่ section header (top-level group);
- * รายการใต้ section + sub-group ทั้งหมดใช้จุดกลม. Color inherits via bg-current
- * so the bullet follows text color into active state (primary/accent). */
-function NavBullet({ size = 15 }: { size?: number }) {
-  return (
-    <span
-      aria-hidden="true"
-      data-slot="accordion-menu-icon"
-      className="inline-flex shrink-0 items-center justify-center"
-      style={{ width: size, height: size }}
-    >
-      <span className="size-[5px] rounded-full bg-current opacity-60" />
-    </span>
-  );
-}
+const SettingsIcon = MENU_GROUP_ICONS['settings:ตั้งค่าระบบ'];
 
 /* ── NavBadge — dynamic count badge for sidebar items ── */
 function NavBadge({ badgeKey }: { badgeKey: MenuBadgeKey }) {
@@ -89,49 +66,6 @@ const roleBadgeMap: Record<string, { label: string; cls: string }> = {
   ACCOUNTANT:     { label: 'บัญชี',        cls: 'bg-accent-purple text-accent-purple-foreground' },
   SALES:          { label: 'พนง.ขาย',      cls: 'bg-accent-sky text-accent-sky-foreground' },
 };
-
-/* ── Expanded menu AccordionMenu classNames ─────── */
-const expandedMenuClassNames: AccordionMenuClassNames = {
-  root: 'space-y-0.5',
-  item: [
-    'h-[34px] rounded-md text-[15px] font-medium leading-snug',
-    'text-foreground/75 hover:text-foreground hover:bg-sidebar-hover',
-    'dark:text-foreground/80 dark:hover:text-foreground',
-    'transition-colors duration-150',
-    'data-[selected=true]:bg-primary/10 data-[selected=true]:text-primary data-[selected=true]:font-semibold',
-    'dark:data-[selected=true]:bg-primary/20',
-    'relative data-[selected=true]:before:absolute data-[selected=true]:before:left-0',
-    'data-[selected=true]:before:top-[5px] data-[selected=true]:before:bottom-[5px]',
-    'data-[selected=true]:before:w-[3px] data-[selected=true]:before:bg-primary',
-    'data-[selected=true]:before:rounded-r-full',
-  ].join(' '),
-  sub: '',
-  // หัวกลุ่มย่อยภายในหมวด (เมนูที่มีเมนูลูก) — หน้าตาเดียวกับรายการปกติ
-  subTrigger: [
-    'h-[34px] rounded-md text-[15px] font-medium leading-snug',
-    'text-foreground/75 hover:text-foreground hover:bg-sidebar-hover',
-    'dark:text-foreground/80 dark:hover:text-foreground',
-    'data-[state=open]:text-foreground',
-    'transition-colors duration-150',
-  ].join(' '),
-  subContent: 'py-0.5 pl-0 border-l-0 ml-0',
-};
-
-/**
- * หัวหมวดระดับบนสุดของเมนูข้าง (ภาพรวม · รายรับ · ติดตามหนี้ …) — 2026-11-18
- * เดิม h-32 + mt-3 + pt-3 + เส้นคั่นบนทุกหัว ⇒ ช่องว่างระหว่างหัวราว 56px ดูโหรง และ uppercase/tracking ไม่มีผลกับภาษาไทย
- * (tracking กลับทำให้สระ/วรรณยุกต์ห่างกัน) · ตอนนี้: แถวสูง 40px กดง่าย · ระยะห่างแนวตั้งคงที่ 4px · เส้นคั่นบาง ๆ
- * อยู่ที่ตัวกลุ่ม (ไม่ใช่ปุ่ม) จึงไม่ซ้อนกับพื้นตอนชี้ · ไอคอนเว้นช่องเท่ากันทุกหัว
- */
-const SECTION_CLASS =
-  'border-t border-sidebar-border/70 pt-1 mt-1 first:border-t-0 first:pt-0 first:mt-0';
-const SECTION_TRIGGER_CLASS = [
-  'h-10 rounded-lg px-2.5 gap-2.5 text-[14px] font-semibold leading-snug',
-  'text-foreground/70 hover:text-foreground hover:bg-sidebar-hover',
-  'data-[state=open]:text-foreground',
-  'dark:text-foreground/75 dark:data-[state=open]:text-foreground',
-  'transition-colors duration-150',
-].join(' ');
 
 /* ─── useRoleMenu ───────────────────────────────── */
 function useRoleMenu(role: string, zone: Zone): MenuSection[] {
@@ -212,6 +146,7 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
   const navigate = useNavigate();
 
   const sections = useRoleMenu(role, currentZone);
+  const sale = currentZone === 'shop' ? sections.flatMap((section) => section.items).find((item) => item.path === '/pos') : undefined;
 
   const activePath = useMemo(
     () => resolveActivePath(collectMenuPaths(sections), pathname, hash),
@@ -272,7 +207,7 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
             {zoneConfig.zones
               .filter((z): z is 'shop' | 'fin' => z === 'shop' || z === 'fin')
               .map((zone) => {
-                const Icon = zone === 'shop' ? ShoppingCart : CircleDollarSign;
+                const Icon = WORK_ZONE_ICONS[zone];
                 const active = currentZone === zone;
                 const label = zone === 'shop' ? 'งานหน้าร้าน (SHOP)' : 'งานการเงิน (FINANCE)';
                 return (
@@ -293,7 +228,7 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
                             : 'text-muted-foreground/70 hover:text-foreground hover:bg-sidebar-hover',
                         )}
                       >
-                        <Icon className="size-4" />
+                        <Icon className="size-[18px]" aria-hidden="true" />
                       </button>
                     </TooltipTrigger>
                     <TooltipContent side="right" sideOffset={12} className="text-[12px]">
@@ -308,6 +243,15 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
 
       {/* Divider */}
       <div className="w-8 h-px bg-sidebar-border my-2" />
+
+      {sale && (
+        <TooltipProvider delayDuration={0}><Tooltip><TooltipTrigger asChild>
+          <Link to={sale.path} aria-label={sale.label} aria-current={activePath === sale.path ? 'page' : undefined}
+            className="mb-2 flex size-10 items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring">
+            <sale.icon className="size-5" aria-hidden="true" data-nav-icon />
+          </Link>
+        </TooltipTrigger><TooltipContent side="right">{sale.label}</TooltipContent></Tooltip></TooltipProvider>
+      )}
 
       {/* Section icons with popovers */}
       <div className="flex-1 flex flex-col items-center gap-0.5 w-full px-2 overflow-y-auto scrollbar-none">
@@ -330,7 +274,7 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
                       )}
                       aria-label={section.label}
                     >
-                      <section.icon className="size-[18px]" />
+                      <section.icon className="size-[18px]" aria-hidden="true" data-nav-icon />
                     </button>
                   </PopoverTrigger>
                 </TooltipTrigger>
@@ -349,17 +293,17 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
               >
                 {/* Section header */}
                 <div className="flex items-center gap-2 px-2.5 pt-1.5 pb-2 mb-0.5">
-                  <section.icon className="size-3.5 text-muted-foreground" />
+                  <section.icon className="size-[18px] text-muted-foreground" aria-hidden="true" data-nav-icon />
                   <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
                     {section.label}
                   </span>
                 </div>
                 <div className="h-px bg-border/60 mb-1.5 mx-1" />
-                {section.items.map((item) =>
+                {section.items.filter((item) => !sale || item.path !== sale.path).map((item) =>
                   item.children && item.children.length > 0 ? (
                     <div key={item.path}>
                       <div className="flex items-center gap-2 px-2.5 pt-2 pb-1">
-                        <NavBullet size={14} />
+                        <item.icon className="size-[18px] shrink-0" aria-hidden="true" data-nav-icon />
                         <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
                           {item.label}
                         </span>
@@ -376,7 +320,7 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
                               : 'text-foreground/80 hover:text-primary hover:bg-primary/5 dark:hover:bg-primary/10',
                           )}
                         >
-                          <NavBullet size={16} />
+                          <child.icon className="size-[18px] shrink-0" aria-hidden="true" data-nav-icon />
                           <span>{child.label}</span>
                           {isItemActive(child.path) && (
                             <ChevronRight className="size-3 ml-auto opacity-60" />
@@ -396,7 +340,7 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
                           : 'text-foreground/80 hover:text-primary hover:bg-primary/5 dark:hover:bg-primary/10',
                       )}
                     >
-                      <NavBullet size={16} />
+                      <item.icon className="size-[18px] shrink-0" aria-hidden="true" data-nav-icon />
                       <span>{item.label}</span>
                       {isItemActive(item.path) && (
                         <ChevronRight className="size-3 ml-auto opacity-60" />
@@ -426,7 +370,7 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
                     'text-muted-foreground/70 hover:text-foreground hover:bg-sidebar-hover',
                   )}
                 >
-                  <Settings className="size-4" />
+                  <SettingsIcon className="size-[18px]" aria-hidden="true" />
                 </button>
               </TooltipTrigger>
               <TooltipContent side="right" sideOffset={12} className="text-[12px]">
@@ -494,7 +438,6 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
     () => resolveActivePath(collectMenuPaths(sections), pathname, hash),
     [sections, pathname, hash],
   );
-  const matchPath = useCallback((path: string): boolean => path === activePath, [activePath]);
   const roleInfo = roleBadgeMap[role];
 
   return (
@@ -510,7 +453,7 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
             <span className="text-[14px] font-extrabold text-foreground tracking-tight">
               BEST<span className="text-primary">CHOICE</span>
             </span>
-            <span className="text-[10px] text-muted-foreground font-medium tracking-widest uppercase">
+            <span className="text-[10px] text-muted-foreground font-medium leading-snug">
               ระบบบริหารร้านและการเงิน
             </span>
           </div>
@@ -518,7 +461,7 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
       </div>
 
       {/* ── User info ───────────────────────────────── */}
-      {user && (
+      {user && inSettings && (
         <div data-sidebar-user className="flex items-center gap-2.5 px-5 py-3 border-b border-sidebar-border">
           <div className="size-8 rounded-full bg-muted flex items-center justify-center shrink-0">
             <span className="text-primary text-xs font-bold">{user.name?.charAt(0)}</span>
@@ -558,67 +501,40 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
         />
       )}
 
-      {/* ── Navigation ──────────────────────────────── */}
-      <ScrollArea className="flex-1 pb-4 px-3">
-        <AccordionMenu
-          selectedValue={pathname}
-          matchPath={matchPath}
-          type="multiple"
-          classNames={expandedMenuClassNames}
-        >
-          {sections.map((section) => (
-            <AccordionMenuSub
-              key={section.key}
-              value={section.key}
-              data-testid={`nav-${section.key}`}
-              className={SECTION_CLASS}
-            >
-              <AccordionMenuSubTrigger className={SECTION_TRIGGER_CLASS}>
-                <section.icon data-slot="accordion-menu-icon" className="size-4 shrink-0" />
-                <span data-slot="accordion-menu-title">{section.label}</span>
-              </AccordionMenuSubTrigger>
-              <AccordionMenuSubContent parentValue={section.key} type="single" collapsible>
-                {section.items.map((item) =>
-                  item.children && item.children.length > 0 ? (
-                    // Use group- prefix to avoid value collision with child paths
-                    // (e.g. parent "/assets" and first child "/assets" share the same path)
-                    <AccordionMenuSub key={item.path} value={`group-${item.path}`} data-testid={`nav-${item.path}`}>
-                      <AccordionMenuSubTrigger>
-                        <NavBullet />
-                        <span data-slot="accordion-menu-title">{item.label}</span>
-                        {item.badgeKey && <NavBadge badgeKey={item.badgeKey} />}
-                      </AccordionMenuSubTrigger>
-                      <AccordionMenuSubContent parentValue={`group-${item.path}`} type="single" collapsible>
-                        {item.children.map((child) => (
-                          <AccordionMenuItem key={child.path} value={child.path} className="text-[15px]">
-                            <Link to={child.path} className="flex items-center gap-2.5 w-full">
-                              <NavBullet />
-                              <span data-slot="accordion-menu-title">{child.label}</span>
-                            </Link>
-                          </AccordionMenuItem>
-                        ))}
-                      </AccordionMenuSubContent>
-                    </AccordionMenuSub>
-                  ) : (
-                    <AccordionMenuItem key={item.path} value={item.path} className="text-[15px]">
-                      <Link to={item.path} className="flex items-center gap-2.5 w-full">
-                        <NavBullet />
-                        <span data-slot="accordion-menu-title">{item.label}</span>
-                        {item.badgeKey && <NavBadge badgeKey={item.badgeKey} />}
-                      </Link>
-                    </AccordionMenuItem>
-                  )
-                )}
-              </AccordionMenuSubContent>
-            </AccordionMenuSub>
-          ))}
-        </AccordionMenu>
-      </ScrollArea>
+      <WorkNavigation
+        key={`${role}-${currentZone}`}
+        zone={currentZone === 'fin' ? 'fin' : 'shop'}
+        sections={sections}
+        activePath={activePath}
+        renderBadge={(badgeKey) => <NavBadge badgeKey={badgeKey} />}
+      />
 
       {/* ── GearButton = ทางเข้าเท่านั้น; ในโหมดตั้งค่าใช้แถบด้านบนออก
            (ปุ่มเดียวทำสองหน้าที่ + ไฮไลต์เขียวตอน active = อ่านเป็นป้ายบอกตำแหน่ง ไม่ใช่ปุ่มออก) ── */}
       {zoneConfig?.showSettingsGear && <GearButton onClick={enterSettings} />}
       </>
+      )}
+
+      {/* ── User info ───────────────────────────────── */}
+      {user && !inSettings && (
+        <div data-sidebar-user className="flex items-center gap-2.5 px-4 py-2 border-t border-sidebar-border shrink-0">
+          <div className="size-8 rounded-full bg-muted flex items-center justify-center shrink-0">
+            <span className="text-primary text-xs font-bold">{user.name?.charAt(0)}</span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[12px] font-medium text-foreground truncate">{user.name}</p>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              {roleInfo && (
+                <span className={cn('inline-flex text-[11px] font-medium text-muted-foreground')}>
+                  {roleInfo.label}
+                </span>
+              )}
+              {user.branchName && (
+                <span className="text-[12px] text-muted-foreground truncate">{user.branchName}</span>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ── Footer (collapse toggle + logout) ───────── */}
@@ -650,6 +566,7 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
 
 /* ─── Mobile Full Sidebar (inside Sheet) ─────────── */
 function MobileSidebarContent() {
+  const { setMobileSidebarOpen } = useLayout();
   const { user, logout } = useAuth();
   const { pathname, hash } = useLocation();
   const { role, zoneConfig, currentZone } = useZoneValidator();
@@ -662,7 +579,6 @@ function MobileSidebarContent() {
     () => resolveActivePath(collectMenuPaths(sections), pathname, hash),
     [sections, pathname, hash],
   );
-  const matchPath = useCallback((path: string): boolean => path === activePath, [activePath]);
   const roleInfo = roleBadgeMap[role];
 
   return (
@@ -674,14 +590,14 @@ function MobileSidebarContent() {
           <span className="text-[14px] font-extrabold text-foreground tracking-tight">
             BEST<span className="text-primary">CHOICE</span>
           </span>
-          <span className="text-[10px] text-muted-foreground font-medium tracking-widest uppercase">
+          <span className="text-[10px] text-muted-foreground font-medium leading-snug">
             ระบบบริหารร้านและการเงิน
           </span>
         </div>
       </div>
 
       {/* User info */}
-      {user && (
+      {user && inSettings && (
         <div className="flex items-center gap-2.5 px-5 py-3 border-b border-sidebar-border">
           <div className="size-8 rounded-full bg-muted flex items-center justify-center shrink-0">
             <span className="text-primary text-xs font-bold">{user.name?.charAt(0)}</span>
@@ -721,69 +637,41 @@ function MobileSidebarContent() {
         />
       )}
 
-      {/* Navigation */}
-      <ScrollArea className="flex-1 py-4 px-3">
-        <AccordionMenu
-          selectedValue={pathname}
-          matchPath={matchPath}
-          type="multiple"
-          classNames={expandedMenuClassNames}
-        >
-          {sections.map((section) => (
-            <AccordionMenuSub
-              key={section.key}
-              value={section.key}
-              data-testid={`nav-mobile-${section.key}`}
-              className={SECTION_CLASS}
-            >
-              <AccordionMenuSubTrigger className={SECTION_TRIGGER_CLASS}>
-                <section.icon data-slot="accordion-menu-icon" className="size-4 shrink-0" />
-                <span data-slot="accordion-menu-title">{section.label}</span>
-              </AccordionMenuSubTrigger>
-              <AccordionMenuSubContent parentValue={section.key} type="single" collapsible>
-                {section.items.map((item) =>
-                  item.children && item.children.length > 0 ? (
-                    // Use group- prefix to avoid value collision with child paths
-                    // (e.g. parent "/assets" and first child "/assets" share the same path)
-                    <AccordionMenuSub key={item.path} value={`group-${item.path}`} data-testid={`nav-mobile-${item.path}`}>
-                      <AccordionMenuSubTrigger>
-                        <item.icon data-slot="accordion-menu-icon" className="size-[15px] shrink-0 opacity-70" />
-                        <span data-slot="accordion-menu-title">{item.label}</span>
-                        {item.badgeKey && <NavBadge badgeKey={item.badgeKey} />}
-                      </AccordionMenuSubTrigger>
-                      <AccordionMenuSubContent parentValue={`group-${item.path}`} type="single" collapsible>
-                        {item.children.map((child) => (
-                          <AccordionMenuItem key={child.path} value={child.path} className="text-[15px]">
-                            <Link to={child.path} className="flex items-center gap-2.5 w-full">
-                              <child.icon data-slot="accordion-menu-icon" className="size-[15px] shrink-0 opacity-70" />
-                              <span data-slot="accordion-menu-title">{child.label}</span>
-                            </Link>
-                          </AccordionMenuItem>
-                        ))}
-                      </AccordionMenuSubContent>
-                    </AccordionMenuSub>
-                  ) : (
-                    <AccordionMenuItem key={item.path} value={item.path} className="text-[15px]">
-                      <Link to={item.path} className="flex items-center gap-2.5 w-full">
-                        <item.icon
-                          data-slot="accordion-menu-icon"
-                          className="size-[15px] shrink-0 opacity-70"
-                        />
-                        <span data-slot="accordion-menu-title">{item.label}</span>
-                        {item.badgeKey && <NavBadge badgeKey={item.badgeKey} />}
-                      </Link>
-                    </AccordionMenuItem>
-                  )
-                )}
-              </AccordionMenuSubContent>
-            </AccordionMenuSub>
-          ))}
-        </AccordionMenu>
-      </ScrollArea>
+      <WorkNavigation
+        key={`${role}-${currentZone}`}
+        zone={currentZone === 'fin' ? 'fin' : 'shop'}
+        sections={sections}
+        activePath={activePath}
+        mobile
+        onNavigate={() => setMobileSidebarOpen(false)}
+        renderBadge={(badgeKey) => <NavBadge badgeKey={badgeKey} />}
+      />
 
       {/* GearButton = ทางเข้าเท่านั้น (ทางออกอยู่แถบบน + บาร์ล่าง) */}
       {zoneConfig?.showSettingsGear && <GearButton onClick={enterSettings} />}
       </>
+      )}
+
+      {/* User info */}
+      {user && !inSettings && (
+        <div className="flex items-center gap-2.5 px-4 py-2 border-t border-sidebar-border shrink-0">
+          <div className="size-8 rounded-full bg-muted flex items-center justify-center shrink-0">
+            <span className="text-primary text-xs font-bold">{user.name?.charAt(0)}</span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[12px] font-medium text-foreground truncate">{user.name}</p>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              {roleInfo && (
+                <span className={cn('inline-flex text-[11px] font-medium text-muted-foreground')}>
+                  {roleInfo.label}
+                </span>
+              )}
+              {user.branchName && (
+                <span className="text-[12px] text-muted-foreground truncate">{user.branchName}</span>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Footer (logout) */}

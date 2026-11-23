@@ -1,4 +1,4 @@
-import { ShieldCheck, ShieldOff } from 'lucide-react';
+import { ShieldCheck, ShieldOff } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import { formatBaht, warrantyLabel, type RateView } from './format';
 

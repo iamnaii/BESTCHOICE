@@ -1,5 +1,5 @@
 import ScreenTable from '@/components/ui/ScreenTable';
-import { Eye, Truck, X, Check, AlertTriangle, Undo2 } from 'lucide-react';
+import { Eye, Truck, X, Check, AlertTriangle, Undo2 } from '@/lib/icons';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import type { LetterRow, LetterStatus } from '../types';

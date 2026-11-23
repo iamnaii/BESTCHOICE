@@ -1,7 +1,7 @@
 import { useLiffInit } from '@/hooks/useLiffInit';
 import { liffApi } from '@/lib/api';
 import { useQuery } from '@tanstack/react-query';
-import { MapPin, Phone } from 'lucide-react';
+import { MapPin, Phone } from '@/lib/icons';
 import { toast } from 'sonner';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';

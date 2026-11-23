@@ -1,5 +1,5 @@
 import { useId, type ReactNode } from 'react';
-import { CheckCircle2, Info, PencilLine, TrendingDown, TrendingUp } from 'lucide-react';
+import { CheckCircle2, Info, PencilLine, TrendingDown, TrendingUp } from '@/lib/icons';
 import { formatBahtPlain, type ModelQuote } from '@installment/shared';
 import { NumberInput } from '@/components/ui/NumberInput';
 import { formControlClass } from '@/components/ui/form-styles';

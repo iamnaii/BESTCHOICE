@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useCommandState } from 'cmdk';
-import { AlertCircle, Check, ChevronDown, Loader2, Plus, RotateCw, X } from 'lucide-react';
+import { AlertCircle, Check, ChevronDown, Loader2, Plus, RotateCw, X } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import { filterAndRank, normalizeThai } from '@/lib/thai-search';
 import { Button } from './button';

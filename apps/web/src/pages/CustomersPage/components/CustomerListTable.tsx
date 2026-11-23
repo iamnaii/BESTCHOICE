@@ -1,4 +1,4 @@
-import { Search, Users } from 'lucide-react';
+import { Search, Users } from '@/lib/icons';
 import DataTable, { type Column, type TableSort } from '@/components/ui/DataTable';
 import QueryBoundary from '@/components/QueryBoundary';
 import { customerTableMinWidth } from './CustomerCells';

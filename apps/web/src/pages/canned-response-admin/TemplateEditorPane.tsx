@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { FileText } from 'lucide-react';
+import { FileText } from '@/lib/icons';
 import { toast } from 'sonner';
 import BubbleList from './BubbleList';
 import ChannelTabs, { type ChannelTabValue } from './ChannelTabs';

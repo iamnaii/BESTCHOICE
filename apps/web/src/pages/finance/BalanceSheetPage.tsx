@@ -6,7 +6,7 @@ import api from '@/lib/api';
 import QueryBoundary from '@/components/QueryBoundary';
 import PageHeader from '@/components/ui/PageHeader';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { Scale } from 'lucide-react';
+import { Scale } from '@/lib/icons';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { formatDateMedium } from '@/utils/formatters';
 import CompanyFilter from '@/components/CompanyFilter';

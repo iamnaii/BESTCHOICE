@@ -1,4 +1,4 @@
-import { Loader2, AlertTriangle } from 'lucide-react';
+import { Loader2, AlertTriangle } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import { formatNumber } from '@/utils/formatters';
 import { toast } from 'sonner';

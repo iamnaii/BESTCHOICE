@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { Link2, MessageCircle, Printer } from 'lucide-react';
+import { Link2, MessageCircle, Printer } from '@/lib/icons';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import PdfPreview from '@/components/PdfPreview';

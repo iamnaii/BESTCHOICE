@@ -1,4 +1,4 @@
-import { Check, FileText, Loader2, X } from 'lucide-react';
+import { Check, FileText, Loader2, X } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import type { useLibraryDraft } from '../hooks/useLibraryDraft';
 export default function LibraryAttachmentTray({

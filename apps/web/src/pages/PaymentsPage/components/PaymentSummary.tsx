@@ -1,6 +1,6 @@
 import { useId as useUiFieldId, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronLeft, ChevronRight, FileSpreadsheet, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, FileSpreadsheet, Loader2 } from '@/lib/icons';
 import { toast } from 'sonner';
 import { Card, CardContent } from '@/components/ui/card';
 import DataTable, { type Column } from '@/components/ui/DataTable';

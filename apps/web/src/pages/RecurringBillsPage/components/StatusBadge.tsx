@@ -1,10 +1,10 @@
-import type { LucideIcon } from 'lucide-react';
-import { CalendarClock, CircleCheck, Clock, FileText, Hourglass, SkipForward, TriangleAlert } from 'lucide-react';
+import type { AppIcon } from '@/lib/icons';
+import { CalendarClock, CircleCheck, Clock, FileText, Hourglass, SkipForward, TriangleAlert } from '@/lib/icons';
 import type { RecurringBillViewStatus } from '@installment/shared';
 import type { RecurringBillRow } from '@/hooks/useRecurringBills';
 
 /** ป้าย+ไอคอน+สี ตาม mockup กระดาน 1 — โทเคนจาก index.css เท่านั้น */
-export const STATUS_META: Record<RecurringBillViewStatus, { label: string; icon: LucideIcon; className: string }> = {
+export const STATUS_META: Record<RecurringBillViewStatus, { label: string; icon: AppIcon; className: string }> = {
   UPCOMING: { label: 'รอถึงรอบ', icon: Clock, className: 'bg-muted text-muted-foreground border-border' },
   PENDING: { label: 'รอจ่าย', icon: Hourglass, className: 'bg-primary/10 text-primary border-primary/20' },
   DUE_TODAY: { label: 'ครบกำหนดวันนี้', icon: CalendarClock, className: 'bg-warning/10 text-warning-strong border-warning/30' },

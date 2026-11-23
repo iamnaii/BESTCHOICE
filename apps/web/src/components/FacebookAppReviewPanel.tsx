@@ -14,7 +14,7 @@ import {
   ChevronDown,
   ChevronRight,
   ExternalLink,
-} from 'lucide-react';
+} from '@/lib/icons';
 
 /**
  * FacebookAppReviewPanel — Admin UI for running each Graph API permission

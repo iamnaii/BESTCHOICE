@@ -1,4 +1,4 @@
-import { Info } from 'lucide-react';
+import { Info } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import { formatThaiDate } from '@/lib/date';
 import { formatNumberDecimal } from '@/utils/formatters';

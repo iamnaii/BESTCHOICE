@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { PaymentFlexPreview, parsePaymentFlex } from './PaymentFlexPreview';
 import FlexBubblePreview from './FlexBubblePreview';
-import { Check, CheckCheck, Lock, FileText, ImageOff, Download, Copy, ShieldCheck, AlertCircle, Landmark } from 'lucide-react';
+import { Check, CheckCheck, Lock, FileText, ImageOff, Download, Copy, ShieldCheck, AlertCircle, Landmark } from '@/lib/icons';
 import { CREDIT_MESSAGE_MIME } from './credit-statement';
 import { GFIN_MESSAGE_MIME, isGfinPickable } from './gfin/gfin';
 import { linkifyText } from '@/lib/linkify';

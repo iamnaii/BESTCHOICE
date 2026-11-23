@@ -1,5 +1,5 @@
 import { Fragment, useId, useState } from 'react';
-import { ChevronDown, ChevronRight, Clock, Coins, Lock, Percent, Undo2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Clock, Coins, Lock, Percent, Undo2 } from '@/lib/icons';
 import ScreenTable from '@/components/ui/ScreenTable';
 import { formatNumberDecimal } from '@/utils/formatters';
 import { THAI_MONTHS_SHORT } from '@/lib/date';

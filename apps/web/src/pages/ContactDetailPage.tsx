@@ -1,3 +1,4 @@
+import { ChevronLeft as InlineChevronLeftIcon } from '@/lib/icons';
 import { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -6,7 +7,7 @@ import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import { useAuth } from '@/contexts/AuthContext';
-import { ArrowRight, Merge, Search, Phone, Copy, MessageCircle } from 'lucide-react';
+import { ArrowRight, Merge, Search, Phone, Copy, MessageCircle } from '@/lib/icons';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -489,9 +490,7 @@ export default function ContactDetailPage() {
           className="flex items-center justify-center size-9 self-start rounded-md text-muted-foreground transition-colors hover:bg-accent"
           aria-label="กลับ"
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-            <path d="m15 18-6-6 6-6" />
-          </svg>
+          <InlineChevronLeftIcon width="18" height="18" aria-hidden="true" />
         </button>
       </div>
 

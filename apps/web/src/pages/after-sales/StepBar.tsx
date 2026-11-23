@@ -1,4 +1,4 @@
-import { Check } from 'lucide-react';
+import { Check } from '@/lib/icons';
 
 /**
  * แถบขั้นตอนกลาง (ย้ายมาจาก `HeroSteps` เดิมของ `shop-daily-cash/CashStatusHero.tsx` — ตัดสิน

@@ -1,4 +1,5 @@
-import { ShoppingCart, CircleDollarSign } from 'lucide-react';
+import type { NavigationIcon } from '@/config/navigation-icons';
+import { WORK_ZONE_ICONS } from '@/config/navigation-icons';
 import { useNavigate } from 'react-router';
 import { cn } from '@/lib/utils';
 import { getWorkZoneHref, getZoneEntryPathForRole, type Zone } from '@/config/menu';
@@ -9,9 +10,9 @@ interface PillSwitcherProps {
   current: Zone;
 }
 
-const ZONE_META: Record<Exclude<Zone, 'settings'>, { label: string; icon: typeof ShoppingCart }> = {
-  shop: { label: 'งานหน้าร้าน', icon: ShoppingCart },
-  fin: { label: 'งานการเงิน', icon: CircleDollarSign },
+const ZONE_META: Record<Exclude<Zone, 'settings'>, { label: string; icon: NavigationIcon }> = {
+  shop: { label: 'งานหน้าร้าน', icon: WORK_ZONE_ICONS.shop },
+  fin: { label: 'งานการเงิน', icon: WORK_ZONE_ICONS.fin },
 };
 
 export function PillSwitcher({ zones, current }: PillSwitcherProps) {
@@ -22,9 +23,9 @@ export function PillSwitcher({ zones, current }: PillSwitcherProps) {
   if (pillZones.length < 2) return null;
 
   return (
-    <div className="px-3 py-2.5 border-b border-sidebar-border bg-card">
+    <div className="px-3 pt-3 pb-1 shrink-0">
       <p className="mb-1.5 text-xs font-medium leading-snug text-muted-foreground">หมวดงาน</p>
-      <div role="tablist" aria-label="หมวดงาน" className="flex gap-1.5">
+      <div role="tablist" aria-label="หมวดงาน" className="flex gap-1 rounded-lg border border-sidebar-border bg-muted/40 p-1">
         {pillZones.map((zone) => {
           const meta = ZONE_META[zone];
           const Icon = meta.icon;
@@ -42,14 +43,14 @@ export function PillSwitcher({ zones, current }: PillSwitcherProps) {
                 }
               }}
               className={cn(
-                'flex-1 flex items-center justify-center gap-1.5 min-h-11 px-2 py-1.5 rounded-lg text-[12px] font-semibold leading-snug transition-colors duration-150',
+                'flex-1 flex items-center justify-center gap-1.5 min-h-11 px-1.5 py-1.5 rounded-md text-[12px] font-semibold leading-snug transition-colors duration-150',
                 active
                   ? 'bg-primary text-primary-foreground'
-                  : 'bg-background text-muted-foreground border border-border hover:text-foreground',
+                  : 'text-muted-foreground hover:bg-sidebar-hover hover:text-foreground',
               )}
             >
-              <Icon className="size-3.5" aria-hidden="true" />
-              <span>{meta.label}<span className="block text-[10px] font-normal">{zone === 'shop' ? 'SHOP' : 'FINANCE'}</span></span>
+              <Icon className="size-[18px]" aria-hidden="true" />
+              <span>{meta.label}</span>
             </button>
           );
         })}

@@ -2,7 +2,7 @@ import { NumberInput } from '@/components/ui/NumberInput';
 import { formatNumericText } from '@/utils/numericText';
 import ScreenTable from '@/components/ui/ScreenTable';
 import { useMemo } from 'react';
-import { Trash2, Plus, AlertCircle } from 'lucide-react';
+import { Trash2, Plus, AlertCircle } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { AccountCombobox } from '@/components/accounting/AccountCombobox';

@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { getStatusBadgeProps, sessionStatusMap } from '@/lib/status-badges';
 import { Card, CardContent } from '@/components/ui/card';
 import { formatDateTime } from '@/utils/formatters';
-import { User, Bot, Briefcase, Clock, Settings, Pin } from 'lucide-react';
+import { User, Bot, Briefcase, Clock, Settings, Pin } from '@/lib/icons';
 
 interface SessionItem {
   id: string;

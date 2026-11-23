@@ -4,7 +4,7 @@ import { Link } from 'react-router';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Phone } from 'lucide-react';
+import { Phone } from '@/lib/icons';
 import {
   financeContactApi,
   financeContactKeys,

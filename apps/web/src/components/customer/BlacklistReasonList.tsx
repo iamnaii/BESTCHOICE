@@ -1,8 +1,8 @@
-import { Ban, FileWarning, FileX, Phone, Smartphone, Tag, Users, type LucideIcon } from 'lucide-react';
+import { Ban, FileWarning, FileX, Phone, Smartphone, Tag, Users, type AppIcon } from '@/lib/icons';
 import { Link } from 'react-router';
 import type { BlacklistReason, BlacklistReasonCode } from '@installment/shared';
 
-const ICONS: Record<BlacklistReasonCode, LucideIcon> = {
+const ICONS: Record<BlacklistReasonCode, AppIcon> = {
   ACTIVE_CONTRACT: FileWarning,
   TERMINATED_UNRETURNED: FileX,
   REPOSSESSED: Smartphone,

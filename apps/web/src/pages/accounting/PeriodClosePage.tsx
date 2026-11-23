@@ -2,7 +2,7 @@ import ScreenTable from '@/components/ui/ScreenTable';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Lock, Unlock } from 'lucide-react';
+import { Lock, Unlock } from '@/lib/icons';
 import { toast } from 'sonner';
 import api from '@/lib/api';
 import QueryBoundary from '@/components/QueryBoundary';

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { PencilLine, Plus, SkipForward, Trash2, TriangleAlert } from 'lucide-react';
+import { PencilLine, Plus, SkipForward, Trash2, TriangleAlert } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import {

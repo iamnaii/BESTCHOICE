@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowRightLeft, Clock, Camera, ShieldAlert, ChevronRight } from 'lucide-react';
+import { AlertTriangle, ArrowRightLeft, Clock, Camera, ShieldAlert, ChevronRight } from '@/lib/icons';
 import { useNavigate } from 'react-router';
 import type { StockDashboard } from '../types';
 import { formatDateShort } from '@/utils/formatters';

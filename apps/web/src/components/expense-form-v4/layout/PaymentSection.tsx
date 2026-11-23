@@ -1,5 +1,5 @@
 import { useId, useState, type ReactNode } from 'react';
-import { AlertTriangle, CheckCircle2, Clock } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Clock } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 
 interface Props {

@@ -1,5 +1,5 @@
 import { Link, useSearchParams } from 'react-router';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft } from '@/lib/icons';
 import { contractReturnUrl } from '@/lib/contract-return';
 import { Button } from '@/components/ui/button';
 

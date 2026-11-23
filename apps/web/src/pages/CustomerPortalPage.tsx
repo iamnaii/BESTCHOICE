@@ -1,6 +1,6 @@
 import { useParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { Lock } from 'lucide-react';
+import { Lock } from '@/lib/icons';
 import api from '@/lib/api';
 import { formatDateShort } from '@/utils/formatters';
 import { Badge } from '@/components/ui/badge';

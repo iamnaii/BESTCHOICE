@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowRightLeft } from 'lucide-react';
+import { ArrowRightLeft } from '@/lib/icons';
 import { toast } from 'sonner';
 import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';

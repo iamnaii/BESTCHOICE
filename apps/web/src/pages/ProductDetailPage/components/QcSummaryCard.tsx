@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Check, ChevronRight, ClipboardList } from 'lucide-react';
+import { Check, ChevronRight, ClipboardList } from '@/lib/icons';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';

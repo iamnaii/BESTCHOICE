@@ -26,8 +26,8 @@ import {
   Check,
   ChevronsLeft,
   ChevronsRight,
-  type LucideIcon,
-} from 'lucide-react';
+  type AppIcon,
+} from '@/lib/icons';
 import EmptyState from '@/components/ui/EmptyState';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { NativeSelect } from '@/components/ui/native-select';
@@ -111,7 +111,7 @@ interface DataTableProps<T> {
   data: T[];
   isLoading?: boolean;
   emptyMessage?: string;
-  emptyIcon?: LucideIcon;
+  emptyIcon?: AppIcon;
   emptyDescription?: string;
   onRowClick?: (item: T) => void;
   onRowDoubleClick?: (item: T) => void;

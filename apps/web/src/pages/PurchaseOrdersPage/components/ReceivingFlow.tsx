@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowRight, Check, ListChecks, X } from 'lucide-react';
+import { ArrowRight, Check, ListChecks, X } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import type { ReceivingUnitForm } from '../types';
 import type { PhotoAngle } from '@/constants/photo-angles';

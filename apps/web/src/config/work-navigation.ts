@@ -1,5 +1,5 @@
-import { DollarSign, FileCheck, MessageSquareMore, Plus, ShoppingCart } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
+import { DollarSign, FileCheck, MessageSquareMore, Plus, ShoppingCart } from '@/lib/icons';
+import type { AppIcon } from '@/lib/icons';
 
 /** Names shared by the sidebar, search, page titles and staff start screen. */
 export const NAV_LABELS = {
@@ -32,7 +32,7 @@ export interface WorkAction {
   label: string;
   description: string;
   path: string;
-  icon: LucideIcon;
+  icon: AppIcon;
   keywords: string;
   roles?: string[];
 }

@@ -8,7 +8,7 @@ import { usersApi, userKeys } from '@/lib/api/users';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import PageHeader from '@/components/ui/PageHeader';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { Mail, Link2, Users, UserCheck, Shield } from 'lucide-react';
+import { Mail, Link2, Users, UserCheck, Shield } from '@/lib/icons';
 import { Card, CardContent } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
 import { User, InviteToken } from './types';

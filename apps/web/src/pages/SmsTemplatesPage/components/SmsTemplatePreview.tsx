@@ -1,4 +1,4 @@
-import { Eye } from 'lucide-react';
+import { Eye } from '@/lib/icons';
 import { useEffect, useMemo, useState } from 'react';
 import type { SmsTemplate } from '../hooks/useSmsTemplates';
 import { usePreviewTemplate } from '../hooks/useSmsTemplates';

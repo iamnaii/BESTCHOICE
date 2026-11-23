@@ -1,5 +1,5 @@
 import { NumberInput } from '@/components/ui/NumberInput';
-import { X } from 'lucide-react';
+import { X } from '@/lib/icons';
 import { useTemplateStore } from '@/store/templateStore';
 import { useId as useUiFieldId } from 'react';
 

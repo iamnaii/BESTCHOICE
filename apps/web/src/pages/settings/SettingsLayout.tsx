@@ -1,7 +1,7 @@
 import { NativeSelect } from '@/components/ui/native-select';
 import { useState } from 'react';
 import { useParams, useNavigate, useLocation, Link, Outlet } from 'react-router';
-import { ChevronRight, Search } from 'lucide-react';
+import { ChevronRight, Search } from '@/lib/icons';
 import { useAuth } from '@/contexts/AuthContext';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';

@@ -1,3 +1,13 @@
+import {
+  ArrowRight as InlineArrowRightIcon,
+  CreditCard as InlineCreditCardIcon,
+  Heart as InlineHeartIcon,
+  MapPin as InlineMapPinIcon,
+  MessageCircle as InlineMessageCircleIcon,
+  Phone as InlinePhoneIcon,
+  ShieldCheck as InlineShieldCheckIcon,
+  Smartphone as InlineSmartphoneIcon,
+} from '@/lib/icons';
 import { useRef, useCallback } from 'react';
 import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
@@ -110,9 +120,7 @@ export default function LandingPage() {
                 <div className="relative">
                   <div className="w-64 h-[500px] bg-linear-to-b from-white/10 to-white/5 rounded-[3rem] border border-white/20 flex items-center justify-center animate-float">
                     <div className="w-56 h-[460px] bg-linear-to-b from-primary-800 to-primary-900 rounded-[2.5rem] flex flex-col items-center justify-center gap-4">
-                      <svg className="w-20 h-20 text-primary-foreground/80" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                      </svg>
+                      <InlineSmartphoneIcon className="w-20 h-20 text-primary-foreground/80" aria-hidden="true" />
                       <p className="text-primary-foreground/80 text-sm font-medium">Best Choice</p>
                     </div>
                   </div>
@@ -187,9 +195,7 @@ export default function LandingPage() {
               className="inline-flex items-center gap-2 px-8 py-3 text-sm font-semibold text-primary bg-card border-2 border-primary/20 hover:border-primary/40 rounded-xl transition-all hover:shadow-lg"
             >
               ดูสินค้าทั้งหมด
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
-              </svg>
+              <InlineArrowRightIcon className="w-4 h-4" aria-hidden="true" />
             </Link>
           </div>
         </div>
@@ -211,37 +217,28 @@ export default function LandingPage() {
             {[
               {
                 icon: (
-                  <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                  </svg>
+                  <InlineShieldCheckIcon className="w-8 h-8" aria-hidden="true" />
                 ),
                 title: 'สินค้ามีประกัน',
                 desc: 'ทุกเครื่องผ่านการตรวจสอบคุณภาพ พร้อมใบรับประกัน',
               },
               {
                 icon: (
-                  <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-                  </svg>
+                  <InlineCreditCardIcon className="w-8 h-8" aria-hidden="true" />
                 ),
                 title: 'ผ่อนชำระสบาย',
                 desc: 'ผ่อนชำระรายเดือน ดอกเบี้ยต่ำ อนุมัติไว',
               },
               {
                 icon: (
-                  <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                  </svg>
+                  <InlineHeartIcon className="w-8 h-8" aria-hidden="true" />
                 ),
                 title: 'ดูแลหลังการขาย',
                 desc: 'ทีมช่างพร้อมดูแลซ่อมบำรุง ตลอดอายุสัญญา',
               },
               {
                 icon: (
-                  <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
+                  <InlineMapPinIcon className="w-8 h-8" aria-hidden="true" />
                 ),
                 title: 'หลายสาขา',
                 desc: 'สาขาทั่วประเทศ สะดวกชำระ ใกล้บ้านคุณ',
@@ -303,28 +300,21 @@ export default function LandingPage() {
           <div className="grid md:grid-cols-3 gap-8 max-w-4xl mx-auto">
             <div className="text-center p-6 rounded-2xl bg-muted">
               <div className="w-12 h-12 mx-auto rounded-xl bg-primary/10 text-primary flex items-center justify-center mb-4">
-                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                </svg>
+                <InlinePhoneIcon className="w-6 h-6" aria-hidden="true" />
               </div>
               <h3 className="font-semibold text-foreground">โทรศัพท์</h3>
               <p className="mt-2 text-sm text-muted-foreground">02-xxx-xxxx</p>
             </div>
             <div className="text-center p-6 rounded-2xl bg-muted">
               <div className="w-12 h-12 mx-auto rounded-xl bg-success/10 text-success flex items-center justify-center mb-4">
-                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                </svg>
+                <InlineMessageCircleIcon className="w-6 h-6" aria-hidden="true" />
               </div>
               <h3 className="font-semibold text-foreground">LINE</h3>
               <p className="mt-2 text-sm text-muted-foreground">@bestchoice</p>
             </div>
             <div className="text-center p-6 rounded-2xl bg-muted">
               <div className="w-12 h-12 mx-auto rounded-xl bg-primary/10 text-primary flex items-center justify-center mb-4">
-                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
+                <InlineMapPinIcon className="w-6 h-6" aria-hidden="true" />
               </div>
               <h3 className="font-semibold text-foreground">ที่ตั้งร้าน</h3>
               <p className="mt-2 text-sm text-muted-foreground">สาขาใกล้บ้านคุณ</p>

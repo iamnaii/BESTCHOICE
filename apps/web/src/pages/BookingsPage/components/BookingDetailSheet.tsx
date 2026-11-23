@@ -16,7 +16,7 @@ import {
   Smartphone,
   Trash2,
   AlertTriangle,
-} from 'lucide-react';
+} from '@/lib/icons';
 import api, { getErrorMessage } from '@/lib/api';
 import { invalidateSalesQueries } from '@/lib/invalidate-sales-queries';
 import { cn } from '@/lib/utils';

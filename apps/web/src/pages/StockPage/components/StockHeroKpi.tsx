@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { Package, Smartphone, Wallet, Clock, TrendingUp } from 'lucide-react';
+import { Package, Smartphone, Wallet, Clock, TrendingUp } from '@/lib/icons';
 import type { StockInventoryScope } from '@installment/shared';
 import { StockDashboard } from '../types';
 import { StockSalesSourcesDialog } from './StockSalesSourcesDialog';

@@ -1,6 +1,6 @@
 import ScreenTable from '@/components/ui/ScreenTable';
 import { useMemo, useState } from 'react';
-import { Trophy, ArrowUp, ArrowDown, Download } from 'lucide-react';
+import { Trophy, ArrowUp, ArrowDown, Download } from '@/lib/icons';
 import { Card, CardContent } from '@/components/ui/card';
 import QueryBoundary from '@/components/QueryBoundary';
 import { useLeaderboard, type LeaderboardRow } from '../hooks/useLeaderboard';

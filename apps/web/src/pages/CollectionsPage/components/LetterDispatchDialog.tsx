@@ -1,6 +1,6 @@
 import { useId as useUiFieldId, useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, Download, Eye, FileText, Loader2, Upload } from 'lucide-react';
+import { AlertTriangle, Download, Eye, FileText, Loader2, Upload } from '@/lib/icons';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import { downloadProtectedDocument } from '@/lib/document-download';

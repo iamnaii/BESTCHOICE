@@ -1,5 +1,5 @@
 import { toast } from 'sonner';
-import { Copy, Link2 } from 'lucide-react';
+import { Copy, Link2 } from '@/lib/icons';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 
 interface Props {

@@ -1,4 +1,4 @@
-import { Check, Copy, MessageCircle, RefreshCw } from 'lucide-react';
+import { Check, Copy, MessageCircle, RefreshCw } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import type { Confirmation } from './types';

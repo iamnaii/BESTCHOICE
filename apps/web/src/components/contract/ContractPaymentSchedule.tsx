@@ -12,7 +12,7 @@ import {
   QrCode,
   Wallet,
   CreditCard,
-} from 'lucide-react';
+} from '@/lib/icons';
 import api from '@/lib/api';
 import PaymentProgressOverview from '@/components/contract/PaymentTimeline';
 import { formatNumber, formatDateMedium, formatDateTime } from '@/utils/formatters';

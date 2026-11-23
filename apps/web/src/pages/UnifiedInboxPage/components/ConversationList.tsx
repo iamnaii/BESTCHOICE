@@ -12,7 +12,7 @@ import {
   Loader2,
   ArrowRight,
   ArrowLeft,
-} from 'lucide-react';
+} from '@/lib/icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useDebounce } from '@/hooks/useDebounce';
 import { cn } from '@/lib/utils';

@@ -1,5 +1,7 @@
-import { Settings } from 'lucide-react';
+import { MENU_GROUP_ICONS } from '@/config/navigation-icons';
 import { cn } from '@/lib/utils';
+
+const SettingsIcon = MENU_GROUP_ICONS['settings:ตั้งค่าระบบ'];
 
 /** ปุ่มนี้เป็น "ทางเข้า" โหมดตั้งค่าอย่างเดียว (ทางออกอยู่ที่ ExitSettingsBar ด้านบนเมนู)
  *  จึงไม่มีสถานะ active และไม่ประกาศ aria-pressed — ไม่งั้น screen reader อ่านว่าเป็น
@@ -19,7 +21,7 @@ export function GearButton({ onClick }: GearButtonProps) {
         'text-muted-foreground hover:text-foreground hover:bg-sidebar-hover',
       )}
     >
-      <Settings className="size-4 shrink-0" aria-hidden="true" />
+      <SettingsIcon className="size-[18px] shrink-0" aria-hidden="true" />
       <span>ตั้งค่ากลาง</span>
     </button>
   );

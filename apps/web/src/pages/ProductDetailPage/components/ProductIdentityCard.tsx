@@ -1,7 +1,7 @@
 import { DeviceDisclosureSummary, type DeviceDisclosureInfo } from '@/components/product/DeviceDisclosureSummary';
 import { useQuery } from '@tanstack/react-query';
 import { PARTS_HISTORY_SHORT_LABEL } from '@installment/shared';
-import { ChevronRight, Copy, ImageIcon, Smartphone } from 'lucide-react';
+import { ChevronRight, Copy, ImageIcon, Smartphone } from '@/lib/icons';
 import { toast } from 'sonner';
 import api from '@/lib/api';
 import { cn } from '@/lib/utils';

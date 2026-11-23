@@ -1,4 +1,4 @@
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight } from '@/lib/icons';
 import { baht, EXCHANGE_KIND_LABEL, isCashCase, TIER_LABEL, type CaseDetail } from './after-sales';
 
 /**

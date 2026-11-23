@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Clock, Printer } from 'lucide-react';
+import { Clock, Printer } from '@/lib/icons';
 import api, { getErrorMessage } from '@/lib/api';
 import { formatDateTime } from '@/utils/formatters';
 import QueryBoundary from '@/components/QueryBoundary';

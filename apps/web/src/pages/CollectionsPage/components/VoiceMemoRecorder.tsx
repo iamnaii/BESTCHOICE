@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Mic, MicOff, Play, Pause, Trash2, Loader2, CheckCircle2 } from 'lucide-react';
+import { Mic, MicOff, Play, Pause, Trash2, Loader2, CheckCircle2 } from '@/lib/icons';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import { useMediaRecorder } from '../hooks/useMediaRecorder';

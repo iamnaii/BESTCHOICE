@@ -6,7 +6,7 @@ import api from '@/lib/api';
 import QueryBoundary from '@/components/QueryBoundary';
 import PageHeader from '@/components/ui/PageHeader';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { TrendingDown } from 'lucide-react';
+import { TrendingDown } from '@/lib/icons';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import CompanyFilter from '@/components/CompanyFilter';
 import { useUiFlags } from '@/hooks/useUiFlags';

@@ -4,7 +4,7 @@ import {
   type DragEndEvent, type DragStartEvent,
 } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { Plus } from 'lucide-react';
+import { Plus } from '@/lib/icons';
 import { Input } from '@/components/ui/input';
 import CategoryHeader from './CategoryHeader';
 import TemplateItem from './TemplateItem';

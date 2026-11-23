@@ -13,7 +13,7 @@ import type { StockView } from '../hooks/useStockProducts';
 import type { StockColumn } from './stockColumns';
 import './stock-comparison.css';
 import { StockFilters } from './StockFilters';
-import { ChevronLeft, ChevronRight, Package, Search } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Package, Search } from '@/lib/icons';
 
 export interface StockListTabProps {
   inventoryScope?: StockInventoryScope;

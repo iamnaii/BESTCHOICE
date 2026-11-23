@@ -13,7 +13,7 @@ import {
   RefreshCw,
   ShieldCheck,
   User,
-} from 'lucide-react';
+} from '@/lib/icons';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';

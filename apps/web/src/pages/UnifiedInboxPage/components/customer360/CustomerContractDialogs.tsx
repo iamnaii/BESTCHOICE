@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { FileText, Link2, Lock, Phone } from 'lucide-react';
+import { FileText, Link2, Lock, Phone } from '@/lib/icons';
 import ContactLogDialog from '@/pages/CollectionsPage/components/ContactLogDialog';
 import LockDeviceDialog from '@/pages/CollectionsPage/components/LockDeviceDialog';
 import {

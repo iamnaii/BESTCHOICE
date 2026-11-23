@@ -1,4 +1,4 @@
-import { Eraser, Loader2, TriangleAlert } from 'lucide-react';
+import { Eraser, Loader2, TriangleAlert } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import {
   AlertDialog,

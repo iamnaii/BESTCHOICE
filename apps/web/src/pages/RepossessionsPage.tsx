@@ -15,7 +15,7 @@ import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { formatDateShort } from '@/utils/formatters';
 import { Badge } from '@/components/ui/badge';
 import { getStatusBadgeProps, repossessionStatusMap, conditionGradeMap } from '@/lib/status-badges';
-import { Camera, Download, Send } from 'lucide-react';
+import { Camera, Download, Send } from '@/lib/icons';
 import { Link } from 'react-router';
 import {
   CashAccountSelect,

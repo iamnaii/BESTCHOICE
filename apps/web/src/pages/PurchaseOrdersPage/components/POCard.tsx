@@ -4,7 +4,7 @@ import { getStatusBadgeProps, poStatusMap, poPaymentStatusMap } from '@/lib/stat
 import { formatDateShort } from '@/utils/formatters';
 import { receiveProgress, isOverdue, supplierContactIsRedundant, canCancel } from '../po-list.util';
 import type { PurchaseOrder } from '../types';
-import { PackageCheck, Check, X, Ban, ShoppingCart, AlertTriangle } from 'lucide-react';
+import { PackageCheck, Check, X, Ban, ShoppingCart, AlertTriangle } from '@/lib/icons';
 
 // Mobile-only card for the PO list. The desktop view keeps the DataTable; on
 // phones (<lg) the table side-scrolls and its row actions land off-screen, so we

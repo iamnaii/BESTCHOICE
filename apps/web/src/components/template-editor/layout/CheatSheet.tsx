@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Copy, Check } from 'lucide-react';
+import { Copy, Check } from '@/lib/icons';
 import { SYNTAX_REFERENCE } from '@/constants/syntaxReference';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 

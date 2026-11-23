@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { cn } from '@/lib/utils';
 import { cva, VariantProps } from 'class-variance-authority';
-import { Circle } from 'lucide-react';
+import { Circle } from '@/lib/icons';
 import * as RadioGroupPrimitive from '@radix-ui/react-radio-group';
 
 type RadioVariant = 'primary' | 'mono';

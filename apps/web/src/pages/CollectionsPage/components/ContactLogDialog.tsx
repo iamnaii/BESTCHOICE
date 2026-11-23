@@ -1,7 +1,7 @@
 import { NumberInput } from '@/components/ui/NumberInput';
 import { useId as useExtraFieldId, useId as useUiFieldId, useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Phone, PhoneIncoming, PhoneOutgoing, Clock } from 'lucide-react';
+import { Phone, PhoneIncoming, PhoneOutgoing, Clock } from '@/lib/icons';
 import api from '@/lib/api';
 import Modal from '@/components/ui/Modal';
 import { formatNumber } from '@/utils/formatters';

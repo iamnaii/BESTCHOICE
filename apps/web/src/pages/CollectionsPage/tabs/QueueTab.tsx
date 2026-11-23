@@ -1,7 +1,7 @@
 import CardSkeleton from '../components/ContractCardSkeleton';
 import { useContactedTodayRows } from '../hooks/useContactedTodayRows';
 import { useEffect, useState } from 'react';
-import { CheckCircle2, PartyPopper, Phone } from 'lucide-react';
+import { CheckCircle2, PartyPopper, Phone } from '@/lib/icons';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useCollectionsKeyboard } from '@/hooks/useCollectionsKeyboard';
 import QueryBoundary from '@/components/QueryBoundary';

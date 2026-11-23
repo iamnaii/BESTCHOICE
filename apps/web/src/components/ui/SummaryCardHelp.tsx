@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Info } from 'lucide-react';
+import { Info } from '@/lib/icons';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 export default function SummaryCardHelp({

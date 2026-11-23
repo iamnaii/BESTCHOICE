@@ -16,7 +16,7 @@ import {
   RotateCcw,
   TrendingDown,
   TrendingUp,
-} from 'lucide-react';
+} from '@/lib/icons';
 import api, { getErrorMessage } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import PageHeader from '@/components/ui/PageHeader';

@@ -1,7 +1,7 @@
 import ScreenTable from '@/components/ui/ScreenTable';
 import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router';
-import { Coins, History, Package, PackageX, Paperclip, PencilLine, Phone, Printer, Truck, X } from 'lucide-react';
+import { Coins, History, Package, PackageX, Paperclip, PencilLine, Phone, Printer, Truck, X } from '@/lib/icons';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { getStatusBadgeProps, poStatusMap, poPaymentStatusMap } from '@/lib/status-badges';

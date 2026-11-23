@@ -3,7 +3,7 @@ import { Link } from 'react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import Decimal from 'decimal.js';
 import { toast } from 'sonner';
-import { AlertTriangle, ArrowRightToLine, Clock, Lock, Pencil, Printer, Undo2 } from 'lucide-react';
+import { AlertTriangle, ArrowRightToLine, Clock, Lock, Pencil, Printer, Undo2 } from '@/lib/icons';
 import api from '@/lib/api';
 import ScreenTable from '@/components/ui/ScreenTable';
 import { Button } from '@/components/ui/button';

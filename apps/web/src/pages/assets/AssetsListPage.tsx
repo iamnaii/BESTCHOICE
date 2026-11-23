@@ -18,7 +18,7 @@ import {
   RotateCcw,
   Files,
   Inbox,
-} from 'lucide-react';
+} from '@/lib/icons';
 import PageHeader from '@/components/ui/PageHeader';
 import {
   Breadcrumb,

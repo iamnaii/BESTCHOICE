@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Plus } from 'lucide-react';
+import { Plus } from '@/lib/icons';
 import CustomerCreateDialog, {
   splitDisplayName,
   type CreatedCustomer,

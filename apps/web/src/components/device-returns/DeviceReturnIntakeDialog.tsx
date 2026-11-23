@@ -3,7 +3,7 @@ import { NativeSelect } from '@/components/ui/native-select';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { AlertTriangle, Check, FileText, Gauge, Lock, PackageX, Search, Store } from 'lucide-react';
+import { AlertTriangle, Check, FileText, Gauge, Lock, PackageX, Search, Store } from '@/lib/icons';
 import api, { getErrorMessage } from '@/lib/api';
 import Modal from '@/components/ui/Modal';
 import { DialogDescription } from '@/components/ui/dialog';

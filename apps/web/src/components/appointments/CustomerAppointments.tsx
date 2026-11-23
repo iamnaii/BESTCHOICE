@@ -1,4 +1,4 @@
-import { CalendarDays, Clock, MessageCircle } from 'lucide-react';
+import { CalendarDays, Clock, MessageCircle } from '@/lib/icons';
 import { confirmationStatusLabel } from './ConfirmationMessage';
 import { getRequestCompany } from '@/lib/company-scope';
 import { Link } from 'react-router';

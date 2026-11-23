@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { AlertTriangle, Copy, Phone, Wrench } from 'lucide-react';
+import { AlertTriangle, Copy, Phone, Wrench } from '@/lib/icons';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';

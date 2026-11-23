@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/table';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { formatNumberDecimal, formatDateMedium } from '@/utils/formatters';
-import { Calculator } from 'lucide-react';
+import { Calculator } from '@/lib/icons';
 
 interface WhtLine {
   documentNumber: string;

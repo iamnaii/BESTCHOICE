@@ -14,7 +14,7 @@ import {
   XCircle,
   Loader2,
   Calendar,
-} from 'lucide-react';
+} from '@/lib/icons';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';

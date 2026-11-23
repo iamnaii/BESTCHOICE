@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router';
-import { ArrowLeftRight, FileText, MoreHorizontal, Pencil } from 'lucide-react';
+import { ArrowLeftRight, FileText, MoreHorizontal, Pencil } from '@/lib/icons';
 import {
   DropdownMenu,
   DropdownMenuContent,

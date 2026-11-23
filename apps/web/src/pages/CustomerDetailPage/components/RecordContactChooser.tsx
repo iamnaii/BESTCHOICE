@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Plus } from 'lucide-react';
+import { Plus } from '@/lib/icons';
 import { toast } from 'sonner';
 import {
   JOURNEY_LOST_PROMPT_OUTCOMES,

@@ -14,7 +14,7 @@ import {
   Plus,
   Printer,
   X,
-} from 'lucide-react';
+} from '@/lib/icons';
 import { toast } from 'sonner';
 import { useMutation } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';

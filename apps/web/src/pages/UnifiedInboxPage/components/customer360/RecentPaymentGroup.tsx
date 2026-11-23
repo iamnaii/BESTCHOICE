@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Banknote, Landmark, QrCode, CreditCard, ChevronRight } from 'lucide-react';
+import { Banknote, Landmark, QrCode, CreditCard, ChevronRight } from '@/lib/icons';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import type { PaymentSummaryItem } from './types';

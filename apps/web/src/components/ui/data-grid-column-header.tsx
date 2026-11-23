@@ -27,7 +27,7 @@ import {
   ChevronsUpDown,
   PinOff,
   Settings2,
-} from 'lucide-react';
+} from '@/lib/icons';
 
 interface DataGridColumnHeaderProps<TData, TValue> extends HTMLAttributes<HTMLDivElement> {
   column: Column<TData, TValue>;

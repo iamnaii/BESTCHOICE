@@ -1,4 +1,4 @@
-import { Filter, X } from 'lucide-react';
+import { Filter, X } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import type { QueueFilterState, QueueSortOption } from '../hooks/useQueueFilter';
 import { FilterPresetsDropdown } from './FilterPresetsDropdown';

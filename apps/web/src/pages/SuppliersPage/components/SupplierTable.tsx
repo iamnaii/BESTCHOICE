@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
-import { Building2, User, Phone, MessageCircle, Eye, Pencil } from 'lucide-react';
+import { Building2, User, Phone, MessageCircle, Eye, Pencil } from '@/lib/icons';
 
 export interface PaymentMethod {
   id?: string;

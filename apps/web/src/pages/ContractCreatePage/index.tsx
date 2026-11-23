@@ -7,7 +7,7 @@ import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import TradeInCreditPicker from '@/components/trade-in/TradeInCreditPicker';
 import PageHeader from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, ArrowRight, Send } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Send } from '@/lib/icons';
 import { STEPS } from './constants';
 import { useContractCreateData } from './hooks/useContractCreateData';
 import { useContractCalculation } from './hooks/useContractCalculation';

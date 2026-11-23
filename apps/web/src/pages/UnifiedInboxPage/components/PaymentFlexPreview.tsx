@@ -1,4 +1,4 @@
-import { CreditCard, AlertTriangle, ExternalLink } from 'lucide-react';
+import { CreditCard, AlertTriangle, ExternalLink } from '@/lib/icons';
 
 /**
  * Compact preview card shown in the inbox when staff sends a payment Flex Card

@@ -7,7 +7,7 @@ import {
   Clock,
   Users,
   Loader2,
-} from 'lucide-react';
+} from '@/lib/icons';
 import { formatNumber } from '@/utils/formatters';
 import { useTeamDashboard, type CollectorStatus } from '../hooks/useTeamDashboard';
 

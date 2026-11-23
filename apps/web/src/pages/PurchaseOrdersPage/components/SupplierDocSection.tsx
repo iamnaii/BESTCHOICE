@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, FileText } from 'lucide-react';
+import { AlertTriangle, FileText } from '@/lib/icons';
 import api from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useDebounce } from '@/hooks/useDebounce';

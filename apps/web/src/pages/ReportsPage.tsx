@@ -8,7 +8,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/button';
 import AnimatedCounter from '@/components/ui/animated-counter';
 import { toast } from 'sonner';
-import { Download } from 'lucide-react';
+import { Download } from '@/lib/icons';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { DateRangeChips } from '@/components/ui/DateRangeChips';
 import { toLocalDateString } from '@/lib/date';

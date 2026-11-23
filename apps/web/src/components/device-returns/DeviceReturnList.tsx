@@ -2,7 +2,7 @@ import ScreenTable from '@/components/ui/ScreenTable';
 import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Send } from 'lucide-react';
+import { Send } from '@/lib/icons';
 import api, { getErrorMessage } from '@/lib/api';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Card, CardHeader } from '@/components/ui/card';

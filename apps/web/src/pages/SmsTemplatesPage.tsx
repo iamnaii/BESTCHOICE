@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { GitBranch, MessageSquare, Plus, Trash2 } from 'lucide-react';
+import { GitBranch, MessageSquare, Plus, Trash2 } from '@/lib/icons';
 import PageHeader from '@/components/ui/PageHeader';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';

@@ -1,7 +1,9 @@
 import { NAV_LABELS } from './work-navigation';
+import { groupShopMenu } from './shop-menu';
+import { getMenuIcon, MENU_GROUP_ICONS } from './navigation-icons';
 import { WORK_COMPANY } from '@/lib/company-scope';
 import { resolveCompanyAccess } from '@installment/shared';
-import type { LucideIcon } from 'lucide-react';
+import type { NavigationIcon } from '@/config/navigation-icons';
 import { settingsNavEntries } from './settings-access';
 import type { SettingsRole } from './settings-registry';
 import {
@@ -16,7 +18,6 @@ import {
   Coins,
   Home,
   TrendingUp,
-  Truck,
   ClipboardList,
   Building2,
   AlertTriangle,
@@ -33,12 +34,10 @@ import {
   Landmark,
   CalendarDays,
   Plug,
-  Settings,
   BadgePercent,
   ScrollText,
   MessageSquareMore,
   MoreHorizontal,
-  LayoutGrid,
   CheckSquare,
   Tag,
   TrendingDown,
@@ -49,12 +48,11 @@ import {
   // P3-SP5 — SHOP-side accounting menu icon
   Store,
   // P2-SP2 / P4 — document config menu
-  ReceiptText,
   Mail,
   // Unified contact party-master — สมุดผู้ติดต่อ
   ArrowLeft,
   BookUser, Camera, Clock, Timer, Scale,
-} from 'lucide-react';
+} from '@/lib/icons';
 
 /* ── Types ─────────────────────────────────────────── */
 
@@ -77,7 +75,7 @@ export interface PlaceholderInfo {
 export interface MenuItem {
   label: string;
   path: string;
-  icon: LucideIcon;
+  icon: NavigationIcon;
   children?: MenuItem[];   // when present, item renders as collapsible group (path is not navigable)
   badgeKey?: MenuBadgeKey; // optional dynamic count badge
   placeholder?: PlaceholderInfo; // marks the destination as a placeholder owned by a future SP
@@ -86,7 +84,7 @@ export interface MenuItem {
 export interface MenuSection {
   key: string;
   label: string;
-  icon: LucideIcon;
+  icon: NavigationIcon;
   zone?: Zone; // optional during SP1 staged rollout; required at render once all configs are tagged (Task 6)
   items: MenuItem[];
 }
@@ -94,7 +92,7 @@ export interface MenuSection {
 export interface BottomNavItem {
   label: string;
   path: string;
-  icon: LucideIcon;
+  icon: NavigationIcon;
   badgeKey?: MenuBadgeKey;  // promoted from inline 'chat-unread' literal
   /** 'sidebar' = เปิดลิ้นชักเมนู, 'exit-settings' = ออกจากโหมดตั้งค่า (สลับโซน + navigate)
    *  ทั้งคู่ไม่ใช่ลิงก์ — `path` เป็นแค่ sentinel ที่ไม่มีใคร navigate ไป */
@@ -792,6 +790,22 @@ const VIEWER_CONFIG: RoleMenuConfig = {
   ],
 };
 
+// Approved SHOP navigation, 2026-11-23. Reuse each role's existing grants.
+for (const [prefix, config] of [
+  ['owner', OWNER_CONFIG], ['bm', BRANCH_MANAGER_CONFIG], ['sales', SALES_CONFIG],
+  ['fm', FINANCE_MANAGER_CONFIG], ['acc', ACCOUNTANT_CONFIG], ['viewer', VIEWER_CONFIG],
+] as const) {
+  config.sidebar = groupShopMenu(config.sidebar, prefix);
+  for (const section of config.sidebar) {
+    section.icon = MENU_GROUP_ICONS[`${section.zone}:${section.label}`] ?? section.icon;
+    for (const item of section.items) {
+      item.icon = getMenuIcon(item.path, item.icon);
+      for (const child of item.children ?? []) child.icon = getMenuIcon(child.path, child.icon);
+    }
+  }
+  for (const item of config.bottomNav) item.icon = getMenuIcon(item.path, item.icon);
+}
+
 /* ── Config map ────────────────────────────────────── */
 
 const MENU_CONFIG: Record<string, RoleMenuConfig> = {
@@ -926,6 +940,13 @@ const ZONE_CONFIG: Record<string, RoleZoneConfig> = {
   },
 };
 
+// Mobile shortcuts use the same destination glyphs as the full navigation.
+for (const config of Object.values(ZONE_CONFIG)) {
+  for (const items of Object.values(config.bottomNav)) {
+    for (const item of items) item.icon = getMenuIcon(item.path, item.icon);
+  }
+}
+
 /** Build the settings-zone sidebar from the registry (role-filtered categories).
  *  "รายชื่อผู้ติดต่อ" (the /contacts party-master page) sits as the first item inside
  *  the "ตั้งค่าระบบ" submenu, above the registry categories. */
@@ -937,7 +958,7 @@ function buildSettingsZoneSections(role: string): MenuSection[] {
   const settings: MenuSection = {
     key: 'settings',
     label: 'ตั้งค่าระบบ',
-    icon: Settings,
+    icon: MENU_GROUP_ICONS['settings:ตั้งค่าระบบ'],
     zone: 'settings' as const,
     items: entries.map((e) => ({ label: e.label, path: e.path, icon: e.icon })),
   };

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { TriangleAlert } from 'lucide-react';
+import { TriangleAlert } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import { NumberInput } from '@/components/ui/NumberInput';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';

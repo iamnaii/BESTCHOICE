@@ -1,7 +1,7 @@
 import { NativeSelect } from '@/components/ui/native-select';
 import { useId as useUiFieldId, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Ban, FileText, Layers, TrendingDown } from 'lucide-react';
+import { Ban, FileText, Layers, TrendingDown } from '@/lib/icons';
 import api from '@/lib/api';
 import QueryBoundary from '@/components/QueryBoundary';
 import { formatNumberDecimal } from '@/utils/formatters';

@@ -1,4 +1,4 @@
-import { Delete } from 'lucide-react';
+import { Delete } from '@/lib/icons';
 
 interface Props {
   value: string;

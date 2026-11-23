@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { Bot, Sparkles, AlertTriangle, RotateCcw } from 'lucide-react';
+import { Bot, Sparkles, AlertTriangle, RotateCcw } from '@/lib/icons';
 
 interface ServiceBotPersona {
   name: string;

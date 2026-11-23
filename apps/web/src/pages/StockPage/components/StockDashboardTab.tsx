@@ -10,7 +10,7 @@ import {
   PieChart as PieChartIcon,
   Tag,
   Trophy,
-} from 'lucide-react';
+} from '@/lib/icons';
 import {
   Bar,
   BarChart,

@@ -1,4 +1,4 @@
-import { FileText, Printer, Truck, AlertTriangle, X } from 'lucide-react';
+import { FileText, Printer, Truck, AlertTriangle, X } from '@/lib/icons';
 import type { LetterStatus } from '../types';
 
 interface Props {

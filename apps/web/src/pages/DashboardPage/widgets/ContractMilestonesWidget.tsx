@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router';
-import { FileCheck } from 'lucide-react';
+import { FileCheck } from '@/lib/icons';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import QueryBoundary from '@/components/QueryBoundary';
 import api from '@/lib/api';

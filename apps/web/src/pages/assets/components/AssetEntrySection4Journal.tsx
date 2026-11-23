@@ -1,7 +1,7 @@
 import ScreenTable from '@/components/ui/ScreenTable';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Check, AlertTriangle } from 'lucide-react';
+import { Check, AlertTriangle } from '@/lib/icons';
 import { formatNumberDecimal } from '@/utils/formatters';
 import type { CalculationResult } from '../hooks/useAssetCalculation';
 import { AssetSectionHeader } from './AssetSectionHeader';

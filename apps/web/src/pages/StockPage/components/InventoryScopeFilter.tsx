@@ -1,4 +1,4 @@
-import { Smartphone, Package, Layers } from 'lucide-react';
+import { Smartphone, Package, Layers } from '@/lib/icons';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { isStockInventoryScope, type StockInventoryScope } from '@installment/shared';
 

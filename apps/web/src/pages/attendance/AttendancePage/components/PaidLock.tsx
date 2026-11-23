@@ -1,4 +1,4 @@
-import { AlertTriangle, Lock } from 'lucide-react';
+import { AlertTriangle, Lock } from '@/lib/icons';
 import { useAccountingPermissions } from '@/hooks/useAccountingPermissions';
 import { thaiMonthLabel } from '../../attendance.util';
 

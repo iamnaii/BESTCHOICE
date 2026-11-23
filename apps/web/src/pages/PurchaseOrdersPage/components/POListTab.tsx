@@ -14,7 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { POCard } from './POCard';
 import { getStatusBadgeProps, poStatusMap, poPaymentStatusMap } from '@/lib/status-badges';
-import { PackageCheck, Check, X, Ban, FileText, Search, ShoppingCart, AlertTriangle } from 'lucide-react';
+import { PackageCheck, Check, X, Ban, FileText, Search, ShoppingCart, AlertTriangle } from '@/lib/icons';
 import {
   Dialog,
   DialogContent,

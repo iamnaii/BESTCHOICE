@@ -4,7 +4,7 @@ import { formControlClass, formLabelClass } from '@/components/ui/form-styles';
 import { ReadOnlyField } from '@/components/ui/readonly-field';
 import { useId as useFieldId } from 'react';
 import { useCoaGroups } from '@/hooks/useCoa';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2 } from '@/lib/icons';
 import { ExpenseLineForm, newLine } from './types';
 import { formatNumberDecimal } from '@/utils/formatters';
 import { useUiFlags } from '@/hooks/useUiFlags';

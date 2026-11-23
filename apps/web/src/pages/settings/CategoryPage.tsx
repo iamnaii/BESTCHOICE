@@ -1,6 +1,6 @@
 import { Suspense, useEffect, useRef } from 'react';
 import { Link, useLocation } from 'react-router';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight } from '@/lib/icons';
 import { useAuth } from '@/contexts/AuthContext';
 import { categoryById, visibleItems } from '@/config/settings-access';
 import type { SettingsItem, SettingsRole } from '@/config/settings-registry';

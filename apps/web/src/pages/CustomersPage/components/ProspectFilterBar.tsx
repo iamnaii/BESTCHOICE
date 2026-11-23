@@ -1,4 +1,4 @@
-import { Search } from 'lucide-react';
+import { Search } from '@/lib/icons';
 import { PROSPECT_SOURCES } from '@installment/shared';
 import ResponsiveFilterPanel from '@/components/ui/ResponsiveFilterPanel';
 import { Combobox } from '@/components/ui/combobox';

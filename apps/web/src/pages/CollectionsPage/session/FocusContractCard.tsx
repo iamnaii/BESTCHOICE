@@ -6,7 +6,7 @@ import {
   AlertTriangle,
   PhoneMissed,
   NotebookPen,
-} from 'lucide-react';
+} from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import { formatNumber } from '@/utils/formatters';
 import { CallButton } from '@/components/CallButton';

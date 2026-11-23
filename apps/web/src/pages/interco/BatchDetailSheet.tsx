@@ -2,7 +2,7 @@ import ScreenTable from '@/components/ui/ScreenTable';
 import { useState, type ReactNode } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Loader2, Paperclip } from 'lucide-react';
+import { Loader2, Paperclip } from '@/lib/icons';
 import api, { getErrorMessage } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';

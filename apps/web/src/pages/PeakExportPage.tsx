@@ -1,7 +1,7 @@
 import { computeDefaultTimeRange } from '@/lib/date';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
-import { Download, AlertTriangle, FileSpreadsheet } from 'lucide-react';
+import { Download, AlertTriangle, FileSpreadsheet } from '@/lib/icons';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';

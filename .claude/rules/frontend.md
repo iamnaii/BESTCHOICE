@@ -16,7 +16,7 @@
 - API client จัดการ JWT refresh อัตโนมัติผ่าน interceptors
 
 ## UI Components
-- ใช้ **shadcn/ui** components + **Radix UI** primitives + **Tailwind CSS** + **lucide-react** icons
+- ใช้ **shadcn/ui** components + **Radix UI** primitives + **Tailwind CSS** + **Phosphor Duotone** icons ผ่าน `@/lib/icons` (เมนูใช้ registry `config/navigation-icons.ts`)
 - **ห้ามใช้** Material UI, Ant Design, หรือ component library อื่น
 - Components ต้องเป็น functional components + hooks เท่านั้น — **ห้ามใช้** class components
 

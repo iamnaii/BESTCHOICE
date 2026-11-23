@@ -30,7 +30,7 @@ import {
   Type as TypeIcon,
   MessageSquare,
   Send,
-} from 'lucide-react';
+} from '@/lib/icons';
 import {
   type Todo,
   type TodoComment,

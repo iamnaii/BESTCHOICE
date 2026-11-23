@@ -10,7 +10,7 @@ import {
   GripVertical,
   CheckCircle2,
   User as UserIcon,
-} from 'lucide-react';
+} from '@/lib/icons';
 import { type Todo, type TodoStatus, priorityConfig, avatarColor } from '../types';
 
 function formatDate(d?: string | null) {

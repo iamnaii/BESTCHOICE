@@ -3,7 +3,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import api from '@/lib/api';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { MessageCircle, CheckCircle2 } from 'lucide-react';
+import { MessageCircle, CheckCircle2 } from '@/lib/icons';
 
 interface LinkInvite {
   configured: boolean;

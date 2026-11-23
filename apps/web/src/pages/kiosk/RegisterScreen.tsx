@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Building2 } from 'lucide-react';
+import { Building2 } from '@/lib/icons';
 
 interface Props {
   onRegister: (code: string, deviceName: string) => Promise<void>;

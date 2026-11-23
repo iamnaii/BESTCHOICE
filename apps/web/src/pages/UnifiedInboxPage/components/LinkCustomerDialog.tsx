@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Link2 } from 'lucide-react';
+import { Link2 } from '@/lib/icons';
 import { toast } from 'sonner';
 import api from '@/lib/api';
 import { useDebounce } from '@/hooks/useDebounce';

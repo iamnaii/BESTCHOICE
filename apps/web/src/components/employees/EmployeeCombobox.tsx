@@ -10,7 +10,7 @@
 // name equals `value`.
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Check } from 'lucide-react';
+import { Check } from '@/lib/icons';
 import { Badge } from '@/components/ui/badge';
 import { Combobox, type ComboOption } from '@/components/ui/combobox';
 import { useDebounce } from '@/hooks/useDebounce';

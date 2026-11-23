@@ -5,7 +5,7 @@ import {
 import {
   SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
-import { FileText } from 'lucide-react';
+import { FileText } from '@/lib/icons';
 import { useTemplateStore } from '@/store/templateStore';
 import BlockItem from './BlockItem';
 

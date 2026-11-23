@@ -1,4 +1,4 @@
-import { Search } from 'lucide-react';
+import { Search } from '@/lib/icons';
 import { DateRangeChips } from '@/components/ui/DateRangeChips';
 import ResponsiveFilterPanel from '@/components/ui/ResponsiveFilterPanel';
 import FilterSelect from '@/pages/CustomersPage/components/FilterSelect';

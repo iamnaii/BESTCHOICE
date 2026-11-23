@@ -1,5 +1,6 @@
+import { ChevronRight as InlineChevronRightIcon } from '@/lib/icons';
 import { useNavigate } from 'react-router';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import type { DashboardAlert } from '../types';
 import { alertIconMap, alertSeverityStyles } from '../types';
@@ -38,7 +39,7 @@ export default function DashboardAlerts({ alerts }: DashboardAlertsProps) {
               <p className="text-sm font-semibold text-foreground leading-tight truncate">{alert.message}</p>
               <p className="text-2xs text-muted-foreground mt-0.5 flex items-center gap-1">
                 <span>ดูรายละเอียด</span>
-                <svg className="size-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="m9 18 6-6-6-6" /></svg>
+                <InlineChevronRightIcon className="size-2.5" aria-hidden="true" />
               </p>
             </div>
             <span className={cn('text-sm font-bold shrink-0 tabular-nums', styles.count)}>{alert.count}</span>

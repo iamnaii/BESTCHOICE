@@ -15,7 +15,7 @@ import {
   TableCell,
 } from '@/components/ui/table';
 import { formatNumberDecimal, formatDateMedium } from '@/utils/formatters';
-import { Calculator } from 'lucide-react';
+import { Calculator } from '@/lib/icons';
 
 interface VatLine {
   accountCode: string;

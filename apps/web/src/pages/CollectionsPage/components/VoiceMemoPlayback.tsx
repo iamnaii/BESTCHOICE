@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Archive, Loader2, Snowflake } from 'lucide-react';
+import { Archive, Loader2, Snowflake } from '@/lib/icons';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 

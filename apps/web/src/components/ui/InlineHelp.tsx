@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 
 /** Optional instructions only. Keep warnings and transaction conditions outside. */

@@ -1,5 +1,5 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
-import { Camera, FolderOpen } from 'lucide-react';
+import { Camera, FolderOpen } from '@/lib/icons';
 
 interface IdCardCaptureProps {
   onCapture: (imageBase64: string) => void;

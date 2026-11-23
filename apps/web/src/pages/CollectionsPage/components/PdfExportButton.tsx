@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Download, Loader2 } from 'lucide-react';
+import { Download, Loader2 } from '@/lib/icons';
 import { subDays, startOfDay, endOfDay } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import {

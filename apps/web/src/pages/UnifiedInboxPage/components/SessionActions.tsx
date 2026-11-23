@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { UserPlus, CheckCircle, Bot, X, FileSignature, ArrowRightLeft, ChevronRight, Loader2, Hand } from 'lucide-react';
+import { UserPlus, CheckCircle, Bot, X, FileSignature, ArrowRightLeft, ChevronRight, Loader2, Hand } from '@/lib/icons';
 import { useNavigate } from 'react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';

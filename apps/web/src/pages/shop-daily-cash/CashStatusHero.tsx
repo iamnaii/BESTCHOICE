@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AlertTriangle, Banknote, CheckCircle2, Clock, Lock, Minus, type LucideIcon } from 'lucide-react';
+import { AlertTriangle, Banknote, CheckCircle2, Clock, Lock, Minus, type AppIcon } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import { EvidenceImageLink } from './EvidenceImage';
 import { BIG_BUTTON, CloseCompact, CloseSteps, CONFIRMERS, counterNames, ReadinessChecklist } from './CashCloseSteps';
@@ -26,7 +26,7 @@ const FRAME: Record<Tone, string> = {
 };
 const HEAD_ICON: Record<Tone, string> = { act: 'text-warning-strong', wait: 'text-muted-foreground', done: 'text-primary' };
 
-const KIND_ICON: Record<HeroKind, LucideIcon> = {
+const KIND_ICON: Record<HeroKind, AppIcon> = {
   SEND: Banknote, WAIT_SEND: Clock, CONFIRM: Clock, WAIT_CONFIRM: Clock, DEPOSIT: Lock, DONE: CheckCircle2,
   NO_CASH: Minus, EMPTY_DAY: Minus, NOT_READY: AlertTriangle,
 };

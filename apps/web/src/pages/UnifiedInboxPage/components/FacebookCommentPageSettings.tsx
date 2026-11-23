@@ -2,7 +2,7 @@ import { NativeSelect } from '@/components/ui/native-select';
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, CircleAlert } from 'lucide-react';
+import { CheckCircle2, CircleAlert } from '@/lib/icons';
 import { useAuth } from '@/contexts/AuthContext';
 import api, { getErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/button';

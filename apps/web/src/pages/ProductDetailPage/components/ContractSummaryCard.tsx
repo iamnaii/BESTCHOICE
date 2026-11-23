@@ -1,5 +1,5 @@
 import { Link } from 'react-router';
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink } from '@/lib/icons';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { contractStatusMap, getStatusBadgeProps } from '@/lib/status-badges';

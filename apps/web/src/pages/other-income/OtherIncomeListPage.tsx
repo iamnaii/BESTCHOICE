@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Plus, Search, FileText, Receipt, RotateCcw, CheckCircle2, ChartBar, ClipboardCheck, Pencil } from 'lucide-react';
+import { Plus, Search, FileText, Receipt, RotateCcw, CheckCircle2, ChartBar, ClipboardCheck, Pencil } from '@/lib/icons';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';

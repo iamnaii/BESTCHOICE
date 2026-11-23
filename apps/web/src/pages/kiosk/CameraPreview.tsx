@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import { Camera, CameraOff } from 'lucide-react';
+import { Camera, CameraOff } from '@/lib/icons';
 
 export interface CameraHandle {
   /** ถ่าย 1 ภาพเป็น JPEG ย่อด้านยาว ≤ 640px · กล้องไม่พร้อม/ย่อไม่ได้ (เช่น ไม่มี canvas) → null */

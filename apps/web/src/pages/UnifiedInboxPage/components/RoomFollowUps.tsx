@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CalendarPlus } from 'lucide-react';
+import { CalendarPlus } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { Todo } from '@/pages/TodosPage/types';

@@ -15,7 +15,7 @@ import { useId as useFieldId } from 'react';
 // before POST.
 
 import { useMemo } from 'react';
-import { Plus, Trash2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Plus, Trash2, AlertCircle, CheckCircle2 } from '@/lib/icons';
 import type { ExpenseAdjustmentForm } from './types';
 import { newAdjustment } from './types';
 import { useUiFlags } from '@/hooks/useUiFlags';

@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, Pencil, TriangleAlert } from 'lucide-react';
+import { ChevronDown, ChevronRight, Pencil, TriangleAlert } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { PriceCellPopover } from './PriceCellPopover';

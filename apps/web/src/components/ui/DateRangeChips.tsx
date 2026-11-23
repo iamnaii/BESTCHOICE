@@ -1,4 +1,4 @@
-import { Calendar } from 'lucide-react';
+import { Calendar } from '@/lib/icons';
 import { THAI_MONTHS_FULL, THAI_MONTHS_SHORT } from '@/lib/date';
 
 interface DateRangeChipsProps {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Eye, EyeOff, KeyRound } from 'lucide-react';
+import { Eye, EyeOff, KeyRound } from '@/lib/icons';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { inputClass, labelClass, MIN_PASSWORD_LENGTH } from '../types';
 

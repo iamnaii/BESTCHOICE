@@ -1,4 +1,4 @@
-import { Gavel, Plus, Eye } from 'lucide-react';
+import { Gavel, Plus, Eye } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import { useLegalCase } from '../hooks/useLegalCase';
 import { useAuth } from '@/contexts/AuthContext';

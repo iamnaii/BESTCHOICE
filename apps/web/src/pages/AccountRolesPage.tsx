@@ -3,7 +3,7 @@ import ScreenTable from '@/components/ui/ScreenTable';
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Lock } from 'lucide-react';
+import { Lock } from '@/lib/icons';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';

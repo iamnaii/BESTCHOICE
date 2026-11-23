@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { formLabelClass } from '@/components/ui/form-styles';
-import { CalendarDays, CreditCard } from 'lucide-react';
+import { CalendarDays, CreditCard } from '@/lib/icons';
 import {
   Dialog,
   DialogContent,

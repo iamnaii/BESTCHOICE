@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { PhoneCall, Banknote, MessageCircle, Activity, Lock, FileText } from 'lucide-react';
+import { PhoneCall, Banknote, MessageCircle, Activity, Lock, FileText } from '@/lib/icons';
 import { EventTimeline } from '@/components/timeline/EventTimeline';
 import type { EventStyle } from '@/components/timeline/eventTimelineStyles';
 import { DateRangePicker, type DateRangeValue } from '@/components/ui/DateRangePicker';

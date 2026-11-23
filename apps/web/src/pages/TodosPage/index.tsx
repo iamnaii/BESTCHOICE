@@ -7,7 +7,7 @@ import { getRequestCompany } from '@/lib/company-scope';
 import PageHeader from '@/components/ui/PageHeader';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { toast } from 'sonner';
-import { CheckSquare, Plus } from 'lucide-react';
+import { CheckSquare, Plus } from '@/lib/icons';
 import { TodoFilters } from './components/TodoFilters';
 import { TodoKanbanView } from './components/TodoKanbanView';
 import { TodoForm } from './components/TodoForm';

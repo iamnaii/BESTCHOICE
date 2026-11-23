@@ -8,12 +8,12 @@ import {
   Settings2,
   ShoppingBag,
   Wrench,
-  type LucideIcon,
-} from 'lucide-react';
+  type AppIcon,
+} from '@/lib/icons';
 import { JOURNEY_EVENT_GROUPS, type JourneyEventGroup } from '@installment/shared';
 
 export interface EventStyle {
-  Icon: LucideIcon;
+  Icon: AppIcon;
   iconBg: string;
   iconText: string;
   typeLabel: string;

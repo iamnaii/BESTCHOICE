@@ -7,7 +7,7 @@ import api from '@/lib/api';
 import QueryBoundary from '@/components/QueryBoundary';
 import PageHeader from '@/components/ui/PageHeader';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
-import { TrendingUp, TrendingDown, DollarSign, ArrowDown, ArrowUp, Minus } from 'lucide-react';
+import { TrendingUp, TrendingDown, DollarSign, ArrowDown, ArrowUp, Minus } from '@/lib/icons';
 import { formatDateMedium } from '@/utils/formatters';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import CompanyFilter from '@/components/CompanyFilter';

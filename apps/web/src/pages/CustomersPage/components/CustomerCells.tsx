@@ -1,4 +1,4 @@
-import { Copy, MoreHorizontal } from 'lucide-react';
+import { Copy, MoreHorizontal } from '@/lib/icons';
 import { Link } from 'react-router';
 import type { ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';

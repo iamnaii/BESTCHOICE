@@ -1,7 +1,7 @@
 import { NumberInput } from '@/components/ui/NumberInput';
 import ScreenTable from '@/components/ui/ScreenTable';
 import { useEffect, useMemo, useState } from 'react';
-import { Paperclip, Receipt } from 'lucide-react';
+import { Paperclip, Receipt } from '@/lib/icons';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { cn } from '@/lib/utils';
 import { formatNumberDecimal } from '@/utils/formatters';

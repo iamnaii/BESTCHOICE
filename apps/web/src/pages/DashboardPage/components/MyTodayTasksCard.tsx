@@ -1,6 +1,6 @@
 import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowRight, CheckSquare } from 'lucide-react';
+import { ArrowRight, CheckSquare } from '@/lib/icons';
 import { useAuth } from '@/contexts/AuthContext';
 import EmptyState from '@/components/ui/EmptyState';
 import QueryBoundary from '@/components/QueryBoundary';

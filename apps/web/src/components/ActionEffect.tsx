@@ -1,4 +1,4 @@
-import { AlertTriangle, Check } from 'lucide-react';
+import { AlertTriangle, Check } from '@/lib/icons';
 
 export function ActionEffect({ text, warning }: { text: string; warning?: boolean }) {
   return (

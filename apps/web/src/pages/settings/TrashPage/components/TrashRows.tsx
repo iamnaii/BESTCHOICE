@@ -1,5 +1,5 @@
 import { Link } from 'react-router';
-import { CircleCheck, Info, XCircle } from 'lucide-react';
+import { CircleCheck, Info, XCircle } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import { formatThaiDateTime } from '@/lib/date';
 import type { TrashRow } from '@/hooks/useTrash';

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { QrCode, Send, X, CheckCircle2 } from 'lucide-react';
+import { QrCode, Send, X, CheckCircle2 } from '@/lib/icons';
 import api, { getErrorMessage } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';

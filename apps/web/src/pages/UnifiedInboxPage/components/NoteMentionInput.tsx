@@ -1,6 +1,6 @@
 import { useId, useRef, useState, useSyncExternalStore } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Lock, X } from 'lucide-react';
+import { Lock, X } from '@/lib/icons';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { useChatWorkSettings } from '../hooks/useChatWork';

@@ -1,5 +1,5 @@
 import { Link } from 'react-router';
-import { TriangleAlert } from 'lucide-react';
+import { TriangleAlert } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import type { RecurringBillRow } from '@/hooks/useRecurringBills';
 import { formatNumberDecimal } from '@/utils/formatters';

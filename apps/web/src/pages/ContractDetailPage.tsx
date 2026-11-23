@@ -1,3 +1,4 @@
+import { ChevronRight as InlineChevronRightIcon } from '@/lib/icons';
 import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
 import { downloadProtectedDocument } from '@/lib/document-download';
@@ -54,7 +55,7 @@ import {
   ChevronRight,
   History,
   BookOpen,
-} from 'lucide-react';
+} from '@/lib/icons';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import { useAuth } from '@/contexts/AuthContext';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -1292,20 +1293,7 @@ export default function ContractDetailPage() {
               {/* Calculation breakdown — collapsible */}
               <details className="group border-t border-border/50 pt-3">
                 <summary className="cursor-pointer text-sm font-medium text-muted-foreground hover:text-primary transition-colors select-none flex items-center gap-1.5 list-none">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className="transition-transform group-open:rotate-90"
-                  >
-                    <polyline points="9 18 15 12 9 6" />
-                  </svg>
+                  <InlineChevronRightIcon width="14" height="14" className="transition-transform group-open:rotate-90" aria-hidden="true" />
                   รายละเอียดการคำนวณ
                 </summary>
                 <div className="grid grid-cols-2 gap-3 mt-3">

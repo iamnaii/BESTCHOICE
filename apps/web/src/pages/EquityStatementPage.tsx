@@ -7,7 +7,7 @@ import QueryBoundary from '@/components/QueryBoundary';
 import PageHeader from '@/components/ui/PageHeader';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Landmark, AlertTriangle, ArrowUp, ArrowDown } from 'lucide-react';
+import { Landmark, AlertTriangle, ArrowUp, ArrowDown } from '@/lib/icons';
 import { formatDateMedium } from '@/utils/formatters';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import CompanyFilter from '@/components/CompanyFilter';

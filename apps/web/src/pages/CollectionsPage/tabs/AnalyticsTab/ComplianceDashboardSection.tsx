@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AlertTriangle, Gavel, ShieldCheck, Archive } from 'lucide-react';
+import { AlertTriangle, Gavel, ShieldCheck, Archive } from '@/lib/icons';
 import { Card, CardContent } from '@/components/ui/card';
 import {
   Dialog,

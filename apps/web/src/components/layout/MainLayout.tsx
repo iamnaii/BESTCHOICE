@@ -43,6 +43,14 @@ function MobileSidebar() {
         className="p-0 gap-0 w-[280px] border-r-0"
         side="left"
         close={false}
+        onEscapeKeyDown={(event) => {
+          // Radix handles Escape in document capture, before the search input
+          // clears its query. Keep the drawer open for that first Escape.
+          const target = event.target;
+          if (target instanceof HTMLInputElement && target.hasAttribute('data-work-menu-search') && target.value) {
+            event.preventDefault();
+          }
+        }}
       >
         <SheetTitle className="sr-only">เมนูหลัก</SheetTitle>
         <SheetDescription className="sr-only">เลือกหมวดงานและเมนูที่ต้องการ</SheetDescription>

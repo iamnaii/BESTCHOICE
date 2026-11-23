@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, ZoomIn } from 'lucide-react';
+import { X, ZoomIn } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 

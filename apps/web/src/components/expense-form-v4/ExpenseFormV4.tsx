@@ -6,7 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/button';
-import { AlertTriangle, ArrowLeft, CheckCircle2, Clock, Star } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CheckCircle2, Clock, Star } from '@/lib/icons';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUiFlags } from '@/hooks/useUiFlags';
 import { cn } from '@/lib/utils';

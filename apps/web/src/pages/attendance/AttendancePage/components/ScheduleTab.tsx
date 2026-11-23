@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from '@/lib/icons';
 import { toast } from 'sonner';
 import { getErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/button';

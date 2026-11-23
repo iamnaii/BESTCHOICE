@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
-import { Bookmark, Plus, Trash2, Repeat, ArrowLeft, CalendarClock, Pencil } from 'lucide-react';
+import { Bookmark, Plus, Trash2, Repeat, ArrowLeft, CalendarClock, Pencil } from '@/lib/icons';
 import { RecurringBillDialog, type ExpenseTemplate } from '@/components/expense-templates/RecurringBillDialog';
 import { billMonthKey, recurringCardLine } from '@/components/expense-templates/recurring-template.util';
 import { formatNumberDecimal } from '@/utils/formatters';

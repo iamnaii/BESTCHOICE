@@ -1,8 +1,8 @@
-import { Headphones, Recycle, Smartphone, Tablet, type LucideIcon } from 'lucide-react';
+import { Headphones, Recycle, Smartphone, Tablet, type AppIcon } from '@/lib/icons';
 import { categoryOptions } from '@/lib/constants';
 import { cn } from '@/lib/utils';
 
-const ICONS: Record<string, LucideIcon> = {
+const ICONS: Record<string, AppIcon> = {
   PHONE_NEW: Smartphone,
   PHONE_USED: Recycle,
   TABLET: Tablet,

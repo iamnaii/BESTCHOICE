@@ -1,7 +1,7 @@
 import ScreenTable from '@/components/ui/ScreenTable';
 import { useNavigate, useParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { TrendingDown } from 'lucide-react';
+import { TrendingDown } from '@/lib/icons';
 import PageHeader from '@/components/ui/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';

@@ -2,7 +2,7 @@ import ScreenTable from '@/components/ui/ScreenTable';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { CheckCircle2, XCircle, RefreshCw, Link2, Calendar, Database } from 'lucide-react';
+import { CheckCircle2, XCircle, RefreshCw, Link2, Calendar, Database } from '@/lib/icons';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';

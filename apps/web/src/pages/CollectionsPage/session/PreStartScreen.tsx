@@ -1,4 +1,4 @@
-import { Phone, MessageCircle, Loader2, Play } from 'lucide-react';
+import { Phone, MessageCircle, Loader2, Play } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import type { MySession } from '../hooks/useMySession';

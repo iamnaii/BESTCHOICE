@@ -1,7 +1,7 @@
 import { useId, useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { toast } from 'sonner';
-import { CircleAlert, CircleCheck, Loader2, TriangleAlert } from 'lucide-react';
+import { CircleAlert, CircleCheck, Loader2, TriangleAlert } from '@/lib/icons';
 import { getErrorMessage } from '@/lib/api';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Switch } from '@/components/ui/switch';

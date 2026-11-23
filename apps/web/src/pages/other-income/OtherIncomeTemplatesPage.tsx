@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Star, Trash2, Edit3, PlayCircle, Search, Inbox } from 'lucide-react';
+import { Star, Trash2, Edit3, PlayCircle, Search, Inbox } from '@/lib/icons';
 import { toast } from 'sonner';
 import { useDebounce } from '@/hooks/useDebounce';
 import { otherIncomeApi } from '@/lib/otherIncome';

@@ -1,5 +1,5 @@
 import { Link } from 'react-router';
-import { CalendarDays, TrendingUp, Wallet, Wrench } from 'lucide-react';
+import { CalendarDays, TrendingUp, Wallet, Wrench } from '@/lib/icons';
 import type { ShopHomeResponse } from '../types';
 import { baht, thaiDateShort, timeHHMM } from '../format';
 

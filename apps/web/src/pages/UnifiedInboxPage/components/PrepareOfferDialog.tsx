@@ -2,7 +2,7 @@ import { NumberInput } from '@/components/ui/NumberInput';
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { ExternalLink, Loader2, Sparkles } from 'lucide-react';
+import { ExternalLink, Loader2, Sparkles } from '@/lib/icons';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasCompanyAccess } from '@installment/shared';
 import api, { getErrorMessage } from '@/lib/api';

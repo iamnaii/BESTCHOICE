@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import PageHeader from '@/components/ui/PageHeader';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { exportToExcel } from '@/utils/excel.util';
-import { Download, Camera } from 'lucide-react';
+import { Download, Camera } from '@/lib/icons';
 import { Link, useNavigate } from 'react-router';
 import api, { getErrorMessage } from '@/lib/api';
 import { formatDateShort } from '@/utils/formatters';

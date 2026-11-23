@@ -1,4 +1,4 @@
-import { Check, X, Info } from 'lucide-react';
+import { Check, X, Info } from '@/lib/icons';
 import { Badge } from '@/components/ui/badge';
 import type { ProductReadinessResponse } from '../hooks/useProductReadiness';
 

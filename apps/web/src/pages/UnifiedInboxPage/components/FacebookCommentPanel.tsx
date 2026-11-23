@@ -1,6 +1,6 @@
 import FacebookCommentLink from './FacebookCommentLink';
 import { useId, useRef, useState } from 'react';
-import { ExternalLink, Globe, Loader2 } from 'lucide-react';
+import { ExternalLink, Globe, Loader2 } from '@/lib/icons';
 import api, { getErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Combobox, type ComboOption } from '@/components/ui/combobox';

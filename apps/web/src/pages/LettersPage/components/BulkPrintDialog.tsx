@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Download, Printer, Check, Loader2 } from 'lucide-react';
+import { Download, Printer, Check, Loader2 } from '@/lib/icons';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';

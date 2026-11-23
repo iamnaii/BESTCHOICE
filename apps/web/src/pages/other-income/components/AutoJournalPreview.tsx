@@ -1,5 +1,5 @@
 import { formatNumericText } from '@/utils/numericText';
-import { CheckCircle2, XCircle } from 'lucide-react';
+import { CheckCircle2, XCircle } from '@/lib/icons';
 import { useMemo } from 'react';
 import { useCoaByCodes } from '@/hooks/useCoa';
 import { journalTotalsCents } from './journalCents';

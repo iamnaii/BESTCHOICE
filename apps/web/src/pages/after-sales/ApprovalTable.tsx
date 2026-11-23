@@ -1,6 +1,6 @@
 import ScreenTable from '@/components/ui/ScreenTable';
 import { Link } from 'react-router';
-import { ShieldAlert, UserCheck } from 'lucide-react';
+import { ShieldAlert, UserCheck } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import {
   APPROVER_LABEL,

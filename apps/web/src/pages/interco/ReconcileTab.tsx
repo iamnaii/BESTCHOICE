@@ -1,5 +1,5 @@
 import ScreenTable from '@/components/ui/ScreenTable';
-import { AlertTriangle, RefreshCw, Scale } from 'lucide-react';
+import { AlertTriangle, RefreshCw, Scale } from '@/lib/icons';
 import QueryBoundary from '@/components/QueryBoundary';
 import { useAuth } from '@/contexts/AuthContext';
 import { Badge } from '@/components/ui/badge';

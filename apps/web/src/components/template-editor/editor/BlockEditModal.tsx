@@ -1,6 +1,6 @@
 import { NativeSelect } from '@/components/ui/native-select';
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { X, ChevronDown, ChevronRight, Variable } from 'lucide-react';
+import { X, ChevronDown, ChevronRight, Variable } from '@/lib/icons';
 import type { Editor } from '@tiptap/react';
 import type { Block, BlockType } from '@/types/template';
 import { BLOCK_TYPES } from '@/constants/blockTypes';

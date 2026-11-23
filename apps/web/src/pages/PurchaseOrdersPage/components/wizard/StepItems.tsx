@@ -1,6 +1,6 @@
 import ScreenTable from '@/components/ui/ScreenTable';
 import { useEffect, useRef } from 'react';
-import { Package } from 'lucide-react';
+import { Package } from '@/lib/icons';
 import { formatNumberDecimal } from '@/utils/formatters';
 import type { ItemForm } from '../../types';
 import type { AccessorySku, CatalogEntry, PhoneMode } from '../../po-catalog.util';

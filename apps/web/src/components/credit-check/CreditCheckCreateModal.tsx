@@ -1,7 +1,7 @@
 import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useId as useUiFieldId, useRef } from 'react';
-import { ArrowLeft, User, FileText, Clock, BarChart3 } from 'lucide-react';
+import { ArrowLeft, User, FileText, Clock, BarChart3 } from '@/lib/icons';
 import ProspectPhoneLine from '@/components/customer/ProspectPhoneLine';
 import {
   type Customer,

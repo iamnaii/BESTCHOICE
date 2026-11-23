@@ -12,7 +12,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { exportToExcel } from '@/utils/excel.util';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { Building2, Download, Plus, Search } from 'lucide-react';
+import { Building2, Download, Plus, Search } from '@/lib/icons';
 import SupplierTable from './components/SupplierTable';
 import type { Supplier, PaymentMethod } from './components/SupplierTable';
 import SupplierForm, { emptyForm } from './components/SupplierForm';

@@ -1,7 +1,7 @@
 import ScreenTable from '@/components/ui/ScreenTable';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
-import { Clock, Inbox } from 'lucide-react';
+import { Clock, Inbox } from '@/lib/icons';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { usePaginationParams } from '@/hooks/usePaginationParams';

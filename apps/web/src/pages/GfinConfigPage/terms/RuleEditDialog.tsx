@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { TriangleAlert, X } from 'lucide-react';
+import { TriangleAlert, X } from '@/lib/icons';
 import api, { getErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { NumberInput } from '@/components/ui/NumberInput';

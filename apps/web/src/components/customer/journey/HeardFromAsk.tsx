@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Check } from 'lucide-react';
+import { Check } from '@/lib/icons';
 import { toast } from 'sonner';
 import { JOURNEY_HEARD_FROM_LABELS, type JourneyHeardFrom } from '@installment/shared';
 import { deleteJourneyEntry, undoToastOptions, useRecordJourneyEntry } from '@/hooks/customer-journey/journeyEntries';

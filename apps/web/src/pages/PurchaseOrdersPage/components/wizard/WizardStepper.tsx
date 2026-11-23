@@ -1,9 +1,9 @@
-import { Check, type LucideIcon } from 'lucide-react';
+import { Check, type AppIcon } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 
 export interface WizardStep {
   label: string;
-  icon: LucideIcon;
+  icon: AppIcon;
 }
 
 /** Step indicator shared by สร้างใบสั่งซื้อ (3 steps) and รับเข้าตรง (2 steps). Completed steps are clickable. */

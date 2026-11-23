@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import CompanyFilter from '@/components/CompanyFilter';
 import { THAI_MONTHS_FULL } from '@/lib/date';
-import { Calculator, Download } from 'lucide-react';
+import { Calculator, Download } from '@/lib/icons';
 
 type WhtForm = 'PND1' | 'PND3' | 'PND53';
 

@@ -2,7 +2,7 @@ import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
 import { formLabelClass } from '@/components/ui/form-styles';
 import { useEffect, useId, useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus } from '@/lib/icons';
 import {
   MAX_REFERENCE_LENGTH,
   MAX_TENDERS,

@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { useParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { AlertCircle, Download, Loader2 } from 'lucide-react';
+import { AlertCircle, Download, Loader2 } from '@/lib/icons';
 import { liffApi } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 

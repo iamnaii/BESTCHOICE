@@ -6,7 +6,7 @@ import { useId as useUiFieldId, useState, useMemo, type ReactNode } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import Decimal from 'decimal.js';
-import { TrendingDown, RotateCcw } from 'lucide-react';
+import { TrendingDown, RotateCcw } from '@/lib/icons';
 import PageHeader from '@/components/ui/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';

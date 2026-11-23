@@ -5,7 +5,7 @@ import { useId as useUiFieldId, useEffect, useMemo, useRef, useState } from 'rea
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import Decimal from 'decimal.js';
-import { CalendarClock, CalendarDays, Layers, Check, Wallet, Banknote, Landmark, Loader2, QrCode } from 'lucide-react';
+import { CalendarClock, CalendarDays, Layers, Check, Wallet, Banknote, Landmark, Loader2, QrCode } from '@/lib/icons';
 import api, { getErrorMessage } from '@/lib/api';
 import { formatThaiDate } from '@/lib/date';
 import { CashAccountSelect } from '@/components/CashAccountSelect';

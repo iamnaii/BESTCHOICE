@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Calculator, PackageX } from 'lucide-react';
+import { Calculator, PackageX } from '@/lib/icons';
 import api from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
 import { RepossessionOverlay } from '@/pages/PaymentsPage/components/RepossessionOverlay';

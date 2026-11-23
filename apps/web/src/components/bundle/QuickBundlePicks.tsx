@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { isAccessoryCompatible, type AccessoryDevice } from '@installment/shared';
 import { useQueries } from '@tanstack/react-query';
-import { Plus, Check, LoaderCircle } from 'lucide-react';
+import { Plus, Check, LoaderCircle } from '@/lib/icons';
 import api from '@/lib/api';
 import type { BundleProduct } from './BundleSearch';
 

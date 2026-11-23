@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ImageOff, Loader2, Search, Smartphone } from 'lucide-react';
+import { ImageOff, Loader2, Search, Smartphone } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useDebounce } from '@/hooks/useDebounce';

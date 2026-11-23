@@ -26,7 +26,7 @@ import {
   ShoppingCart,
   Sun,
   Users,
-} from 'lucide-react';
+} from '@/lib/icons';
 import { toast } from 'sonner';
 import { getCompanyScopeRevision, WORK_COMPANY } from '@/lib/company-scope';
 import { getWorkZoneHref, getZoneConfigForRole } from '@/config/menu';

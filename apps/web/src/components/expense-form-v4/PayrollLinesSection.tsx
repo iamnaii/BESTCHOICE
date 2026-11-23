@@ -3,7 +3,7 @@ import ScreenTable from '@/components/ui/ScreenTable';
 import { NativeSelect } from '@/components/ui/native-select';
 import { formLabelClass } from '@/components/ui/form-styles';
 import { useId as useUiFieldId, useState } from 'react';
-import { AlertTriangle, ChevronDown, ChevronRight, Clock, Coins, CopyPlus, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronRight, Clock, Coins, CopyPlus, Plus, RefreshCw, Trash2 } from '@/lib/icons';
 import { toast } from 'sonner';
 import { suggestMonthlyWht } from '@/utils/pit-withholding';
 import {

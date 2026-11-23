@@ -4,7 +4,7 @@ import { FlexPreviewCard } from '@/components/line-message/FlexPreviewCard';
 import { useId as useUiFieldId, useState, useCallback, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { MessageSquareMore, Save, RotateCcw, MessageSquare, Image as ImageIcon, LayoutTemplate, Plus, Trash2, GripVertical } from 'lucide-react';
+import { MessageSquareMore, Save, RotateCcw, MessageSquare, Image as ImageIcon, LayoutTemplate, Plus, Trash2, GripVertical } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';

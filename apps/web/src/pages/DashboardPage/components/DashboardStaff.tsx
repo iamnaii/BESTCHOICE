@@ -7,7 +7,7 @@ import {
   DollarSign,
   UserCheck,
   Clock,
-} from 'lucide-react';
+} from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import type { AgingSummary, StaffPerformance } from '../types';
 import { agingBarColors, agingTextColors, ErrorBlock, timeAgo } from '../types';

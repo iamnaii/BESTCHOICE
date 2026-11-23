@@ -1,4 +1,4 @@
-import { AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Loader2 } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import { formatNumberDecimal } from '@/utils/formatters';
 import { AccrualModeChip, type AccrualPortion } from './AccrualModeChip';

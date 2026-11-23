@@ -1,4 +1,4 @@
-import { Ban, Clock, ExternalLink, HandCoins, MoreHorizontal } from 'lucide-react';
+import { Ban, Clock, ExternalLink, HandCoins, MoreHorizontal } from '@/lib/icons';
 import type { Column } from '@/components/ui/DataTable';
 import { Badge, BadgeDot } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';

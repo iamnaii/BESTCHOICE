@@ -1,7 +1,7 @@
 import { ReactNode } from 'react';
 import { ListPageSkeleton } from '@/components/ui/page-skeletons';
 import { queryErrorMessage } from '@/lib/query-error-message';
-import { AlertCircle, RefreshCw } from 'lucide-react';
+import { AlertCircle, RefreshCw } from '@/lib/icons';
 
 interface QueryBoundaryProps {
   isLoading: boolean;

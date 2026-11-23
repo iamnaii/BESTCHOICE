@@ -3,7 +3,7 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import CloudCreditPicker from './CloudCreditPicker';
 import ChatServiceRequestSection from './ChatServiceRequestSection';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { ArrowLeft, Paperclip } from 'lucide-react';
+import { ArrowLeft, Paperclip } from '@/lib/icons';
 import DossierDisclosure from './DossierDisclosure';
 import ChatFollowUpDialog from './ChatFollowUpDialog';
 import ChatHandoffDialog from './ChatHandoffDialog';
@@ -29,7 +29,7 @@ import {
   MessagesSquare,
   Phone,
   Users,
-} from 'lucide-react';
+} from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import RoomFollowUps from './RoomFollowUps';
 import api, { getErrorMessage } from '@/lib/api';

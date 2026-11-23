@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { Button } from './button';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from './sheet';
-import { SlidersHorizontal } from 'lucide-react';
+import { SlidersHorizontal } from '@/lib/icons';
 
 /** One filter tree at a time; search stays reachable while mobile filters live in a sheet. */
 export default function ResponsiveFilterPanel({ search, children }: { search: ReactNode; children: ReactNode }) {

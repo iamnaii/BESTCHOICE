@@ -2,7 +2,7 @@ import { NativeSelect } from '@/components/ui/native-select';
 import { getReportDateRange } from '@/lib/date';
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router';
-import { PackageMinus, Plus } from 'lucide-react';
+import { PackageMinus, Plus } from '@/lib/icons';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDebounce } from '@/hooks/useDebounce';
 import QueryBoundary from '@/components/QueryBoundary';

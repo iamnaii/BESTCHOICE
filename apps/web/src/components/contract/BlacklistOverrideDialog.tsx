@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ShieldAlert } from 'lucide-react';
+import { ShieldAlert } from '@/lib/icons';
 import { BLACKLIST_OVERRIDE_REASON_MIN, isValidBlacklistOverrideReason, type BlacklistReason } from '@installment/shared';
 import Modal from '@/components/ui/Modal';
 import { Button } from '@/components/ui/button';

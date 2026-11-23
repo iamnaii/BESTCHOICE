@@ -28,7 +28,7 @@ import {
   TableCell,
 } from '@/components/ui/table';
 import { formatNumberDecimal } from '@/utils/formatters';
-import { FileBadge, Download, Printer } from 'lucide-react';
+import { FileBadge, Download, Printer } from '@/lib/icons';
 
 /**
  * ภ.ง.ด.1ก (สรุปรายปี) + ใบรับรองหักภาษี ณ ที่จ่าย ม.50 ทวิ สำหรับพนักงาน

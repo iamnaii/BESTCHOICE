@@ -1,5 +1,5 @@
 import { useId } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2 } from '@/lib/icons';
 import { NumberInput } from '@/components/ui/NumberInput';
 import { NameAutocomplete } from '@/components/ui/NameAutocomplete';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select';

@@ -1,5 +1,5 @@
 import { Combobox, type ComboOption } from '@/components/ui/combobox';
-import { ListTodo, Clock, CalendarDays, AlertCircle, CheckCircle2, Search, User as UserIcon } from 'lucide-react';
+import { ListTodo, Clock, CalendarDays, AlertCircle, CheckCircle2, Search, User as UserIcon } from '@/lib/icons';
 import { type TodoView, type AssigneeRef } from '../types';
 
 const tabs: { value: TodoView; label: string; icon: typeof ListTodo }[] = [

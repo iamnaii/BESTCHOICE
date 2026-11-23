@@ -1,3 +1,5 @@
+import { validateEvidencePhoto } from '../quality-control/evidence-photo.util';
+import { pickAnglePhotos, pickEvidencePhotos, anglesComplete } from '../quality-control/photo-angles.util';
 import { stockInventoryWhere, stockOver90Where } from './stock-inventory-filter';
 import { purchaseOrderScopeWhere } from '../employee-access/access-procurement-scope';
 import { permissionScopes } from '../employee-access/access-context';
@@ -268,7 +270,13 @@ export class ProductsService {
   }
 
   async create(dto: CreateProductDto) {
-    const { prices, costPrice, warrantyExpireDate, cashPrice, installmentPrice, financePrice, accessoriesIncluded, ...data } = dto;
+    const { prices, costPrice, warrantyExpireDate, cashPrice, installmentPrice, financePrice, accessoriesIncluded, anglePhotos, evidencePhotos, ...data } = dto;
+    const angles = pickAnglePhotos(anglePhotos);
+    const evidence = pickEvidencePhotos(evidencePhotos);
+    Object.values(evidence).forEach(validateEvidencePhoto);
+    if (data.category === 'ACCESSORY' && (Object.keys(angles).length || Object.keys(evidence).length)) {
+      throw new BadRequestException('ช่องรูป 6 มุมและหลักฐานใช้กับมือถือ/แท็บเล็ตเท่านั้น');
+    }
 
     // DTO guard: prices[] ที่มี isDefault:true (หรือ fallback ของ element แรกที่ไม่ได้ระบุ)
     // มากกว่า 1 รายการ จะชน DB partial unique index `product_prices_one_default` เป็น P2002
@@ -329,6 +337,12 @@ export class ProductsService {
             : {}),
         } as Prisma.ProductUncheckedCreateInput,
       });
+
+      if (Object.keys(angles).length || Object.keys(evidence).length) {
+        await tx.productPhoto.create({
+          data: { productId: product.id, ...angles, ...evidence, isCompleted: anglesComplete(angles) },
+        });
+      }
 
       // B0 §2.1: ไม่ได้กรอกราคาเงินสดมา → ลองเติมจากตารางราคากลาง
       // `=== undefined` ตั้งใจ: ส่ง `cashPrice: null` มาชัดๆ = "ยืนยันว่ายังไม่มีราคา"

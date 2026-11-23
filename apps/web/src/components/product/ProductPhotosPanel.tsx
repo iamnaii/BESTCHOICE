@@ -1,5 +1,5 @@
-import { Camera as InlineCameraIcon, Loader2 } from '@/lib/icons';
-import { useState, useRef } from 'react';
+import ProductPhotoFields, { type EvidencePhotos, type ProductPhotoKey } from './ProductPhotoFields';
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
@@ -16,6 +16,7 @@ interface PhotoData {
     top: string | null;
     bottom: string | null;
   };
+  evidencePhotos?: EvidencePhotos;
   isCompleted?: boolean;
   completedCount?: number;
   totalCount?: number;
@@ -38,44 +39,6 @@ interface CompletePhotosResult {
   message: string;
 }
 
-const ANGLE_LABELS: Record<string, string> = {
-  front: 'ด้านหน้า',
-  back: 'ด้านหลัง',
-  left: 'ข้างซ้าย',
-  right: 'ข้างขวา',
-  top: 'ด้านบน',
-  bottom: 'ด้านล่าง',
-};
-
-const ANGLES = ['front', 'back', 'left', 'right', 'top', 'bottom'] as const;
-
-function compressImage(file: File, maxWidth = 1200, quality = 0.8): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      let { width, height } = img;
-      if (width > maxWidth) {
-        height = Math.round((height * maxWidth) / width);
-        width = maxWidth;
-      }
-      const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) { reject(new Error('Canvas not supported')); return; }
-      ctx.drawImage(img, 0, 0, width, height);
-      const dataUrl = canvas.toDataURL('image/jpeg', quality);
-      URL.revokeObjectURL(img.src);
-      resolve(dataUrl);
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(img.src);
-      reject(new Error('ไม่สามารถอ่านไฟล์รูปภาพได้'));
-    };
-    img.src = URL.createObjectURL(file);
-  });
-}
-
 export default function ProductPhotosPanel({
   productId,
   canEdit = false,
@@ -84,11 +47,7 @@ export default function ProductPhotosPanel({
   canEdit?: boolean;
 }) {
   const queryClient = useQueryClient();
-  const [uploadingAngle, setUploadingAngle] = useState<string | null>(null);
-  const [previewPhoto, setPreviewPhoto] = useState<{ angle: string; src: string } | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; action: () => void }>({ open: false, message: '', action: () => {} });
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const pendingAngleRef = useRef<string | null>(null);
 
   const { data, isLoading } = useQuery<PhotoData>({
     queryKey: ['product-photos', productId],
@@ -106,11 +65,9 @@ export default function ProductPhotosPanel({
       queryClient.invalidateQueries({ queryKey: ['product-photos', productId] });
       queryClient.invalidateQueries({ queryKey: ['product', productId] });
       toast.success('อัปโหลดรูปสำเร็จ');
-      setUploadingAngle(null);
     },
     onError: (err: unknown) => {
       toast.error(getErrorMessage(err));
-      setUploadingAngle(null);
     },
   });
 
@@ -150,32 +107,9 @@ export default function ProductPhotosPanel({
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    const angle = pendingAngleRef.current;
-    if (!file || !angle) return;
-
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error('ไฟล์รูปภาพต้องไม่เกิน 10MB');
-      return;
-    }
-
-    setUploadingAngle(angle);
-    try {
-      const compressed = await compressImage(file);
-      uploadMutation.mutate({ angle, photo: compressed });
-    } catch {
-      toast.error('ไม่สามารถประมวลผลรูปภาพได้');
-      setUploadingAngle(null);
-    }
-
-    // Reset file input
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
-
-  const triggerUpload = (angle: string) => {
-    pendingAngleRef.current = angle;
-    fileInputRef.current?.click();
+  const changePhoto = async (angle: ProductPhotoKey, photo: string | null) => {
+    if (photo) await uploadMutation.mutateAsync({ angle, photo });
+    else setConfirmDialog({ open: true, message: 'ลบรูปนี้?', action: () => deleteMutation.mutate(angle) });
   };
 
   if (isLoading) {
@@ -193,7 +127,7 @@ export default function ProductPhotosPanel({
     );
   }
 
-  // Not applicable for non-PHONE_USED products
+  // Accessories retain their generic photo collection.
   if (data && data.applicable === false) return null;
 
   const photos = data?.photos || { front: null, back: null, left: null, right: null, top: null, bottom: null };
@@ -242,111 +176,9 @@ export default function ProductPhotosPanel({
         />
       </div>
 
-      {/* Compact photo grid - 6 columns on all screens */}
-      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-        {ANGLES.map((angle) => {
-          const photo = photos[angle];
-          const isUploading = uploadingAngle === angle;
-
-          return (
-            <div key={angle} className="relative">
-              <div className="text-[10px] font-medium text-muted-foreground mb-0.5 text-center truncate">
-                {ANGLE_LABELS[angle]}
-              </div>
-              {photo ? (
-                <div className="relative">
-                  <div
-                    className="w-full aspect-4/3 rounded overflow-hidden border border-success/40 cursor-pointer"
-                    onClick={() => setPreviewPhoto({ angle, src: photo })}
-                  >
-                    <img
-                      src={photo}
-                      alt={ANGLE_LABELS[angle]}
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                  {canEdit && (
-                    <div className="flex gap-1 mt-1">
-                      <button
-                        onClick={() => triggerUpload(angle)}
-                        disabled={uploadMutation.isPending || deleteMutation.isPending}
-                        className="flex-1 px-1 py-0.5 bg-primary/5 rounded text-[10px] text-primary hover:bg-primary/10 font-medium disabled:opacity-50"
-                      >
-                        เปลี่ยน
-                      </button>
-                      <button
-                        onClick={() => {
-                          setConfirmDialog({ open: true, message: `ลบรูป${ANGLE_LABELS[angle]}?`, action: () => deleteMutation.mutate(angle) });
-                        }}
-                        disabled={deleteMutation.isPending}
-                        className="flex-1 px-1 py-0.5 bg-destructive/10 rounded text-[10px] text-destructive hover:bg-destructive/20 font-medium disabled:opacity-50"
-                      >
-                        ลบ
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <button
-                  onClick={() => canEdit && triggerUpload(angle)}
-                  disabled={!canEdit || isUploading}
-                  className={`w-full aspect-4/3 rounded border-2 border-dashed flex flex-col items-center justify-center gap-0.5 transition-colors ${
-                    canEdit
-                      ? 'border-border hover:border-primary/40 hover:bg-primary/5 cursor-pointer'
-                      : 'border-border bg-muted cursor-default'
-                  }`}
-                >
-                  {isUploading ? (
-                    <Loader2 size={16} className="animate-spin text-primary" aria-hidden="true" />
-                  ) : (
-                    <>
-                      <InlineCameraIcon className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
-                      <span className="text-[10px] text-muted-foreground">
-                        {canEdit ? 'ถ่าย' : 'ยังไม่มีรูป'}
-                      </span>
-                    </>
-                  )}
-                </button>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Hidden file input */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        className="hidden"
-        onChange={handleFileSelect}
-      />
-
-      {/* Full-screen preview modal */}
-      {previewPhoto && (
-        <div
-          className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
-          onClick={() => setPreviewPhoto(null)}
-        >
-          <div className="relative max-w-3xl w-full">
-            <div className="text-white text-center mb-2 text-sm font-medium">
-              {ANGLE_LABELS[previewPhoto.angle]}
-            </div>
-            <img
-              src={previewPhoto.src}
-              alt={ANGLE_LABELS[previewPhoto.angle]}
-              className="w-full rounded-lg"
-            />
-            <button
-              onClick={() => setPreviewPhoto(null)}
-              className="absolute -top-8 right-0 text-white/70 hover:text-white text-sm"
-            >
-              ปิด
-            </button>
-          </div>
-        </div>
-      )}
+      <ProductPhotoFields photos={photos} evidencePhotos={data?.evidencePhotos}
+        onChange={canEdit ? changePhoto : undefined}
+        disabled={uploadMutation.isPending || deleteMutation.isPending || completeMutation.isPending} />
       <ConfirmDialog open={confirmDialog.open} onOpenChange={(open) => setConfirmDialog(prev => ({ ...prev, open }))} description={confirmDialog.message} variant="destructive" onConfirm={confirmDialog.action} />
     </div>
   );

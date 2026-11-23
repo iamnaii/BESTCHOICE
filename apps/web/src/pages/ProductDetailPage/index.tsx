@@ -471,7 +471,7 @@ export default function ProductDetailPage() {
       <div className="flex max-w-full min-w-0 overflow-x-auto overflow-y-hidden gap-0.5 mb-5 border-b border-border/60">
         {([
           { key: 'info' as Tab, label: 'ข้อมูลสินค้า' },
-          ...(product.category === 'PHONE_USED' ? [{ key: 'photos' as Tab, label: 'รูปถ่าย' }] : []),
+          ...(product.category !== 'ACCESSORY' ? [{ key: 'photos' as Tab, label: 'รูปถ่าย' }] : []),
           { key: 'online' as Tab, label: 'ขึ้นเว็บ' },
         ]).map((tab) => (
           <button data-ui-control="button"
@@ -489,7 +489,7 @@ export default function ProductDetailPage() {
       </div>
 
       {/* Tab: Photos */}
-      {activeTab === 'photos' && product.category === 'PHONE_USED' && (
+      {activeTab === 'photos' && product.category !== 'ACCESSORY' && (
         <ProductPhotos
           productId={product.id}
           canEdit={isManager || user?.role === 'SALES'}
@@ -508,7 +508,7 @@ export default function ProductDetailPage() {
           <div className="order-2 space-y-5 lg:order-1">
             <ProductIdentityCard
               product={product}
-              onGoPhotos={() => setActiveTab(product.category === 'PHONE_USED' ? 'photos' : 'online')}
+              onGoPhotos={() => setActiveTab(product.category !== 'ACCESSORY' ? 'photos' : 'online')}
             />
             {product.inspection && <QcSummaryCard inspection={product.inspection} />}
             <CostProfitStrip

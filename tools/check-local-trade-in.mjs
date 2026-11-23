@@ -161,12 +161,12 @@ export async function checkTradeIn(page, origin, output, width) {
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.getByRole('button', { name: 'รูปถ่าย', exact: true }).click();
   const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aNGkAAAAASUVORK5CYII=', 'base64');
-  for (let n = 0; n < 6; n++) {
-    await page.getByRole('button', { name: 'ถ่าย', exact: true }).first().click();
+  const angles = ['หน้า', 'หลัง', 'ซ้าย', 'ขวา', 'บน', 'ล่าง'];
+  for (let n = 0; n < angles.length; n++) {
     const upload = page.waitForResponse(r => /\/photos\/upload(?:\?|$)/.test(r.url()));
-    await page.locator('input[type=file]').setInputFiles({ name: 'synthetic-device.png', mimeType: 'image/png', buffer: png });
+    await page.getByLabel(`อัปโหลดรูป${angles[n]}`, { exact: true }).setInputFiles({ name: 'synthetic-device.png', mimeType: 'image/png', buffer: png });
     assert.equal((await upload).status(), 201);
-    await expect(page.getByRole('button', { name: 'ถ่าย', exact: true })).toHaveCount(5 - n);
+    await expect(page.getByRole('region', { name: 'รูปสินค้า 6 มุม' }).getByRole('img')).toHaveCount(n + 1);
   }
   const completed = page.waitForResponse(r => /\/photos\/complete(?:\?|$)/.test(r.url()));
   await page.getByRole('button', { name: 'ยืนยันรูปครบ', exact: true }).click();

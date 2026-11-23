@@ -110,7 +110,7 @@ export default function ProductIdentityCard({
       const { data } = await api.get(`/products/${product.id}/photos`);
       return data;
     },
-    enabled: isUsed,
+    enabled: !isAccessory,
   });
   const photos = photoData?.photos ?? {};
   const photoCount = ANGLES.filter((a) => photos[a]).length;
@@ -140,7 +140,7 @@ export default function ProductIdentityCard({
       ? `ถึง ${formatDateShort(product.warrantyExpireDate)}`
       : null;
 
-  const frontPhoto = isUsed ? photos.front : null;
+  const frontPhoto = !isAccessory ? photos.front : null;
 
   return (
     <Card className="rounded-xl border border-border/50 bg-card shadow-sm">
@@ -209,7 +209,7 @@ export default function ProductIdentityCard({
           </div>
         </div>
 
-        {isUsed && (
+        {!isAccessory && (
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex gap-1.5">
               {ANGLES.map((angle) => {

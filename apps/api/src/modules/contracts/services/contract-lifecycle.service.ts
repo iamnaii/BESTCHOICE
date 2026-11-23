@@ -1,3 +1,5 @@
+import { bindCreatedContractEvidence } from './contract-evidence-capture-context';
+import { authorizeContractEvidenceCapture, snapshotProductEvidence } from './snapshot-product-evidence';
 import { cancellationActor, cancellationSource } from '../managed-cancellation-source';
 import { currentPreparationSource } from '../../employee-access/access-contract-preparation-source';
 import { reserveContractPromotion, releaseContractPromotion, assertContractPromotionTerms } from '../../promotions/contract-promotion-terms';
@@ -99,6 +101,7 @@ export class ContractLifecycleService {
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       try {
         contract = await this.prisma.$transaction(async (tx) => {
+          await authorizeContractEvidenceCapture(tx, actor.id);
           await lockCreditCustomer(tx, dto.customerId);
           // ก้อน 5 C3 — 1 คน 1 เครื่อง fail-closed (ไม่มีช่องปลด) · named preparation checks after its quote authority
           // without exposing FINANCE Contract details.
@@ -181,6 +184,9 @@ export class ContractLifecycleService {
                 : {}),
             },
           });
+
+          bindCreatedContractEvidence(tx, newContract.id);
+          await snapshotProductEvidence(tx, newContract.id, actor.id);
 
           if (dto.tradeInCreditId) {
             const snapshot = await credits.claim(tx, { ...creditInput, target: { contractId: newContract.id }, cashAmount: cashDown, actorId: salespersonId });

@@ -1,3 +1,4 @@
+import { ContractEvidenceCaptureInterceptor, registerContractEvidenceCapture } from './services/contract-evidence-capture-context';
 import { procurementPreparation } from '../employee-access/access-preparation-context';
 import { currentDomainAccess, onDomainCommit } from '../employee-access/access-execution-context';
 import { Throttle } from '@nestjs/throttler';
@@ -154,6 +155,7 @@ export class ContractsController {
 
   @Post()
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
+  @UseInterceptors(ContractEvidenceCaptureInterceptor)
   create(@Body() dto: CreateContractDto, @CurrentUser() user: { id: string; role: string; branchId?: string | null }) {
     return this.contractsService.create(dto, user.id, user.role, user.branchId);
   }
@@ -422,3 +424,5 @@ export class ContractsController {
     return this.contractsService.rejectCancellation(id, user.id, dto.reason);
   }
 }
+
+registerContractEvidenceCapture(ContractsController.prototype.create);

@@ -1290,6 +1290,10 @@ export class RepossessionsService {
           right: null,
           top: null,
           bottom: null,
+          imeiScreen: null,
+          regulatory: null,
+          batteryScreen: null,
+          partsHistoryScreen: null,
           isCompleted: false,
         },
       });

@@ -53,6 +53,7 @@ const base = {
 describe('ProductIdentityCard', () => {
   beforeEach(() => {
     apiGet.mockReset();
+    apiGet.mockResolvedValue({ data: { photos: {} } });
     copy.mockClear();
   });
 
@@ -75,8 +76,8 @@ describe('ProductIdentityCard', () => {
     expect(screen.getByText('บริษัท ไอเดียโมบาย จำกัด')).toBeInTheDocument();
     // ตำหนิ ไม่มี → "—"
     expect(screen.getByText('ตำหนิ').nextSibling).toHaveTextContent('—');
-    // เครื่องใหม่ไม่ยิงรูป 6 มุม
-    expect(apiGet).not.toHaveBeenCalled();
+    // มือถือใหม่ใช้ช่อง 6 มุมชุดเดียวกับมือสอง
+    expect(apiGet).toHaveBeenCalledWith('/products/p1/photos');
   });
 
   it('มือสอง: แถบรูป 6 มุมจาก /products/:id/photos + ฟิลด์มือสอง (แบต · ประกันศูนย์ · กล่อง · เกรด)', async () => {

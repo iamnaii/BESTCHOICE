@@ -51,3 +51,17 @@ export async function countPhotoAngles(
     WHERE deleted_at IS NULL AND product_id IN (${Prisma.join(ids)})`;
   return new Map(rows.map((r) => [r.product_id, Number(r.count)]));
 }
+
+/** Staff-only evidence, deliberately separate from the six public-eligible angles. */
+export const EVIDENCE_PHOTO_KEYS = ['imeiScreen', 'regulatory', 'batteryScreen', 'partsHistoryScreen'] as const;
+export type EvidencePhotoKey = (typeof EVIDENCE_PHOTO_KEYS)[number];
+export type EvidencePhotoInput = Partial<Record<EvidencePhotoKey, string | null>>;
+export const PRODUCT_PHOTO_KEYS = [...PHOTO_ANGLES, ...EVIDENCE_PHOTO_KEYS] as const;
+export function pickEvidencePhotos(input?: EvidencePhotoInput | null): Partial<Record<EvidencePhotoKey, string>> {
+  const result: Partial<Record<EvidencePhotoKey, string>> = {};
+  for (const key of EVIDENCE_PHOTO_KEYS) {
+    const value = input?.[key];
+    if (typeof value === 'string' && value.trim()) result[key] = value;
+  }
+  return result;
+}

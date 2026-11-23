@@ -724,6 +724,9 @@ enum ContractDocumentType {
   KYC_SELFIE // รูปถ่ายลูกค้าถือบัตรประชาชน
   DEVICE_PHOTO // รูปถ่ายสินค้า+IMEI
   DEVICE_IMEI_PHOTO // รูปหน้าจอแสดง IMEI
+  DEVICE_REGULATORY_PHOTO // หลักฐานตราครุฑ ภายในเท่านั้น
+  DEVICE_BATTERY_PHOTO // หลักฐาน % แบต ภายในเท่านั้น
+  DEVICE_PARTS_HISTORY_PHOTO // หลักฐานเปลี่ยนอะไหล่ ภายในเท่านั้น
   DOWN_PAYMENT_RECEIPT // หลักฐานการชำระเงินดาวน์
   PDPA_CONSENT // เอกสาร Consent PDPA
   GUARDIAN_DOC // เอกสารผู้ปกครอง (อายุ 17-19)
@@ -2415,6 +2418,11 @@ model ProductPhoto {
   right        String? // ข้างขวา
   top          String? // ด้านบน
   bottom       String? // ด้านล่าง
+  // Internal evidence only. Never eligible for the public gallery.
+  imeiScreen   String?   @map("imei_screen")
+  regulatory   String?   @map("regulatory")
+  batteryScreen String?  @map("battery_screen")
+  partsHistoryScreen String? @map("parts_history_screen")
   isCompleted  Boolean   @default(false) @map("is_completed")
   uploadedById String?   @map("uploaded_by_id")
   createdAt    DateTime  @default(now()) @map("created_at")

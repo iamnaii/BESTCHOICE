@@ -1,3 +1,6 @@
+import ProductPhotoFields, { type EvidencePhotos, type ProductPhotoKey, type EvidencePhotoKey } from '@/components/product/ProductPhotoFields';
+import { PHOTO_ANGLES, type AnglePhotos, type PhotoAngle } from '@/constants/photo-angles';
+import FormSection from './components/FormSection';
 import { formControlClass } from '@/components/ui/form-styles';
 import { useState, useRef, useEffect, useMemo, useId } from 'react';
 import { useNavigate } from 'react-router';
@@ -81,6 +84,13 @@ export default function ProductCreatePage() {
   // เงื่อนไขประกันร้าน: ยังไม่แก้ = ใช้ข้อความมาตรฐานของร้าน (ตั้งค่า › ใบเสร็จขายสด) · แก้แล้ว = ข้อความเฉพาะเครื่องนี้
   const [termsEdited, setTermsEdited] = useState(false);
 
+  const [anglePhotos, setAnglePhotos] = useState<Partial<AnglePhotos>>({});
+  const [evidencePhotos, setEvidencePhotos] = useState<EvidencePhotos>({});
+  const [photosBusy, setPhotosBusy] = useState(false);
+  const changePhoto = (key: ProductPhotoKey, value: string | null) => {
+    if (PHOTO_ANGLES.includes(key as PhotoAngle)) setAnglePhotos(prev => ({ ...prev, [key]: value }));
+    else setEvidencePhotos(prev => ({ ...prev, [key as EvidencePhotoKey]: value }));
+  };
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
   const [photoPreviews, setPhotoPreviews] = useState<string[]>([]);
 
@@ -287,7 +297,9 @@ export default function ProductCreatePage() {
               accessoryBrand: form.accessoryBrand || undefined,
             }
           : {}),
-        photos: photoPreviews.length > 0 ? photoPreviews : undefined,
+        photos: isAccessory && photoPreviews.length > 0 ? photoPreviews : undefined,
+        anglePhotos: isAccessory ? undefined : anglePhotos,
+        evidencePhotos: isAccessory ? undefined : evidencePhotos,
         ...toPricePayload(form.category, priceFields, {
           gfinBlocked: isGfinBlocked || gfinTablesState !== 'ready',
         }),
@@ -399,6 +411,7 @@ export default function ProductCreatePage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (photosBusy || createMutation.isPending) return;
     const isAccessory = form.category === 'ACCESSORY';
     const isCharger = isAccessory && form.accessoryType === 'ชุดชาร์จ';
     if (!isAccessory && !form.brand) {
@@ -490,12 +503,14 @@ export default function ProductCreatePage() {
               />
             )}
 
-            <PhotoUpload
+            {accessory ? <PhotoUpload
               number={accessory ? 3 : 5}
               photoPreviews={photoPreviews}
               onAdd={handlePhotoAdd}
               onRemove={removePhoto}
-            />
+            /> : <FormSection number={5} title="รูปถ่ายสินค้า">
+              <ProductPhotoFields photos={anglePhotos} evidencePhotos={evidencePhotos} onChange={changePhoto} onBusyChange={setPhotosBusy} disabled={createMutation.isPending} />
+            </FormSection>}
 
             <BranchSupplierCard
               number={accessory ? 4 : 6}
@@ -600,7 +615,7 @@ export default function ProductCreatePage() {
                 <button
                   data-ui-control="button"
                   type="submit"
-                  disabled={createMutation.isPending || pricesLoading}
+                  disabled={createMutation.isPending || pricesLoading || photosBusy}
                   className="inline-flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-lg bg-primary px-6 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 lg:w-full"
                 >
                   {pricesLoading && (

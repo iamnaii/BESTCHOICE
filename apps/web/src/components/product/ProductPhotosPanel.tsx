@@ -1,4 +1,4 @@
-import { Camera as InlineCameraIcon } from '@/lib/icons';
+import { Camera as InlineCameraIcon, Loader2 } from '@/lib/icons';
 import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -297,7 +297,7 @@ export default function ProductPhotosPanel({
                   }`}
                 >
                   {isUploading ? (
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary" />
+                    <Loader2 size={16} className="animate-spin text-primary" aria-hidden="true" />
                   ) : (
                     <>
                       <InlineCameraIcon className="w-4 h-4 text-muted-foreground" aria-hidden="true" />

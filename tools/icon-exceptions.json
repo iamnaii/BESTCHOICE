@@ -1,0 +1,2445 @@
+[
+  {
+    "path": "apps/web-shop/index.html",
+    "kind": "image-or-css-icon",
+    "context": "<html lang=\"th\"> > <head> > <link rel=\"icon\" href=\"/favicon.svg\" type=\"image/svg+xml\" /> > @href",
+    "reason": "BESTCHOICE browser or home-screen identity.",
+    "category": "brand"
+  },
+  {
+    "path": "apps/web-shop/index.html",
+    "kind": "image-or-css-icon",
+    "context": "<html lang=\"th\"> > <head> > <link rel=\"icon\" href=\"/favicon-32.png\" type=\"image/png\" sizes=\"32x32\" /> > @href",
+    "reason": "BESTCHOICE browser or home-screen identity.",
+    "category": "brand"
+  },
+  {
+    "path": "apps/web-shop/index.html",
+    "kind": "image-or-css-icon",
+    "context": "<html lang=\"th\"> > <head> > <link rel=\"apple-touch-icon\" href=\"/apple-touch-icon.png\" sizes=\"180x180\" /> > @href",
+    "reason": "BESTCHOICE browser or home-screen identity.",
+    "category": "brand"
+  },
+  {
+    "path": "apps/web-shop/public/site.webmanifest",
+    "kind": "image-or-css-icon",
+    "context": "manifest icons > {\"src\":\"/icon-192.png\",\"sizes\":\"192x192\",\"type\":\"image/png\",\"purpose\":\"any\"}",
+    "reason": "BESTCHOICE install identity at the declared PWA size and purpose.",
+    "category": "brand"
+  },
+  {
+    "path": "apps/web-shop/public/site.webmanifest",
+    "kind": "image-or-css-icon",
+    "context": "manifest icons > {\"src\":\"/icon-512.png\",\"sizes\":\"512x512\",\"type\":\"image/png\",\"purpose\":\"any\"}",
+    "reason": "BESTCHOICE install identity at the declared PWA size and purpose.",
+    "category": "brand"
+  },
+  {
+    "path": "apps/web-shop/public/site.webmanifest",
+    "kind": "image-or-css-icon",
+    "context": "manifest icons > {\"src\":\"/icon-512.png\",\"sizes\":\"512x512\",\"type\":\"image/png\",\"purpose\":\"maskable\"}",
+    "reason": "BESTCHOICE install identity at the declared PWA size and purpose.",
+    "category": "brand"
+  },
+  {
+    "path": "apps/web-shop/public/stock/index.html",
+    "kind": "image-or-css-icon",
+    "context": "<html lang=\"th\"> > <head> > <link rel=\"icon\" href=\"/favicon.svg\" type=\"image/svg+xml\" /> > @href",
+    "reason": "BESTCHOICE browser or home-screen identity.",
+    "category": "brand"
+  },
+  {
+    "path": "apps/web-shop/public/stock/index.html",
+    "kind": "image-or-css-icon",
+    "context": "<html lang=\"th\"> > <head> > <link rel=\"icon\" href=\"/favicon-32.png\" type=\"image/png\" sizes=\"32x32\" /> > @href",
+    "reason": "BESTCHOICE browser or home-screen identity.",
+    "category": "brand"
+  },
+  {
+    "path": "apps/web-shop/public/stock/index.html",
+    "kind": "image-or-css-icon",
+    "context": "<html lang=\"th\"> > <head> > <link rel=\"apple-touch-icon\" href=\"/apple-touch-icon.png\" sizes=\"180x180\" /> > @href",
+    "reason": "BESTCHOICE browser or home-screen identity.",
+    "category": "brand"
+  },
+  {
+    "path": "apps/web-shop/public/stock/index.html",
+    "kind": "image-or-css-icon",
+    "context": "<html lang=\"th\"> > <body> > <div id=\"stock-loading\" role=\"status\"> > <img src=\"/logo-icon.svg\" alt=\"\" /> > @src",
+    "reason": "BESTCHOICE identity in the stock wrapper loading screen.",
+    "category": "brand"
+  },
+  {
+    "path": "apps/web-shop/src/components/catalog/ProductCard.tsx",
+    "kind": "unicode-symbol",
+    "context": "ProductCard > article > <div className=\"hidden sm:flex gap-1.5 mt-2\"> > <Link to={to} aria-label={`ดูรูปทั้งหมด ${photos.length} รูป`} className=\"flex-1 aspect-square rounded-xl bg-zinc-200 grid place-items-center text-xs font-bold text-muted-foreground hover:bg-zinc-300 transition-colors\" > > +",
+    "reason": "Signed count of additional product photos. The link label gives the full photo count.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web-shop/src/components/catalog/SortDropdown.tsx",
+    "kind": "unicode-symbol",
+    "context": "SortDropdown > <NativeSelect wrapperClassName=\"max-w-full w-auto\" className=\"border border-border rounded p-2\" value={value} onChange={(e) => onChange(e.target.value)} > > <option value=\"price_asc\"> > ราคา: ต่ำ → สูง",
+    "reason": "Text names the sort order and its two endpoints.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web-shop/src/components/catalog/SortDropdown.tsx",
+    "kind": "unicode-symbol",
+    "context": "SortDropdown > <NativeSelect wrapperClassName=\"max-w-full w-auto\" className=\"border border-border rounded p-2\" value={value} onChange={(e) => onChange(e.target.value)} > > <option value=\"price_desc\"> > ราคา: สูง → ต่ำ",
+    "reason": "Text names the sort order and its two endpoints.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web-shop/src/components/hero/PhoneShowcase.tsx",
+    "kind": "image-or-css-icon",
+    "context": "PhoneShowcase > figure > div > <div data-phone-back className=\"phone-showcase__back\"> > <img src=\"/logo-icon.svg\" alt=\"\" className=\"phone-showcase__back-logo\" /> > @src > \"/logo-icon.svg\"",
+    "reason": "BESTCHOICE identity printed on the illustrated handset.",
+    "category": "brand"
+  },
+  {
+    "path": "apps/web-shop/src/components/hero/PhoneShowcase.tsx",
+    "kind": "image-or-css-icon",
+    "context": "PhoneShowcase > figure > div > div > div > <div className=\"phone-showcase__wordmark\"> > <img src=\"/logo-icon.svg\" alt=\"\" /> > @src > \"/logo-icon.svg\"",
+    "reason": "BESTCHOICE identity printed on the illustrated handset.",
+    "category": "brand"
+  },
+  {
+    "path": "apps/web-shop/src/components/layout/ShopFooter.tsx",
+    "kind": "image-or-css-icon",
+    "context": "ShopFooter > footer > div > div > div > div > <span className=\"size-9 rounded-xl bg-white grid place-items-center overflow-hidden\"> > <img src=\"/logo-icon.svg\" alt=\"\" className=\"size-7\" aria-hidden /> > @src > \"/logo-icon.svg\"",
+    "reason": "BESTCHOICE identity in a page header, nav, or storefront shell.",
+    "category": "brand"
+  },
+  {
+    "path": "apps/web-shop/src/components/layout/ShopHeader.tsx",
+    "kind": "image-or-css-icon",
+    "context": "ShopHeader > header > div > Link > <span className=\"size-8 rounded-xl bg-muted grid place-items-center overflow-hidden\"> > <img src=\"/logo-icon.svg\" alt=\"\" className=\"size-6\" aria-hidden /> > @src > \"/logo-icon.svg\"",
+    "reason": "BESTCHOICE identity in a page header, nav, or storefront shell.",
+    "category": "brand"
+  },
+  {
+    "path": "apps/web-shop/src/lib/copy.ts",
+    "kind": "unicode-symbol",
+    "context": "copy > catalog > sortPriceAsc > 'ราคาต่ำ → สูง'",
+    "reason": "Text names the sort order and its two endpoints.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web-shop/src/lib/copy.ts",
+    "kind": "unicode-symbol",
+    "context": "copy > catalog > sortPriceDesc > 'ราคาสูง → ต่ำ'",
+    "reason": "Text names the sort order and its two endpoints.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web-shop/src/lib/media-placeholders.ts",
+    "kind": "image-or-css-icon",
+    "context": "mediaPlaceholders > 'hero.home' > '/media/hero-home.jpg'",
+    "reason": "Storefront category or campaign hero photography.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web-shop/src/lib/media-placeholders.ts",
+    "kind": "image-or-css-icon",
+    "context": "mediaPlaceholders > 'hero.catalog' > '/media/hero-catalog.jpg'",
+    "reason": "Storefront category or campaign hero photography.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web-shop/src/lib/media-placeholders.ts",
+    "kind": "image-or-css-icon",
+    "context": "mediaPlaceholders > 'hero.apply' > '/media/hero-apply.jpg'",
+    "reason": "Storefront category or campaign hero photography.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web-shop/src/lib/media-placeholders.ts",
+    "kind": "image-or-css-icon",
+    "context": "mediaPlaceholders > 'hero.trade-in' > '/media/hero-trade-in.jpg'",
+    "reason": "Storefront category or campaign hero photography.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web-shop/src/lib/media-placeholders.ts",
+    "kind": "image-or-css-icon",
+    "context": "mediaPlaceholders > 'hero.buyback' > '/media/hero-buyback.jpg'",
+    "reason": "Storefront category or campaign hero photography.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web-shop/src/lib/media-placeholders.ts",
+    "kind": "image-or-css-icon",
+    "context": "mediaPlaceholders > 'og.default' > '/media/og-default.jpg'",
+    "reason": "Default storefront social card photograph.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web-shop/src/lib/media-placeholders.ts",
+    "kind": "image-or-css-icon",
+    "context": "mediaPlaceholders > 'staff.owner' > '/media/staff-owner.jpg'",
+    "reason": "Staff photography shown as storefront content.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web-shop/src/lib/media-placeholders.ts",
+    "kind": "image-or-css-icon",
+    "context": "mediaPlaceholders > 'staff.team' > '/media/staff-team.jpg'",
+    "reason": "Staff photography shown as storefront content.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web-shop/src/lib/media-placeholders.ts",
+    "kind": "image-or-css-icon",
+    "context": "mediaPlaceholders > 'shop.interior' > '/media/shop-interior.jpg'",
+    "reason": "Shop interior or location imagery.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web-shop/src/lib/media-placeholders.ts",
+    "kind": "image-or-css-icon",
+    "context": "mediaPlaceholders > 'shop.map' > '/media/shop-map.jpg'",
+    "reason": "Shop interior or location imagery.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web-shop/src/lib/media-placeholders.ts",
+    "kind": "image-or-css-icon",
+    "context": "mediaPlaceholders > 'product.placeholder' > '/media/product-placeholder.jpg'",
+    "reason": "Fallback product imagery in the storefront.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web-shop/src/pages/CatalogPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "SORTS > label > 'รุ่นใหม่ → เก่า'",
+    "reason": "Text names the sort order and its two endpoints.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web-shop/src/pages/CatalogPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "SORTS > label > 'ราคา ต่ำ → สูง'",
+    "reason": "Text names the sort order and its two endpoints.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web-shop/src/pages/CatalogPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "SORTS > label > 'ราคา สูง → ต่ำ'",
+    "reason": "Text names the sort order and its two endpoints.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web-shop/src/pages/CatalogPage.tsx",
+    "kind": "inline-svg",
+    "context": "CatalogPage > ShopLayout > Container > section > <div className=\"flex items-center gap-6 md:gap-10\"> > <div className=\"hidden sm:block shrink-0\"> > <svg width=\"112\" height=\"112\" viewBox=\"0 0 118 118\" aria-hidden=\"true\"> <rect x=\"30\" y=\"10\" width=\"58\" height=\"98\" rx=\"13\" fill=\"var(--color-zinc-200)\" /> <rect… sha256:63741bd949ecbf41739572e31f54967199be925299460bccaf419bbbc9441f71",
+    "reason": "Catalog hero illustration of consumer phones.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web-shop/src/pages/sell/components/DeviceOriginStep.tsx",
+    "kind": "unicode-symbol",
+    "context": "DeviceOriginStep > div > details > section > ol > <li> > <strong> > การตั้งค่า → ทั่วไป → เกี่ยวกับ",
+    "reason": "Arrows separate menu names in instructions for locating information in device settings.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web-shop/src/pages/sell/components/DeviceOriginStep.tsx",
+    "kind": "unicode-symbol",
+    "context": "DeviceOriginStep > div > details > section > ol > <li> > <span className=\"block text-muted-foreground\"> > Settings → General → About",
+    "reason": "Arrows separate menu names in instructions for locating information in device settings.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web-shop/src/pages/sell/components/DeviceStep.tsx",
+    "kind": "unicode-symbol",
+    "context": "DeviceStep > <div className=\"space-y-3\"> > <p className=\"text-sm\"> > ดูได้ที่ การตั้งค่า → ทั่วไป → เกี่ยวกับ",
+    "reason": "Arrows separate menu names in instructions for locating information in device settings.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web-shop/src/pages/sell/components/DeviceStep.tsx",
+    "kind": "unicode-symbol",
+    "context": "DeviceStep > div > <details> > <p className=\"text-sm\"> > ดูชื่อรุ่นได้ที่ การตั้งค่า → ทั่วไป → เกี่ยวกับ",
+    "reason": "Arrows separate menu names in instructions for locating information in device settings.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web-shop/src/pages/sell/components/QuestionStep.tsx",
+    "kind": "inline-svg",
+    "context": "QuestionStep > div > div > call question.choices .filter((choice) => !choice.isNoneChoice) .map > <ChoiceButton key={choice.id} label={choice.label} multiple={multi} selected={answer?.includes(choice.id) ?? false} disabled={disabled} onClick={() => (multi ? onToggleIssue(choice.id) : onSingle(choice.id))} > > <span className=\"flex items-center gap-3\"> > <svg aria-hidden=\"true\" width=\"36\" height=\"50\" viewBox=\"0 0 36 50\" className=\"shrink-0 text-secondary-foreground\" > <rect x=\"6\" y=\"3\" width=\"24\" height=\"44\" rx=… sha256:596f8bc142d3d464243cafb8982ef3664d4b8227525f6a72cd690324a59932d0",
+    "reason": "Phone panel diagram illustrates the damage location for trade-in assessment.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web-shop/src/pages/sell/components/SellFlowLayout.tsx",
+    "kind": "image-or-css-icon",
+    "context": "SellFlowLayout > div > div > header > <div className=\"flex items-center gap-3 border-t-[3px] border-primary bg-secondary px-6 py-3.5 min-[700px]:px-8\"> > <img src=\"/logo-icon.svg\" alt=\"\" aria-hidden=\"true\" width={48} height={48} className=\"size-12 shrink-0\" /> > @src > \"/logo-icon.svg\"",
+    "reason": "BESTCHOICE identity in a page header, nav, or storefront shell.",
+    "category": "brand"
+  },
+  {
+    "path": "apps/web/index.html",
+    "kind": "image-or-css-icon",
+    "context": "<html lang=\"th\"> > <head> > <link rel=\"icon\" type=\"image/svg+xml\" href=\"/logo-icon.svg\" /> > @href",
+    "reason": "BESTCHOICE browser or home-screen identity.",
+    "category": "brand"
+  },
+  {
+    "path": "apps/web/index.html",
+    "kind": "image-or-css-icon",
+    "context": "<html lang=\"th\"> > <head> > <link rel=\"apple-touch-icon\" href=\"/apple-touch-icon.png\" /> > @href",
+    "reason": "BESTCHOICE browser or home-screen identity.",
+    "category": "brand"
+  },
+  {
+    "path": "apps/web/public/design-preview-flex-messages.html",
+    "kind": "inline-svg",
+    "context": "Historical HTML sha256:8c706a1564e54ea3088c8361112ee0e4b15911567ebf97d242e5ca89532ae240",
+    "reason": "Historical Flex message UI mockup.",
+    "category": "reference"
+  },
+  {
+    "path": "apps/web/public/design-preview-liff-contract.html",
+    "kind": "inline-svg",
+    "context": "Historical HTML sha256:53d21f18f75348b9c1a991cdec44a930d15a21e889d5bf896f7899c0535b7340",
+    "reason": "Historical LIFF contract UI mockup.",
+    "category": "reference"
+  },
+  {
+    "path": "apps/web/public/design-preview-liff-early-payoff.html",
+    "kind": "inline-svg",
+    "context": "Historical HTML sha256:c5a7550aff325cd5308f6f342b59ccbef22f8e663018bc3a5a9430592ff9bafa",
+    "reason": "Historical LIFF early-payoff UI mockup.",
+    "category": "reference"
+  },
+  {
+    "path": "apps/web/public/design-preview-liff-history.html",
+    "kind": "inline-svg",
+    "context": "Historical HTML sha256:d9793cab504dea3abacd6318dfe0c9fe6b9782b342a32a882535df7e22ab5320",
+    "reason": "Historical LIFF payment-history UI mockup.",
+    "category": "reference"
+  },
+  {
+    "path": "apps/web/public/design-preview-liff-profile.html",
+    "kind": "inline-svg",
+    "context": "Historical HTML sha256:bda78bd6b82eb32bb9dce2afc1c8e925ddc8cd2dc7cc0a3188f124a5f079c88c",
+    "reason": "Historical LIFF profile UI mockup.",
+    "category": "reference"
+  },
+  {
+    "path": "apps/web/public/kiosk/manifest.webmanifest",
+    "kind": "image-or-css-icon",
+    "context": "manifest icons > {\"src\":\"/icon-192.png\",\"sizes\":\"192x192\",\"type\":\"image/png\",\"purpose\":\"any\"}",
+    "reason": "BESTCHOICE install identity at the declared PWA size and purpose.",
+    "category": "brand"
+  },
+  {
+    "path": "apps/web/public/kiosk/manifest.webmanifest",
+    "kind": "image-or-css-icon",
+    "context": "manifest icons > {\"src\":\"/icon-512.png\",\"sizes\":\"512x512\",\"type\":\"image/png\",\"purpose\":\"any\"}",
+    "reason": "BESTCHOICE install identity at the declared PWA size and purpose.",
+    "category": "brand"
+  },
+  {
+    "path": "apps/web/public/kiosk/manifest.webmanifest",
+    "kind": "image-or-css-icon",
+    "context": "manifest icons > {\"src\":\"/icon-512-maskable.png\",\"sizes\":\"512x512\",\"type\":\"image/png\",\"purpose\":\"maskable\"}",
+    "reason": "BESTCHOICE install identity at the declared PWA size and purpose.",
+    "category": "brand"
+  },
+  {
+    "path": "apps/web/public/manifest.json",
+    "kind": "image-or-css-icon",
+    "context": "manifest icons > {\"src\":\"/icon-192.png\",\"sizes\":\"192x192\",\"type\":\"image/png\",\"purpose\":\"any\"}",
+    "reason": "BESTCHOICE install identity at the declared PWA size and purpose.",
+    "category": "brand"
+  },
+  {
+    "path": "apps/web/public/manifest.json",
+    "kind": "image-or-css-icon",
+    "context": "manifest icons > {\"src\":\"/icon-512.png\",\"sizes\":\"512x512\",\"type\":\"image/png\",\"purpose\":\"any\"}",
+    "reason": "BESTCHOICE install identity at the declared PWA size and purpose.",
+    "category": "brand"
+  },
+  {
+    "path": "apps/web/public/manifest.json",
+    "kind": "image-or-css-icon",
+    "context": "manifest icons > {\"src\":\"/icon-512-maskable.png\",\"sizes\":\"512x512\",\"type\":\"image/png\",\"purpose\":\"maskable\"}",
+    "reason": "BESTCHOICE install identity at the declared PWA size and purpose.",
+    "category": "brand"
+  },
+  {
+    "path": "apps/web/public/manifest.json",
+    "kind": "image-or-css-icon",
+    "context": "manifest icons > {\"src\":\"/logo-icon.svg\",\"sizes\":\"any\",\"type\":\"image/svg+xml\",\"purpose\":\"any\"}",
+    "reason": "BESTCHOICE install identity at the declared PWA size and purpose.",
+    "category": "brand"
+  },
+  {
+    "path": "apps/web/public/privacy.html",
+    "kind": "unicode-symbol",
+    "context": "<html lang=\"th\"> > <body> > <div class=\"container\"> > <section> > <ul> > <li> > go to Facebook → Settings &amp; Privacy → Settings → Apps and Websites → BESTCHOICE → Remove. Facebook will notify our Data Deletion Callback at",
+    "reason": "Published privacy instructions give the steps for removing the app in Facebook settings.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/public/sw.js",
+    "kind": "image-or-css-icon",
+    "context": "STATIC_ASSETS > '/logo-icon.svg'",
+    "reason": "Service-worker precache entry for a BESTCHOICE logo.",
+    "category": "brand"
+  },
+  {
+    "path": "apps/web/public/sw.js",
+    "kind": "image-or-css-icon",
+    "context": "STATIC_ASSETS > '/logo.svg'",
+    "reason": "Service-worker precache entry for a BESTCHOICE logo.",
+    "category": "brand"
+  },
+  {
+    "path": "apps/web/src/App.tsx",
+    "kind": "image-or-css-icon",
+    "context": "PageLoader > <div className=\"flex items-center justify-center py-20\"> > <div className=\"animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600\"> > className=\"animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600\"",
+    "reason": "Indeterminate progress arc while a route chunk loads.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web/src/App.tsx",
+    "kind": "image-or-css-icon",
+    "context": "App > div > <div className=\"text-center\"> > <div className=\"animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto\"> > className=\"animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto\"",
+    "reason": "Indeterminate progress arc while the user session loads.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web/src/components/CommandPalette.tsx",
+    "kind": "unicode-symbol",
+    "context": "CommandPalette > div > div > Command > CommandList > CommandGroup > call searchData.letterTrackings.map > <CommandItem key={`letter-${l.letterId}`} value={`letter-${l.letterId}`} onSelect={() => handleSelect(`/contracts/${l.contractId}`)} > > <span> > →",
+    "reason": "Separates the tracking identifier from its linked contract identifier in a search result.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/components/CommandPalette.tsx",
+    "kind": "unicode-symbol",
+    "context": "CommandPalette > div > div > Command > div > div > <span className=\"flex items-center gap-1\"> > <kbd className=\"pointer-events-none rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px]\"> > ↑↓",
+    "reason": "Keyboard shortcut or key combination label.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/components/CommandPalette.tsx",
+    "kind": "unicode-symbol",
+    "context": "CommandPalette > div > div > Command > div > div > <span className=\"flex items-center gap-1\"> > <kbd className=\"pointer-events-none rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px]\"> > ↵",
+    "reason": "Keyboard shortcut or key combination label.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/components/DocumentHeader.tsx",
+    "kind": "image-or-css-icon",
+    "context": "DocumentHeader > header > <div className=\"bc-doc-brand\"> > <img src={logoUrl || '/logo.svg'} alt={company} /> > @src > '/logo.svg'",
+    "reason": "Default BESTCHOICE logo in printed document mastheads.",
+    "category": "brand"
+  },
+  {
+    "path": "apps/web/src/components/ProtectedRoute.tsx",
+    "kind": "image-or-css-icon",
+    "context": "ProtectedRoute > <div className=\"min-h-screen flex items-center justify-center\"> > <div className=\"animate-spin rounded-full h-8 w-8 border-b-2 border-primary\" role=\"status\" aria-label=\"กำลังโหลด\"> > className=\"animate-spin rounded-full h-8 w-8 border-b-2 border-primary\"",
+    "reason": "Indeterminate progress arc while the user session loads.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web/src/components/ShortcutsHelpOverlay.tsx",
+    "kind": "unicode-symbol",
+    "context": "shortcuts > keys > '?'",
+    "reason": "Keyboard shortcut or key combination label.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/components/ShortcutsHelpOverlay.tsx",
+    "kind": "unicode-symbol",
+    "context": "ShortcutsHelpOverlay > div > div > div > div > call shortcuts.map > div > div > call shortcut.keys.map > <span key={j}> > <span className=\"text-muted-foreground/50 text-xs mx-0.5\"> > +",
+    "reason": "Keyboard shortcut or key combination label.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/components/accounting/ReverseConfirmDialog.tsx",
+    "kind": "unicode-symbol",
+    "context": "DEFAULT_IMPACT_NOTES > other_income > 'ระบบจะสร้างเอกสาร Reverse Entry — สลับ Dr↔Cr ทุกบรรทัด'",
+    "reason": "Accounting notation that describes reversal of debit and credit sides.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/components/accounting/ReverseConfirmDialog.tsx",
+    "kind": "unicode-symbol",
+    "context": "DEFAULT_IMPACT_NOTES > expense > 'ระบบจะสร้างเอกสาร Reverse Entry — สลับ Dr↔Cr ทุกบรรทัด'",
+    "reason": "Accounting notation that describes reversal of debit and credit sides.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/components/accounting/ReverseConfirmDialog.tsx",
+    "kind": "unicode-symbol",
+    "context": "DEFAULT_IMPACT_NOTES > asset > 'ระบบจะสร้างเอกสาร Reverse Entry — สลับ Dr↔Cr ทุกบรรทัด'",
+    "reason": "Accounting notation that describes reversal of debit and credit sides.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/components/accounting/audit-events.ts",
+    "kind": "unicode-symbol",
+    "context": "updatedChanges > call parts.push > `ยอดรวม ${before} → ${after}`",
+    "reason": "Audit text shows the total before and after a change.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/components/chat/ChannelBadge.tsx",
+    "kind": "unicode-symbol",
+    "context": "CHANNEL_META > TIKTOK > letter > '♪'",
+    "reason": "TikTok musical note in the channel identity mark.",
+    "category": "brand"
+  },
+  {
+    "path": "apps/web/src/components/contract/ContractEarlyPayoff.tsx",
+    "kind": "unicode-symbol",
+    "context": "EarlyPayoffOverlay > WizardStackedOverlay > div > div > <ul className=\"space-y-1.5 text-sm\"> > <Effect text=\"โอนกรรมสิทธิ์สินค้าจาก FINANCE → ลูกค้า\" /> > @text > \"โอนกรรมสิทธิ์สินค้าจาก FINANCE → ลูกค้า\"",
+    "reason": "Explanatory label describing transfer of ownership from FINANCE to the customer.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/components/contract/CreditCheckPanel.tsx",
+    "kind": "image-or-css-icon",
+    "context": "CreditCheckPanel > div > div > <div className=\"flex items-center gap-2 text-sm text-primary\"> > <div className=\"animate-spin rounded-full h-4 w-4 border-b-2 border-primary\" /> > className=\"animate-spin rounded-full h-4 w-4 border-b-2 border-primary\"",
+    "reason": "Indeterminate progress arc while credit-check evidence uploads.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web/src/components/contract/CustomerEditModal.tsx",
+    "kind": "image-or-css-icon",
+    "context": "CustomerEditModal > Dialog > DialogContent > <div className=\"flex items-center justify-center py-12\"> > <div className=\"animate-spin rounded-full h-8 w-8 border-b-2 border-primary\"> > className=\"animate-spin rounded-full h-8 w-8 border-b-2 border-primary\"",
+    "reason": "Indeterminate progress arc fetching customer information for the edit form.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web/src/components/credit-check/CreditCheckCard.tsx",
+    "kind": "image-or-css-icon",
+    "context": "CreditCheckCard > div > div > div > <ul className=\"text-xs text-foreground space-y-0.5\"> > call ai.positiveFactors.map > <li key={i} className=\"pl-3 relative before:content-['•'] before:absolute before:left-0 before:text-success\"> > className=\"pl-3 relative before:content-['•'] before:absolute before:left-0 before:text-success\"",
+    "reason": "List bullet beside a positive credit-check factor.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/components/credit-check/CreditCheckCard.tsx",
+    "kind": "image-or-css-icon",
+    "context": "CreditCheckCard > div > div > div > <ul className=\"text-xs text-foreground space-y-0.5\"> > call ai.riskFactors.map > <li key={i} className=\"pl-3 relative before:content-['•'] before:absolute before:left-0 before:text-destructive\"> > className=\"pl-3 relative before:content-['•'] before:absolute before:left-0 before:text-destructive\"",
+    "reason": "List bullet beside a risk factor in the credit check.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/components/credit-check/CreditCheckCreateModal.tsx",
+    "kind": "image-or-css-icon",
+    "context": "CreditCheckCreateModal > div > div > div > div > div > div > <button data-ui-control=\"button\" onClick={onSalarySlipOcr} disabled={salarySlipLoading || salarySlipFiles.length === 0} className=\"inline-flex items-center gap-… sha256:227de00e0716f5e17fdf1fa966b82de00214083d4a9dfdb28ae059216b2dfa03 > <div className=\"animate-spin rounded-full h-3 w-3 border-b-2 border-white\" /> > className=\"animate-spin rounded-full h-3 w-3 border-b-2 border-white\"",
+    "reason": "Indeterminate progress arc during salary-slip analysis.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web/src/components/credit-check/CreditCheckCreateModal.tsx",
+    "kind": "image-or-css-icon",
+    "context": "CreditCheckCreateModal > div > div > div > div > div > div > <button data-ui-control=\"button\" onClick={onStatementOcr} disabled={statementLoading || statementFiles.length === 0} className=\"inline-flex items-center gap-2 p… sha256:e9df8de91563a25d223bc6b039d8cb13e920ef8443262935ec8356c0b006c4c0 > <div className=\"animate-spin rounded-full h-3 w-3 border-b-2 border-white\" /> > className=\"animate-spin rounded-full h-3 w-3 border-b-2 border-white\"",
+    "reason": "Indeterminate progress arc during bank-statement analysis.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web/src/components/credit-check/CreditCheckCreateModal.tsx",
+    "kind": "image-or-css-icon",
+    "context": "CreditCheckCreateModal > div > div > div > div > div > <button data-ui-control=\"button\" onClick={() => onCalculateRisk(selectedCustomer.id)} disabled={riskLoading} className=\"inline-flex items-center gap-2 px-5 py-2… sha256:874942a60426928b862f52a256c9f2d8ef0882083ade3e7617a25403da085584 > <div className=\"animate-spin rounded-full h-4 w-4 border-b-2 border-white\" /> > className=\"animate-spin rounded-full h-4 w-4 border-b-2 border-white\"",
+    "reason": "Indeterminate progress arc during credit risk calculation.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web/src/components/customer/CustomerCreateDialog.tsx",
+    "kind": "image-or-css-icon",
+    "context": "CustomerCreateForm > Form > form > div > div > <button type=\"button\" onClick={handleSmartCardRead} disabled={cardReaderLoading || ocrLoading} className=\"inline-flex items-center justify-center gap-2 py-3 bg-… sha256:59b5707d018389a535a0f7b1c65c04b824804877fbc8b7759dea2b475fcc9e27 > <div className=\"animate-spin rounded-full h-4 w-4 border-b-2 border-primary-foreground\" /> > className=\"animate-spin rounded-full h-4 w-4 border-b-2 border-primary-foreground\"",
+    "reason": "Indeterminate progress arc while the customer form reads a smart card.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web/src/components/customer/CustomerCreateDialog.tsx",
+    "kind": "image-or-css-icon",
+    "context": "CustomerCreateForm > Form > form > div > div > <button type=\"button\" onClick={() => ocrFileRef.current?.click()} disabled={ocrLoading} className=\"inline-flex items-center justify-center gap-2 py-3 bg-seconda… sha256:ef11216792846501a117d16b0752ed50a67e433b3ea6918f414864283aee9bcf > <div className=\"animate-spin rounded-full h-4 w-4 border-b-2 border-current\" /> > className=\"animate-spin rounded-full h-4 w-4 border-b-2 border-current\"",
+    "reason": "Indeterminate progress arc while the customer form reads an ID scan.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web/src/components/customer/CustomerCreateDialog.tsx",
+    "kind": "image-or-css-icon",
+    "context": "CustomerCreateForm > Form > form > div > button > <span className=\"inline-flex items-center gap-2\"> > <div className=\"h-4 w-4 animate-spin rounded-full border-b-2 border-primary-foreground\" /> > className=\"h-4 w-4 animate-spin rounded-full border-b-2 border-primary-foreground\"",
+    "reason": "Indeterminate progress arc while the customer creation form saves.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web/src/components/device-returns/DeviceReturnIntakeDialog.tsx",
+    "kind": "unicode-symbol",
+    "context": "DeviceReturnIntakeDialog > Modal > fieldset > Section > <ul className=\"space-y-1.5 text-sm\"> > <Effect text=\"สัญญาหยุดนับค่างวดและค่าปรับทันที (สถานะ → บอกเลิกสัญญา) — ส่งกลับ/ยกเลิกใบจะคืนสถานะเดิมเฉพาะเมื่อมีสถานะเดิมบันทึกไว้และสัญญายังอยู่ในสถานะบอกเลิก\" /> > @text > \"สัญญาหยุดนับค่างวดและค่าปรับทันที (สถานะ → บอกเลิกสัญญา) — ส่งกลับ/ยกเลิกใบจะคืนสถานะเดิมเฉพาะเมื่อมีสถานะเดิมบันทึกไว้และสัญญายังอยู่ในสถานะบอกเลิก\"",
+    "reason": "Explanatory copy naming the contract state that follows device return.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/components/expense-form-v4/AdjustmentSection.tsx",
+    "kind": "unicode-symbol",
+    "context": "AdjustmentSection > diffText > ' (จ่ายเกิน → Cr)'",
+    "reason": "Accounting notation showing whether a payment difference posts to debit or credit.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/components/expense-form-v4/AdjustmentSection.tsx",
+    "kind": "unicode-symbol",
+    "context": "AdjustmentSection > diffText > ' (จ่ายน้อย → Dr)'",
+    "reason": "Accounting notation showing whether a payment difference posts to debit or credit.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/components/expense-form-v4/AdjustmentSection.tsx",
+    "kind": "unicode-symbol",
+    "context": "AdjustmentSection > section > <div className=\"flex flex-wrap items-center justify-between gap-3\"> > <div className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium ${ reconciled ? 'bg-success/10 text-success' : 'bg-destructive/10 text-destructive' }`} role=\"status\" aria-live=\"polite\" > > '+'",
+    "reason": "Arithmetic sign preceding a positive payment difference.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/components/expense-form-v4/AdjustmentSection.tsx",
+    "kind": "unicode-symbol",
+    "context": "AdjustmentSection > section > <div className=\"flex flex-wrap items-center justify-between gap-3\"> > <div className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium ${ reconciled ? 'bg-success/10 text-success' : 'bg-destructive/10 text-destructive' }`} role=\"status\" aria-live=\"polite\" > > '+' (occurrence 2)",
+    "reason": "Arithmetic sign preceding a positive payment difference.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/components/expense-form-v4/ApproverSection.tsx",
+    "kind": "unicode-symbol",
+    "context": "ApproverSection > div > <div> > <p className=\"mt-1 text-xs text-muted-foreground\"> > เจ้าของกำหนดสิทธิ์รายคนที่ ตั้งค่า → สิทธิ์รายการบัญชีรายรับ–รายจ่าย",
+    "reason": "Arrows separate application menu names in instructions.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/components/expense-form-v4/payroll-system/PayrollSystemRows.tsx",
+    "kind": "unicode-symbol",
+    "context": "hoursTimesRate > `${hours(r.quantity)} × ${rateText(r.rate)}`",
+    "reason": "Multiplication notation between numeric factors in a formula, quote or document.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/components/expense-form-v4/payroll-system/PayrollSystemRows.tsx",
+    "kind": "unicode-symbol",
+    "context": "PayrollSystemRows > section > ScreenTable > thead > <tr> > <th className=\"text-right px-2 py-1 w-28\"> > ชม. × อัตรา",
+    "reason": "Multiplication notation between numeric factors in a formula, quote or document.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/components/expense-form-v4/payroll-system/payroll-copy.ts",
+    "kind": "unicode-symbol",
+    "context": "REVERSE_UNLOCKS_TEXT > 'กลับรายการใบนี้ → ลงเวลาเดือนนี้แก้ได้อีก'",
+    "reason": "Consequence statement explains that reversal reopens editing for the related payroll month.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/components/expense-form-v4/payroll-system/payroll-copy.ts",
+    "kind": "unicode-symbol",
+    "context": "commissionWhtFormulaText > `3% × (ค่าคอม ${baht2(commission)} − หักคืน ${baht2(clawback)})`",
+    "reason": "Multiplication notation between numeric factors in a formula, quote or document.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/components/expense-form-v4/payroll-system/payroll-copy.ts",
+    "kind": "unicode-symbol",
+    "context": "commissionWhtFormulaText > `3% × ค่าคอม ${baht2(commission)}`",
+    "reason": "Multiplication notation between numeric factors in a formula, quote or document.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/components/expense-templates/RecurringBillDialog.tsx",
+    "kind": "unicode-symbol",
+    "context": "RecurringBillDialog > Dialog > DialogContent > <div className=\"grid gap-4 md:grid-cols-2\"> > <div> > call hint > '1–31 · เดือนที่มีไม่ถึงวันนั้น ใช้วันสุดท้ายของเดือน (เช่น 31 → 28 ก.พ.)'",
+    "reason": "Calendar example shows how the due date falls back to the last day in a short month.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/components/integrations/ClearSecretDialog.tsx",
+    "kind": "unicode-symbol",
+    "context": "ClearSecretDialog > AlertDialog > AlertDialogContent > div > <div className=\"flex flex-col gap-2\"> > <AlertDialogTitle className=\"text-base leading-snug\"> > ?",
+    "reason": "Question mark ending a confirmation sentence after its interpolated subject.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/components/landing/LandingNav.tsx",
+    "kind": "image-or-css-icon",
+    "context": "LandingNav > nav > div > div > <div className=\"flex items-center gap-2\"> > <img src=\"/logo-icon.svg\" alt=\"BESTCHOICE\" className=\"w-8 h-8 shrink-0\" /> > @src > \"/logo-icon.svg\"",
+    "reason": "BESTCHOICE identity in a page header, nav, or storefront shell.",
+    "category": "brand"
+  },
+  {
+    "path": "apps/web/src/components/layout/AuthLayout.tsx",
+    "kind": "image-or-css-icon",
+    "context": "AuthLayout > div > div > div > <div className=\"lg:hidden flex items-center gap-2.5 mb-8\"> > <img src=\"/logo-icon.svg\" alt=\"BESTCHOICE\" className=\"size-9 shrink-0\" /> > @src > \"/logo-icon.svg\"",
+    "reason": "BESTCHOICE identity in a page header, nav, or storefront shell.",
+    "category": "brand"
+  },
+  {
+    "path": "apps/web/src/components/layout/AuthLayout.tsx",
+    "kind": "image-or-css-icon",
+    "context": "AuthLayout > div > div > <Link to=\"/landing\" className=\"flex items-center gap-3 mb-6\"> > <img src=\"/logo-icon.svg\" alt=\"BESTCHOICE\" className=\"size-11 shrink-0\" /> > @src > \"/logo-icon.svg\"",
+    "reason": "BESTCHOICE identity in a page header, nav, or storefront shell.",
+    "category": "brand"
+  },
+  {
+    "path": "apps/web/src/components/layout/Sidebar.tsx",
+    "kind": "image-or-css-icon",
+    "context": "CollapsedSidebar > div > <Link to=\"/\" className=\"flex items-center justify-center w-full mb-1 shrink-0 py-2\"> > <img src=\"/logo-icon.svg\" alt=\"BESTCHOICE\" className=\"size-[36px] shrink-0\" /> > @src > \"/logo-icon.svg\"",
+    "reason": "BESTCHOICE identity in a page header, nav, or storefront shell.",
+    "category": "brand"
+  },
+  {
+    "path": "apps/web/src/components/layout/Sidebar.tsx",
+    "kind": "image-or-css-icon",
+    "context": "ExpandedSidebar > div > div > <Link to=\"/\" className=\"flex items-center gap-2.5\"> > <img src=\"/logo-icon.svg\" alt=\"BESTCHOICE\" className=\"size-[32px] shrink-0\" /> > @src > \"/logo-icon.svg\"",
+    "reason": "BESTCHOICE identity in a page header, nav, or storefront shell.",
+    "category": "brand"
+  },
+  {
+    "path": "apps/web/src/components/layout/Sidebar.tsx",
+    "kind": "image-or-css-icon",
+    "context": "MobileSidebarContent > div > <div className=\"flex items-center gap-3 px-5 h-[66px] shrink-0 border-b border-sidebar-border\"> > <img src=\"/logo-icon.svg\" alt=\"BESTCHOICE\" className=\"size-[32px] shrink-0\" /> > @src > \"/logo-icon.svg\"",
+    "reason": "BESTCHOICE identity in a page header, nav, or storefront shell.",
+    "category": "brand"
+  },
+  {
+    "path": "apps/web/src/components/partials/status-card.tsx",
+    "kind": "unicode-symbol",
+    "context": "StatusCard > Card > CardContent > div > <div className=\"space-y-1\"> > <p className={cn('text-xs', trend.value >= 0 ? 'text-success' : 'text-destructive')}> > '+'",
+    "reason": "Plus sign preceding a positive numeric trend value.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/components/payment/JeBlock.tsx",
+    "kind": "unicode-symbol",
+    "context": "RULES > 'ไม่คืนเงินส่วนต่าง → รายได้ยึด'",
+    "reason": "Accounting text identifies the destination account or journal posting.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/components/payment/PaymentHistorySheet.tsx",
+    "kind": "image-or-css-icon",
+    "context": "PaymentHistorySheet > Dialog > DialogContent > DialogBody > <div className=\"flex items-center justify-center py-12\"> > <div className=\"animate-spin rounded-full h-8 w-8 border-b-2 border-primary\" /> > className=\"animate-spin rounded-full h-8 w-8 border-b-2 border-primary\"",
+    "reason": "Indeterminate progress arc while payment history loads.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web/src/components/product/DeviceDisclosureFields.tsx",
+    "kind": "unicode-symbol",
+    "context": "PartsHistoryField > <div className=\"space-y-2\"> > <p className=\"text-xs text-muted-foreground leading-snug\"> > ดูจาก ตั้งค่า → ทั่วไป → เกี่ยวกับ → ประวัติชิ้นส่วนและบริการ บนตัวเครื่อง · บันทึกไว้แจ้งลูกค้า ไม่มีผลกับการคำนวณค่างวด",
+    "reason": "Arrows separate menu names in instructions for locating information in device settings.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/components/signing/StepComplete.tsx",
+    "kind": "image-or-css-icon",
+    "context": "StepComplete > div > div > <div role=\"status\" className=\"flex items-center justify-center gap-3 text-muted-foreground\"> > <div className=\"animate-spin rounded-full h-5 w-5 border-b-2 border-primary\" /> > className=\"animate-spin rounded-full h-5 w-5 border-b-2 border-primary\"",
+    "reason": "Indeterminate progress arc while generating the signed PDF.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web/src/components/signing/StepContractReview.tsx",
+    "kind": "image-or-css-icon",
+    "context": "ContractReview > div > div > <div role=\"status\" className=\"flex flex-col gap-3 items-center justify-center flex-1\"> > <div aria-hidden=\"true\" className=\"animate-spin rounded-full h-8 w-8 border-b-2 border-primary\" /> > className=\"animate-spin rounded-full h-8 w-8 border-b-2 border-primary\"",
+    "reason": "Indeterminate progress arc while loading the contract document preview.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web/src/components/signing/StepSignature.tsx",
+    "kind": "image-or-css-icon",
+    "context": "StepSignature > <div className=\"flex items-center justify-center min-h-[50vh]\"> > <div className=\"animate-spin rounded-full h-8 w-8 border-b-2 border-primary\" /> > className=\"animate-spin rounded-full h-8 w-8 border-b-2 border-primary\"",
+    "reason": "Indeterminate progress arc while automatic signing is pending.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web/src/components/signing/StepSignature.tsx",
+    "kind": "image-or-css-icon",
+    "context": "StepSignature > div > <div className=\"mb-3 flex items-center gap-2 text-xs text-muted-foreground\"> > <div className=\"animate-spin rounded-full h-3 w-3 border-b-2 border-border\" /> > className=\"animate-spin rounded-full h-3 w-3 border-b-2 border-border\"",
+    "reason": "Indeterminate progress arc while requesting GPS during signing.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web/src/components/ui/DataTable.tsx",
+    "kind": "unicode-symbol",
+    "context": "DataTable > div > <div className=\"flex min-w-0 flex-wrap items-center gap-3 border-b border-border/60 p-4\"> > <Button type=\"button\" size=\"sm\" variant=\"outline\" onClick={() => table.setSorting(sorting.map((sort, index) => index === 0 ? { ...sort, desc: !sort.desc } : sort))} > > 'มาก → น้อย'",
+    "reason": "Text names the sort order and its two endpoints.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/components/ui/DataTable.tsx",
+    "kind": "unicode-symbol",
+    "context": "DataTable > div > <div className=\"flex min-w-0 flex-wrap items-center gap-3 border-b border-border/60 p-4\"> > <Button type=\"button\" size=\"sm\" variant=\"outline\" onClick={() => table.setSorting(sorting.map((sort, index) => index === 0 ? { ...sort, desc: !sort.desc } : sort))} > > 'น้อย → มาก'",
+    "reason": "Text names the sort order and its two endpoints.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/components/ui/progress.tsx",
+    "kind": "inline-svg",
+    "context": "ProgressCircle > <div data-slot=\"progress-circle\" className={cn('relative inline-flex items-center justify-center', className)} style={{ width: size, height: size }} {...props} > > <svg className=\"absolute inset-0 -rotate-90\" width={size} height={size} viewBox={`0 0 ${size} ${size}`}> <circle data-slot=\"progress-circle-track\" cx={size / 2}… sha256:b395b465c3e656260171bc57247108ebffce6f342ae7534119535ddb6ab363c3",
+    "reason": "Data-driven circular progress track and foreground arc.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web/src/components/ui/screen-table.css",
+    "kind": "image-or-css-icon",
+    "context": ".screen-table-responsive[data-table-layout='cards'] > table > :is(tbody, tfoot) > tr > [data-table-label]:not([data-table-label=''])::before > content: attr(data-table-label) / ''",
+    "reason": "CSS prints the existing column name as a mobile table row label.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/components/ui/screen-table.css",
+    "kind": "image-or-css-icon",
+    "context": ".screen-table-responsive[data-table-layout='cards'] > table > thead > tr > th[data-table-select-all='true']::after > content: 'เลือกทั้งหมด'",
+    "reason": "CSS prints the select-all label for the mobile table.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/hooks/useCompanyInfo.ts",
+    "kind": "unicode-symbol",
+    "context": "useCompanyDisplayName > `${finance.nameTh} × ${shop.nameTh}`",
+    "reason": "Co-branded company label joining the FINANCE and SHOP names.",
+    "category": "brand"
+  },
+  {
+    "path": "apps/web/src/hooks/useCompanyInfo.ts",
+    "kind": "unicode-symbol",
+    "context": "useCompanyDisplayName > 'BESTCHOICE FINANCE × SHOP'",
+    "reason": "Co-branded company label joining the FINANCE and SHOP names.",
+    "category": "brand"
+  },
+  {
+    "path": "apps/web/src/index.css",
+    "kind": "image-or-css-icon",
+    "context": ".tiptap.ProseMirror p.is-editor-empty:first-child::before > content: attr(data-placeholder)",
+    "reason": "CSS reveals the editor-provided Tiptap placeholder.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/lib/kiosk-api.ts",
+    "kind": "image-or-css-icon",
+    "context": "kioskApi > punch > out > call deviceCall > call form.set > 'photo.jpg'",
+    "reason": "File name metadata for an uploaded kiosk photograph.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/lib/line-flex.ts",
+    "kind": "unicode-symbol",
+    "context": "FLEX_TEMPLATES > product > name > '📱 สินค้า'",
+    "reason": "LINE Flex template display name and fallback title in the authored message.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/lib/line-flex.ts",
+    "kind": "unicode-symbol",
+    "context": "FLEX_TEMPLATES > promotion > name > '🎁 โปรโมชัน'",
+    "reason": "LINE Flex template display name and fallback title in the authored message.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/lib/line-flex.ts",
+    "kind": "unicode-symbol",
+    "context": "FLEX_TEMPLATES > custom > name > '✏️ กำหนดเอง'",
+    "reason": "LINE Flex template display name and fallback title in the authored message.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/AiPersonaPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "EditablePersonaCard > <ConfirmDialog open={revertOpen} onOpenChange={setRevertOpen} title=\"คืนค่าเริ่มต้น?\" description={`ลบข้อความที่ปรับแต่งของ \"${title}\" → กลับไปใช้ค่าฝังในโค้ด (… sha256:bfaf2b1bc017c2f69b324bfc84e0cd694382d97920ba361f97915826723685be > @description > `ลบข้อความที่ปรับแต่งของ \"${title}\" → กลับไปใช้ค่าฝังในโค้ด (${defaultValue.length.toLocaleString('th-TH')} ตัวอักษร) มีผลทันที — ข้อความที่แก้ไว้จะหายไป`",
+    "reason": "Confirmation copy explains the transition from custom text to the default.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/AiSettingsPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "ChannelRoutingCard > Card > <CardHeader> > <CardTitle className=\"text-base flex items-center gap-2 leading-snug\"> > ช่องทาง → บอท ที่ใช้ตอบ",
+    "reason": "Text describes the mapping from a channel to its reply bot.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/BankAccountsPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "AccountDrawer > Sheet > SheetContent > QueryBoundary > div > div > QueryBoundary > div > <div className=\"bg-muted rounded-lg p-2.5 flex flex-col gap-0.5\"> > <span className=\"text-sm font-semibold leading-snug text-success\"> > +",
+    "reason": "Plus sign indicates a positive bank-ledger amount.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/BankAccountsPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "AccountDrawer > Sheet > SheetContent > QueryBoundary > div > div > QueryBoundary > div > call displayLines.slice(0, MAX_DRAWER_LINES).map > div > div > <div className=\"text-right shrink-0\"> > <p className=\"text-sm font-medium text-success\"> > +",
+    "reason": "Plus sign indicates a positive bank-ledger amount.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/BookingsPage/components/BookingDetailSheet.tsx",
+    "kind": "unicode-symbol",
+    "context": "BookingDetailSheet > Sheet > SheetContent > fieldset > <p role=\"alert\" className=\"flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 leading-snug\" > > <span> > 'รับมัดจำไม่ได้ ที่เมนู ⋯ เลือก แก้ไขใบจอง → เปลี่ยนเครื่อง'",
+    "reason": "Explanatory text refers to the ellipsis menu and describes the booking next step.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/BookingsPage/components/BookingDetailSheet.tsx",
+    "kind": "unicode-symbol",
+    "context": "BookingDetailSheet > Sheet > SheetContent > fieldset > <p role=\"alert\" className=\"flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 leading-snug\" > > <span> > 'รับมัดจำไม่ได้ ใบจองนี้เปลี่ยนเครื่องไม่ได้ ที่เมนู ⋯ เลือก ยกเลิกใบจองแล้วสร้างใหม่'",
+    "reason": "Explanatory text refers to the ellipsis menu and describes the booking next step.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/BookingsPage/components/BookingDetailSheet.tsx",
+    "kind": "unicode-symbol",
+    "context": "BookingDetailSheet > Sheet > SheetContent > fieldset > <p role=\"alert\" className=\"flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 leading-snug\" > > <span> > 'แปลงขายไม่ได้ ที่เมนู ⋯ เลือก ยกเลิกใบจองเพื่อคืนมัดจำ แล้วออกใบจองใหม่'",
+    "reason": "Explanatory text refers to the ellipsis menu and describes the booking next step.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/ChatbotFinanceLearningPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "ChatbotFinanceLearningPage > div > div > div > div > <div className=\"flex gap-2 pt-3 border-t\"> > <button data-ui-control=\"button\" onClick={() => approveMutation.mutate(selectedSuggestion.id)} disabled={approveMutation.isPending} className=\"px-4 py-2 bg-prim… sha256:0d468a08e303523bb244ac140bcb8058e8e24d2cbaad248fda43bc58b1162f05 > \"อนุมัติ → สร้าง KB\"",
+    "reason": "Action label describes the operation and its resulting knowledge-base entry.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/CollectionDashboardPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "MoMIndicator > <div className={cn( 'flex items-center gap-0.5 text-xs font-medium mt-1', isGood ? 'text-success' : 'text-destructive', )} > > <span> > '+'",
+    "reason": "Plus sign preceding a positive numeric trend value.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/CollectionsPage/components/EvidenceThumbnailGrid.tsx",
+    "kind": "unicode-symbol",
+    "context": "EvidenceThumbnailGrid > <p className=\"mt-1 text-xs text-muted-foreground\"> > +",
+    "reason": "Signed count of additional evidence photos.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/CollectionsPage/components/KeyboardShortcutsOverlay.tsx",
+    "kind": "unicode-symbol",
+    "context": "GROUPS > title: 'ทั่วไป' > rows > label: 'เปิด/ปิดหน้าช่วยเหลือ' > keys > '?'",
+    "reason": "Keyboard shortcut or key combination label.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/CollectionsPage/components/KeyboardShortcutsOverlay.tsx",
+    "kind": "unicode-symbol",
+    "context": "GROUPS > title: 'การ์ดในคิว' > rows > label: 'ย้ายโฟกัสลง' > keys > '↓'",
+    "reason": "Keyboard shortcut or key combination label.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/CollectionsPage/components/KeyboardShortcutsOverlay.tsx",
+    "kind": "unicode-symbol",
+    "context": "GROUPS > title: 'การ์ดในคิว' > rows > label: 'ย้ายโฟกัสขึ้น' > keys > '↑'",
+    "reason": "Keyboard shortcut or key combination label.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/CollectionsPage/components/SortDropdown.tsx",
+    "kind": "unicode-symbol",
+    "context": "SORT_OPTIONS > label > 'ยอดค้าง สูง→ต่ำ'",
+    "reason": "Text names the sort order and its two endpoints.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/CollectionsPage/components/SortDropdown.tsx",
+    "kind": "unicode-symbol",
+    "context": "SORT_OPTIONS > label > 'ยอดค้าง ต่ำ→สูง'",
+    "reason": "Text names the sort order and its two endpoints.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/CollectionsPage/tabs/AnalyticsTab/ComplianceDashboardSection.tsx",
+    "kind": "unicode-symbol",
+    "context": "ComplianceDashboardSection > Card > Dialog > <DialogContent className=\"max-w-2xl\"> > <DetailDialog title=\"ระยะเวลาเก็บเสียงบันทึก\" description={ retention.data ? `HOT > ${retention.data.hotDays} วัน → Glacier · > ${retention.data.deleteDays} วัน → Delete` : '' } > > @description > `HOT > ${retention.data.hotDays} วัน → Glacier · > ${retention.data.deleteDays} วัน → Delete`",
+    "reason": "Retention text describes the record state after the configured number of days.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/ContractCreatePage/components/CustomerCreateModal.tsx",
+    "kind": "image-or-css-icon",
+    "context": "CustomerCreateModal > Dialog > DialogContent > form > div > div > <div className=\"flex items-center gap-3\"> > <div className=\"animate-spin rounded-full h-5 w-5 border-b-2 border-success\" /> > className=\"animate-spin rounded-full h-5 w-5 border-b-2 border-success\"",
+    "reason": "Indeterminate progress arc while reading the smart card in contract creation.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web/src/pages/ContractCreatePage/components/PlanDetailsStep.tsx",
+    "kind": "unicode-symbol",
+    "context": "PlanDetailsStep > Form > div > div > call (() => { const fmt = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); const totalPaid = downPayment + tradeIn… sha256:40da1aff52f3b220747e9ac852dc6c253e762f58170baad1fb8c9392bbe7048b > div > details > div > <div className=\"flex justify-between\"> > <span className=\"text-muted-foreground\"> > `+ ดอกเบี้ย (${(interestRate * 100).toFixed(2)}% × ${totalMonths} เดือน)`",
+    "reason": "Multiplication notation between numeric factors in a formula, quote or document.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/ContractSignPage.tsx",
+    "kind": "image-or-css-icon",
+    "context": "ContractSignPage > <div className=\"flex items-center justify-center min-h-[60vh]\"> > <div className=\"animate-spin rounded-full h-8 w-8 border-b-2 border-primary\" /> > className=\"animate-spin rounded-full h-8 w-8 border-b-2 border-primary\"",
+    "reason": "Indeterminate progress arc while loading the contract for signing.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web/src/pages/ContractVerifyPage.tsx",
+    "kind": "image-or-css-icon",
+    "context": "ContractVerifyPage > div > div > div > <div className=\"flex flex-col items-center py-8\"> > <div className=\"animate-spin rounded-full h-8 w-8 border-b-2 border-primary\" /> > className=\"animate-spin rounded-full h-8 w-8 border-b-2 border-primary\"",
+    "reason": "Indeterminate progress arc while verifying a contract.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web/src/pages/CustomerDetailPage/tabs/LoyaltyTab.tsx",
+    "kind": "unicode-symbol",
+    "context": "LoyaltyTab > Card > CardContent > div > call loyaltyHistory.data.map > <div key={item.id} className=\"flex items-center justify-between py-2.5 border-b border-border/40 last:border-0\" > > <span className={`text-sm font-bold ${ item.type === 'EARN' ? 'text-success' : 'text-warning-strong' }`} > > '+'",
+    "reason": "Arithmetic sign preceding the numeric loyalty points amount.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/CustomerPortalPage.tsx",
+    "kind": "image-or-css-icon",
+    "context": "CustomerPortalPage > div > <div className=\"text-center\"> > <div className=\"animate-spin rounded-full h-10 w-10 border-b-2 border-primary mx-auto\"> > className=\"animate-spin rounded-full h-10 w-10 border-b-2 border-primary mx-auto\"",
+    "reason": "Indeterminate progress arc while the portal data loads.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web/src/pages/CustomersPage/components/CustomerCells.tsx",
+    "kind": "unicode-symbol",
+    "context": "TagsCell > <span className=\"inline-flex min-w-0 items-center gap-1\"> > <span className=\"shrink-0 text-[11px] text-muted-foreground\"> > +",
+    "reason": "Signed count of additional visible or hidden tags.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/CustomersPage/sortKeys.ts",
+    "kind": "unicode-symbol",
+    "context": "SORT_DIRECTION_WORDS > name > asc > 'ก → ฮ'",
+    "reason": "Text names the sort order and its two endpoints.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/CustomersPage/sortKeys.ts",
+    "kind": "unicode-symbol",
+    "context": "SORT_DIRECTION_WORDS > name > desc > 'ฮ → ก'",
+    "reason": "Text names the sort order and its two endpoints.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/CustomersPage/sortKeys.ts",
+    "kind": "unicode-symbol",
+    "context": "SORT_DIRECTION_WORDS > contractCount > asc > 'น้อย → มาก'",
+    "reason": "Text names the sort order and its two endpoints.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/CustomersPage/sortKeys.ts",
+    "kind": "unicode-symbol",
+    "context": "SORT_DIRECTION_WORDS > contractCount > desc > 'มาก → น้อย'",
+    "reason": "Text names the sort order and its two endpoints.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/CustomersPage/sortKeys.ts",
+    "kind": "unicode-symbol",
+    "context": "SORT_DIRECTION_WORDS > creditScore > asc > 'น้อย → มาก'",
+    "reason": "Text names the sort order and its two endpoints.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/CustomersPage/sortKeys.ts",
+    "kind": "unicode-symbol",
+    "context": "SORT_DIRECTION_WORDS > creditScore > desc > 'มาก → น้อย'",
+    "reason": "Text names the sort order and its two endpoints.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/CustomersPage/sortKeys.ts",
+    "kind": "unicode-symbol",
+    "context": "SORT_DIRECTION_WORDS > createdAt > asc > 'เก่า → ใหม่'",
+    "reason": "Text names the sort order and its two endpoints.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/CustomersPage/sortKeys.ts",
+    "kind": "unicode-symbol",
+    "context": "SORT_DIRECTION_WORDS > createdAt > desc > 'ใหม่ → เก่า'",
+    "reason": "Text names the sort order and its two endpoints.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/DashboardPage/components/DashboardKPIs.tsx",
+    "kind": "unicode-symbol",
+    "context": "MoMIndicator > <div className={cn( 'flex items-center gap-0.5 text-2xs font-medium mt-1', isPositive ? 'text-success' : 'text-destructive', )} > > <span> > '+'",
+    "reason": "Plus sign preceding a positive numeric trend value.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/DunningSettingsPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "DunningSettingsPage > div > Card > CardContent > <div className=\"space-y-4\"> > <LetterAssetField label=\"ลายเซ็นต์ผู้มีอำนาจ *\" hint=\"PNG 200×80px พื้นหลังโปร่งใส\" currentUrl={signatureUrl} uploadKind=\"LETTER_SIGNATURE\" onSaved={(url) => saveConfig('letter_signature_url', url)} /> > @hint > \"PNG 200×80px พื้นหลังโปร่งใส\"",
+    "reason": "Multiplication separator in image or document dimensions.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/DunningSettingsPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "DunningSettingsPage > div > Card > CardContent > <div className=\"space-y-4\"> > <LetterAssetField label=\"หัวกระดาษ (ไม่บังคับ)\" hint=\"PNG 600×100px แนวนอน\" currentUrl={letterheadUrl} uploadKind=\"LETTER_LETTERHEAD\" onSaved={(url) => saveConfig('letter_letterhead_url', url)} /> > @hint > \"PNG 600×100px แนวนอน\"",
+    "reason": "Multiplication separator in image or document dimensions.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/DunningSettingsPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "DunningSettingsPage > div > Card > CardContent > <div className=\"space-y-4\"> > <LetterAssetField label=\"ภาพพื้นหลัง เตือนบนเครื่องลูกค้า\" hint=\"PNG 1080×1920px แนวตั้ง · แสดงบน lock screen เมื่อ MDM ล็อคเครื่อง\" currentUrl={wallpaperUrl} u… sha256:2152b6b4702685bd9dd9708d9a57e2191b7e9f8192713940fa1d93e75aca5df5 > @hint > \"PNG 1080×1920px แนวตั้ง · แสดงบน lock screen เมื่อ MDM ล็อคเครื่อง\"",
+    "reason": "Multiplication separator in image or document dimensions.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/FinanceReceivablePage/FinanceContactLogDialog.tsx",
+    "kind": "unicode-symbol",
+    "context": "FinanceContactLogDialog > Modal > div > div > <NativeSelect wrapperClassName=\"max-w-full w-full\" id={`${uiFieldId}-1`} value={contactId ?? ''} onChange={(e) => setContactId(e.target.value || undefined)} > > call contacts?.map > <option key={c.id} value={c.id}> > ' ★ ตัวหลัก'",
+    "reason": "Primary-contact text marker inside a browser native select option.",
+    "category": "external-native"
+  },
+  {
+    "path": "apps/web/src/pages/FinancialAuditPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "FinancialAuditPage > columns > key: 'details' > render > <div className=\"text-xs max-w-[300px]\"> > <div className=\"text-muted-foreground\"> > →",
+    "reason": "Audit data shows transition from the prior value to the next value.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/ForgotPasswordPage.tsx",
+    "kind": "image-or-css-icon",
+    "context": "ForgotPasswordPage > AuthLayout > div > <div className=\"flex items-center gap-3 mb-6\"> > <img src=\"/logo-icon.svg\" alt=\"BESTCHOICE\" className=\"size-10 shrink-0\" /> > @src > \"/logo-icon.svg\"",
+    "reason": "BESTCHOICE identity in a page header, nav, or storefront shell.",
+    "category": "brand"
+  },
+  {
+    "path": "apps/web/src/pages/GfinConfigPage/gfinPriceListImport.ts",
+    "kind": "unicode-symbol",
+    "context": "buildGfinImportReview > call rows.forEach > call changes.push > `ราคา ${Number(before.maxPrice).toLocaleString('th-TH')} → ${price.toLocaleString('th-TH')}`",
+    "reason": "Text summarizes configured values before and after a proposed rule change or shows its arithmetic.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/GfinConfigPage/gfinPriceListImport.ts",
+    "kind": "unicode-symbol",
+    "context": "buildGfinImportReview > call rows.forEach > call changes.push > `คำจับคู่ \"${before.modelMatchPattern}\" → \"${canonical}\"`",
+    "reason": "Text summarizes configured values before and after a proposed rule change or shows its arithmetic.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/GfinConfigPage/import/gfinImportTerms.ts",
+    "kind": "unicode-symbol",
+    "context": "ruleChangeText > call parts.push > `OVER +${fmt(pair.current.allowance)} → +${fmt(change.allowance)}`",
+    "reason": "Text summarizes configured values before and after a proposed rule change or shows its arithmetic.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/GfinConfigPage/import/gfinImportTerms.ts",
+    "kind": "unicode-symbol",
+    "context": "ruleChangeText > call parts.push > `ผ่อนสูงสุด ${pair.current.maxMonths ?? 'ไม่จำกัด'} → ${change.maxMonths} งวด`",
+    "reason": "Text summarizes configured values before and after a proposed rule change or shows its arithmetic.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/GfinConfigPage/terms/RuleEditDialog.tsx",
+    "kind": "unicode-symbol",
+    "context": "RuleEditDialog > Dialog > DialogContent > div > <div className=\"rounded-lg border border-border bg-muted p-3 text-sm leading-snug\"> > <p className=\"mt-2 text-muted-foreground\"> > →",
+    "reason": "Text summarizes configured values before and after a proposed rule change or shows its arithmetic.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/GfinConfigPage/terms/RuleEditDialog.tsx",
+    "kind": "unicode-symbol",
+    "context": "RuleEditDialog > Dialog > DialogContent > div > <div className=\"rounded-lg border border-border bg-muted p-3 text-sm leading-snug\"> > <p className=\"mt-2 text-muted-foreground\"> > → (occurrence 2)",
+    "reason": "Text summarizes configured values before and after a proposed rule change or shows its arithmetic.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/GfinConfigPage/terms/RuleEditDialog.tsx",
+    "kind": "unicode-symbol",
+    "context": "RuleEditDialog > Dialog > DialogContent > div > <div className=\"rounded-lg border border-border bg-muted p-3 text-sm leading-snug\"> > <p className=\"mt-2 text-muted-foreground\"> > ×",
+    "reason": "Text summarizes configured values before and after a proposed rule change or shows its arithmetic.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/GfinConfigPage/terms/ruleChange.ts",
+    "kind": "unicode-symbol",
+    "context": "describeEdit > call lines.push > `OVER ${before(rows, allowanceLabel)} → +${fmt(edit.allowance.value)}`",
+    "reason": "Text summarizes configured values before and after a proposed rule change or shows its arithmetic.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/GfinConfigPage/terms/ruleChange.ts",
+    "kind": "unicode-symbol",
+    "context": "describeEdit > call lines.push > `ผ่อนสูงสุด ${before(rows, monthsLabel)} → ${edit.maxMonths.value} งวด`",
+    "reason": "Text summarizes configured values before and after a proposed rule change or shows its arithmetic.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/GfinConfigPage/terms/ruleChange.ts",
+    "kind": "unicode-symbol",
+    "context": "describeEdit > call lines.push > `ดาวน์ ${before(rows, downLabel)} → ${defaultDownPct}% (ค่ากลาง)`",
+    "reason": "Text summarizes configured values before and after a proposed rule change or shows its arithmetic.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/GfinConfigPage/terms/ruleChange.ts",
+    "kind": "unicode-symbol",
+    "context": "describeEdit > call lines.push > `ดาวน์ ${before(rows, downLabel)} → ${edit.down.value}% (ตั้งเฉพาะรุ่น)`",
+    "reason": "Text summarizes configured values before and after a proposed rule change or shows its arithmetic.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/IntegrationHubPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "ConfigDrawer > Dialog > DialogContent > DialogBody > form > call entry.fields.map > <div key={field.key} className=\"space-y-1.5\"> > <PasswordField field={field} value={formValues[field.key] ?? ''} placeholder={ stored ? '●●●●●●●● (กรอกใหม่เพื่อเปลี่ยน)' : field.placeholder || `วาง ${field.la… sha256:962b82e6cc13ec35d617e21ad449a42d175058e57eb1514495755d6f78c9f8e2 > @placeholder > '●●●●●●●● (กรอกใหม่เพื่อเปลี่ยน)'",
+    "reason": "Masked-value placeholder explains that entering a new value replaces the stored secret.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/IntercompanySettlementPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "IntercompanySettlementPage > <div className=\"space-y-6\"> > <PageHeader title=\"จ่ายให้หน้าร้าน\" subtitle=\"รวมสัญญาเป็นรอบจ่าย → อนุมัติ 2 ขั้น (maker-checker) → ลงบัญชี FINANCE ↔ SHOP แบบ atomic\" icon={<ArrowRightLeft className=\"h-6 w-6\" />} /> > @subtitle > \"รวมสัญญาเป็นรอบจ่าย → อนุมัติ 2 ขั้น (maker-checker) → ลงบัญชี FINANCE ↔ SHOP แบบ atomic\"",
+    "reason": "Explanatory copy lists the steps in a settlement.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/LineGreetingPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "DEFAULT_MESSAGES > id: '1' > content > text > 'สวัสดีครับ! ยินดีต้อนรับสู่ BESTCHOICE 🎉\\n\\nร้านมือถือผ่อนราคาดี ดาวน์น้อย อนุมัติไว\\nสนใจสอบถามได้เลยครับ/ค่ะ'",
+    "reason": "Editable default greeting message sent to LINE customers.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/LineGreetingPage.tsx",
+    "kind": "image-or-css-icon",
+    "context": "ImageEditor > div > <div> > <Input id={`${uiFieldId}-1`} placeholder=\"https://example.com/image.jpg\" value={c.imageUrl} onChange={(e) => onChange({ ...message, content: { ...c, imageUrl: e.target.value } })} /> > @placeholder > \"https://example.com/image.jpg\"",
+    "reason": "Example URL in the LINE greeting image-content form.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/LineGreetingPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "LineGreetingPage > div > QueryBoundary > div > div > div > div > div > div > <div className=\"p-3 space-y-2.5 flex-1 overflow-y-auto\"> > <div className=\"flex gap-1.5 overflow-x-auto pb-1 mt-1 ml-8\"> > call ['📱 ดูสินค้า', '💰 สอบถาม', '📄 ดูสัญญา', '💬 พนักงาน'].map > ['📱 ดูสินค้า', '💰 สอบถาม', '📄 ดูสัญญา', '💬 พนักงาน']",
+    "reason": "Quick reply text in the LINE message preview.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/LineOaSettingsPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "LineOaSettingsPage > div > QueryBoundary > form > div > div > div > <ol className=\"text-sm text-info space-y-1.5 list-decimal list-inside\"> > <li> > &rarr; คัดลอก",
+    "reason": "Arrows separate written steps in the LINE Developers Console instructions.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/LineOaSettingsPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "LineOaSettingsPage > div > QueryBoundary > form > div > div > div > <ol className=\"text-sm text-info space-y-1.5 list-decimal list-inside\"> > <li> > &rarr; กด",
+    "reason": "Arrows separate written steps in the LINE Developers Console instructions.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/LineOaSettingsPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "LineOaSettingsPage > div > QueryBoundary > form > div > div > div > <ol className=\"text-sm text-success space-y-1 list-decimal list-inside\"> > <li> > เปิด LINE Developers Console &rarr; เลือก Channel ของคุณ",
+    "reason": "Arrows separate written steps in the LINE Developers Console instructions.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/LineOaSettingsPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "LineOaSettingsPage > div > QueryBoundary > form > div > div > div > <ol className=\"text-sm text-success space-y-1 list-decimal list-inside\"> > <li> > &rarr; กด Edit &rarr; วาง URL ด้านล่าง",
+    "reason": "Arrows separate written steps in the LINE Developers Console instructions.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/LineOaSettingsPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "LineOaSettingsPage > div > QueryBoundary > form > div > div > div > <ol className=\"text-sm text-warning-strong space-y-1.5 list-decimal list-inside\"> > <li> > เปิด LINE Developers Console &rarr; เลือก Channel",
+    "reason": "Arrows separate written steps in the LINE Developers Console instructions.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/LineOaSettingsPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "LineOaSettingsPage > div > QueryBoundary > form > div > div > div > <ol className=\"text-sm text-warning-strong space-y-1.5 list-decimal list-inside\"> > <li> > &rarr; กด",
+    "reason": "Arrows separate written steps in the LINE Developers Console instructions.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/LoginPage.tsx",
+    "kind": "image-or-css-icon",
+    "context": "LoginPage > AuthLayout > div > <div className=\"flex items-center gap-3 mb-6\"> > <img src=\"/logo-icon.svg\" alt=\"BESTCHOICE\" className=\"size-10 shrink-0\" /> > @src > \"/logo-icon.svg\"",
+    "reason": "BESTCHOICE identity in a page header, nav, or storefront shell.",
+    "category": "brand"
+  },
+  {
+    "path": "apps/web/src/pages/NotificationsPage/components/TemplateForm.tsx",
+    "kind": "unicode-symbol",
+    "context": "TemplateForm > Modal > form > div > <div className=\"mt-2 p-3 bg-primary/5 border border-primary/20 rounded-lg\"> > <p className=\"text-xs text-primary/70 mt-2\"> > → ชื่อลูกค้า",
+    "reason": "Template-field explanation maps a substitution variable to the customer name.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/POSPage/components/CustomerSearch.tsx",
+    "kind": "image-or-css-icon",
+    "context": "CustomerSearch > Card > CardContent > div > div > div > <div className=\"px-3 py-4 text-center text-sm text-muted-foreground\"> > <div className=\"animate-spin rounded-full h-5 w-5 border-b-2 border-primary mx-auto mb-2\" /> > className=\"animate-spin rounded-full h-5 w-5 border-b-2 border-primary mx-auto mb-2\"",
+    "reason": "Indeterminate progress arc while a POS search resolves.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web/src/pages/POSPage/components/ProductSearch.tsx",
+    "kind": "image-or-css-icon",
+    "context": "ProductSearch > Card > CardContent > div > div > <div className=\"px-3 py-4 text-center text-sm text-muted-foreground\"> > <div className=\"animate-spin rounded-full h-5 w-5 border-b-2 border-primary mx-auto mb-2\" /> > className=\"animate-spin rounded-full h-5 w-5 border-b-2 border-primary mx-auto mb-2\"",
+    "reason": "Indeterminate progress arc while a POS search resolves.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web/src/pages/POSPage/components/SaleSummary.tsx",
+    "kind": "image-or-css-icon",
+    "context": "SaleSummary > Card > CardContent > div > button > <span className=\"flex items-center justify-center gap-2\"> > <span className=\"animate-spin rounded-full h-4 w-4 border-b-2 border-white\" /> > className=\"animate-spin rounded-full h-4 w-4 border-b-2 border-white\"",
+    "reason": "Indeterminate progress arc while a POS sale saves.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web/src/pages/ParcelLabelPage/ParcelLabelCard.tsx",
+    "kind": "unicode-symbol",
+    "context": "ParcelLabelCard > article > div > <div className=\"pl-items-text\"> > <div className=\"pl-item-extras\"> > +",
+    "reason": "Signed count of additional items on a parcel label.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/ParcelLabelPage/index.tsx",
+    "kind": "unicode-symbol",
+    "context": "FORMAT_LABEL > LABEL_100x150 > 'ฉลาก 100 × 150 มม.'",
+    "reason": "Multiplication separator in image or document dimensions.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/PaymentMethodSettingsPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "PaymentMethodSettingsPage > call useDocumentTitle > 'ช่องทางรับชำระ × บัญชี'",
+    "reason": "Text describes the pairing of payment channels and accounts.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/PaymentMethodSettingsPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "PaymentMethodSettingsPage > <div className=\"space-y-4 p-4 md:p-6\"> > <PageHeader title=\"ช่องทางรับชำระ × บัญชี\" subtitle=\"ตั้งค่าว่าช่องทางใดใช้บัญชีไหนได้บ้าง · เลือกค่าเริ่มต้นของแต่ละช่องทาง\" action={ <Button onClick={() => se… sha256:fdd8cd0321e529e4a64cc4ff244b84a4f2f75b8f127b87e93260ae0e0a28f6a3 > @title > \"ช่องทางรับชำระ × บัญชี\"",
+    "reason": "Text describes the pairing of payment channels and accounts.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/PaymentVoucherPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "PayrollSlipSheet > article > div > section > table > thead > <tr> > <th className=\"border border-border p-2 text-right font-medium leading-snug w-36\"> > ชม. × อัตรา",
+    "reason": "Multiplication notation between numeric factors in a formula, quote or document.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/PaymentVoucherPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "PayrollSlipSheet > article > div > section > table > tbody > <tr> > <td className=\"border border-border p-2 text-right tabular-nums text-muted-foreground\"> > `3% × ${formatNumberDecimal(commissionWhtBase.toString())}`",
+    "reason": "Multiplication notation between numeric factors in a formula, quote or document.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/PaymentVoucherPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "hoursTimesRate > `${fmtOt(parseFloat(row.quantity))} × ${rateText(row.rate)}`",
+    "reason": "Multiplication notation between numeric factors in a formula, quote or document.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/PaymentsPage/components/PaymentKpiCards.tsx",
+    "kind": "unicode-symbol",
+    "context": "PaymentKpiCards > cards > label: 'ค่าปรับล่าช้า (รอเก็บ)' > foot > →",
+    "reason": "Accounting text identifies the destination account or journal posting.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/PaymentsPage/components/PaymentKpiCards.tsx",
+    "kind": "unicode-symbol",
+    "context": "PaymentKpiCards > cards > label: 'ค่าปรับที่ไม่เรียกเก็บ (อนุโลม)' > foot > →",
+    "reason": "Accounting text identifies the destination account or journal posting.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/PaymentsPage/components/PaymentModals.tsx",
+    "kind": "image-or-css-icon",
+    "context": "SlipScannerSection > div > <button data-ui-control=\"button\" type=\"button\" onClick={() => fileRef.current?.click()} disabled={loading} className=\"inline-flex items-center gap-2 px-3 py-1.5… sha256:38d97b200e96e3b13eb3e3f87ad8ed0f9fee78d957edd9f72bd07d872f0c2e38 > <div className=\"animate-spin rounded-full h-3 w-3 border-b-2 border-success-foreground\" /> > className=\"animate-spin rounded-full h-3 w-3 border-b-2 border-success-foreground\"",
+    "reason": "Indeterminate progress arc while reading a payment slip.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web/src/pages/PaymentsPage/components/PaymentModals.tsx",
+    "kind": "unicode-symbol",
+    "context": "RecordPaymentModal > div > div > div > div > div > <div className=\"flex justify-between text-destructive\"> > <span className=\"font-medium\"> > +",
+    "reason": "Plus sign preceding an additional late-fee amount.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/PaymentsPage/components/PaymentSummary.tsx",
+    "kind": "image-or-css-icon",
+    "context": "PaymentSummary > div > <div className=\"flex items-center justify-center py-16\"> > <div className=\"animate-spin rounded-full h-8 w-8 border-b-2 border-primary\" /> > className=\"animate-spin rounded-full h-8 w-8 border-b-2 border-primary\"",
+    "reason": "Indeterminate progress arc while payment totals load.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web/src/pages/PaymentsPage/components/PaymentTable.tsx",
+    "kind": "image-or-css-icon",
+    "context": "PaymentTable > Card > CardContent > <div className=\"flex items-center justify-center py-12\"> > <div className=\"animate-spin rounded-full h-8 w-8 border-b-2 border-primary\"> > className=\"animate-spin rounded-full h-8 w-8 border-b-2 border-primary\"",
+    "reason": "Indeterminate progress arc while pending payments load.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web/src/pages/PaymentsPage/components/RepossessionOverlay.tsx",
+    "kind": "unicode-symbol",
+    "context": "RepossessionOverlay > WizardStackedOverlay > div > Section > div > div > <div className={`flex justify-between items-center mt-2 p-3 rounded-lg ${ preview.calculation.profitLoss >= 0 ? 'bg-success/10 ring-1 ring-success/30' : 'bg-destructive/10 ring-1 ring-destructive/30' }`} > > <div className={`text-xl font-bold ${preview.calculation.profitLoss >= 0 ? 'text-success' : 'text-destructive'}`} > > '+'",
+    "reason": "Plus sign preceding a positive repossession amount shown as a number.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/PaymentsPage/components/RepossessionOverlay.tsx",
+    "kind": "unicode-symbol",
+    "context": "RepossessionOverlay > WizardStackedOverlay > div > Section > div > div > div > <div className=\"flex justify-between gap-3\"> > <span className=\"font-medium text-foreground\"> > '+'",
+    "reason": "Plus sign preceding a positive repossession amount shown as a number.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/PaymentsPage/components/RepossessionOverlay.tsx",
+    "kind": "unicode-symbol",
+    "context": "RepossessionOverlay > WizardStackedOverlay > div > Section > <ul className=\"space-y-1.5 text-sm\"> > <Effect text=\"ใบรับเครื่องคืน → ยืนยันแล้ว + บันทึกการเดินทางลูกค้า 'คืนเครื่อง'\" /> > @text > \"ใบรับเครื่องคืน → ยืนยันแล้ว + บันทึกการเดินทางลูกค้า 'คืนเครื่อง'\"",
+    "reason": "Explanatory text states what confirming the return receipt records.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/PaymentsPage/components/RescheduleOverlay.tsx",
+    "kind": "unicode-symbol",
+    "context": "RescheduleOverlay > WizardStackedOverlay > div > Section > <div className=\"space-y-1.5 text-sm\"> > <p className=\"text-xs text-muted-foreground leading-snug\"> > ) ÷ 30 ×",
+    "reason": "Multiplication notation between numeric factors in a formula, quote or document.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/PaymentsPage/components/RescheduleOverlay.tsx",
+    "kind": "unicode-symbol",
+    "context": "RescheduleOverlay > WizardStackedOverlay > div > Section > <ul className=\"space-y-1.5 text-sm\"> > <Effect text={`เก็บเงิน ${formatNumericText(collect.toFixed(2))} บาท${lateFee.gt(0) ? ` (รวมค่าปรับ ${formatNumericText(lateFee.toFixed(2))} บาท → ลงบัญชี 42-1103)` : ''} + ลงบัญชีทันที`} /> > @text > ` (รวมค่าปรับ ${formatNumericText(lateFee.toFixed(2))} บาท → ลงบัญชี 42-1103)`",
+    "reason": "Accounting text identifies the destination account or journal posting.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/PaymentsPage/index.tsx",
+    "kind": "image-or-css-icon",
+    "context": "PaymentsPage > div > <PageHeader title=\"ชำระเงิน\" subtitle=\"บันทึกการรับชำระค่างวด\" action={ <div className=\"flex items-center gap-2\"> <input ref={quickSlipFileRef} type=\"file\" acce… sha256:9365d1b07535c6e5f52fb343f2b0ab071feea694ac15118ca968cb065cab8528 > @action > div > <button data-ui-control=\"button\" onClick={() => quickSlipFileRef.current?.click()} disabled={quickOcrLoading} className=\"inline-flex items-center gap-2 px-5 py-… sha256:8e28e9fe14f620a02395522a4f4e04ea254350e3197f220d1903cbcbff4030be > <div className=\"animate-spin rounded-full h-4 w-4 border-b-2 border-primary-foreground\" /> > className=\"animate-spin rounded-full h-4 w-4 border-b-2 border-primary-foreground\"",
+    "reason": "Indeterminate progress arc while the quick slip scan runs.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web/src/pages/ProductCreatePage/components/PriceCard.tsx",
+    "kind": "unicode-symbol",
+    "context": "Plan > <p className=\"leading-snug\"> > ×",
+    "reason": "Multiplication notation between numeric factors in a formula, quote or document.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/ProductDetailPage/components/InstallmentCalculatorCard.tsx",
+    "kind": "unicode-symbol",
+    "context": "InstallmentCalculatorCard > gfinCompareNotice > call (() => { if (!gfin) { return loading ? 'กำลังโหลดตาราง GFIN...' : 'โหลดตาราง GFIN ไม่สำเร็จ — ลองรีเฟรช'; } const gfinQuote = gfin.quote; if (gfinQuote.availabl… sha256:a4456806e19d41af0aa99c3fd31041713c95ebd5107e88c878a46fa8fd887f19 > 'GFIN: รุ่นนี้ไม่อยู่ในตารางราคาของ GFIN — เพิ่มใน ตั้งค่า → GFIN ถ้า GFIN รับ'",
+    "reason": "Arrows separate application menu names in instructions.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/ProductDetailPage/components/InstallmentCalculatorCard.tsx",
+    "kind": "unicode-symbol",
+    "context": "InstallmentCalculatorCard > gfinCompareNotice > call (() => { if (!gfin) { return loading ? 'กำลังโหลดตาราง GFIN...' : 'โหลดตาราง GFIN ไม่สำเร็จ — ลองรีเฟรช'; } const gfinQuote = gfin.quote; if (gfinQuote.availabl… sha256:a4456806e19d41af0aa99c3fd31041713c95ebd5107e88c878a46fa8fd887f19 > 'GFIN: รุ่นนี้ยังไม่ได้ตั้งเงื่อนไข — ตั้งใน ตั้งค่า → GFIN'",
+    "reason": "Arrows separate application menu names in instructions.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/ProductDetailPage/components/InstallmentCalculatorCard.tsx",
+    "kind": "unicode-symbol",
+    "context": "InstallmentCalculatorCard > gfinCompareNotice > call (() => { if (!gfin) { return loading ? 'กำลังโหลดตาราง GFIN...' : 'โหลดตาราง GFIN ไม่สำเร็จ — ลองรีเฟรช'; } const gfinQuote = gfin.quote; if (gfinQuote.availabl… sha256:a4456806e19d41af0aa99c3fd31041713c95ebd5107e88c878a46fa8fd887f19 > `GFIN: ยังไม่มีเรทสำหรับคอม ${gfin.commissionPct}% — เพิ่มใน ตั้งค่า → GFIN`",
+    "reason": "Arrows separate application menu names in instructions.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/ProductDetailPage/components/calc/GfinPanel.tsx",
+    "kind": "unicode-symbol",
+    "context": "SubmitPriceCard > overLabel > ' × 50%'",
+    "reason": "Multiplication notation between numeric factors in a formula, quote or document.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/ProductDetailPage/components/calc/GfinPanel.tsx",
+    "kind": "unicode-symbol",
+    "context": "GfinPanel > div > Collapsible > <CollapsibleContent className=\"mt-2 space-y-1.5\"> > <DetailRow label=\"ยอดจัด × เรท (ปัดขึ้น)\" value={formatTHB(r.monthlyPayment.sub(r.feePerInstallment).toNumber())} /> > @label > \"ยอดจัด × เรท (ปัดขึ้น)\"",
+    "reason": "Multiplication notation between numeric factors in a formula, quote or document.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/ProductDetailPage/components/calc/GfinPanel.tsx",
+    "kind": "unicode-symbol",
+    "context": "GfinPanel > div > Collapsible > <CollapsibleContent className=\"mt-2 space-y-1.5\"> > <DetailRow label={`รวม ${months} งวด (ค่างวด × ${months})`} value={formatTHB(r.totalPayback.toNumber())} bold /> > @label > `รวม ${months} งวด (ค่างวด × ${months})`",
+    "reason": "Multiplication notation between numeric factors in a formula, quote or document.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/PurchaseOrdersPage/components/AccountsPayableTab.tsx",
+    "kind": "unicode-symbol",
+    "context": "AccountsPayableTab > div > div > ScreenTable > thead > <tr> > <th className={cn(thCls, 'text-right')}> > รับของ (+)",
+    "reason": "Signed accounting data or column label for amounts added or deducted.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/PurchaseOrdersPage/components/AccountsPayableTab.tsx",
+    "kind": "unicode-symbol",
+    "context": "AccountsPayableTab > div > div > ScreenTable > thead > <tr> > <th className={cn(thCls, 'text-right')}> > จ่าย (−)",
+    "reason": "Signed accounting data or column label for amounts added or deducted.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/PurchaseOrdersPage/components/AccountsPayableTab.tsx",
+    "kind": "unicode-symbol",
+    "context": "AccountsPayableTab > div > div > section > ScreenTable > tbody > call movements.rows.map > tr > <td className=\"py-1.5\"> > <div className=\"text-xs text-muted-foreground\"> > '+'",
+    "reason": "Signed accounting data or column label for amounts added or deducted.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/PurchaseOrdersPage/components/ApprovePODialog.tsx",
+    "kind": "unicode-symbol",
+    "context": "ApprovePODialog > Dialog > DialogContent > <DialogHeader> > <p className=\"truncate text-xs leading-snug text-muted-foreground\" title={po.items.map(poItemLabel).join(' · ')}> > call po.items.map((i) => `${poItemLabel(i)} × ${i.quantity}`).join > call po.items.map > `${poItemLabel(i)} × ${i.quantity}`",
+    "reason": "Multiplication sign between purchase-order item name and quantity.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/PurchaseOrdersPage/components/CancelPODialog.tsx",
+    "kind": "unicode-symbol",
+    "context": "CancelPODialog > Dialog > DialogContent > <div className=\"max-h-[calc(100vh-14rem)] space-y-3 overflow-y-auto px-6 py-4\"> > <p className=\"text-sm text-foreground\"> > ?",
+    "reason": "Question mark ending a confirmation sentence after its interpolated subject.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/PurchaseOrdersPage/components/ReceivingFlow.tsx",
+    "kind": "unicode-symbol",
+    "context": "ReceivingFlow > div > <div className=\"flex items-center justify-between gap-4 px-4 pt-4 sm:px-6\"> > <div className=\"flex flex-wrap items-center gap-2\" role=\"tablist\" aria-label=\"รายการที่รับ\"> > call screens.map > label > `${unitTitle(units[s.indices[0]]).title} ×${s.indices.length}`",
+    "reason": "Multiplication sign between purchase-order item name and quantity.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/PurchaseOrdersPage/components/wizard/PaymentSection.tsx",
+    "kind": "unicode-symbol",
+    "context": "PaymentSection > Wrap > div > call attachments.map > div > <div className=\"flex size-16 items-center justify-center overflow-hidden break-all rounded-lg border bg-primary/10 p-1 text-2xs text-primary dark:bg-primary/15\"> > <a href={att} target=\"_blank\" rel=\"noopener noreferrer\" className=\"hover:underline\"> > '...'",
+    "reason": "Ellipsis marking a truncated attachment URL.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/PurchaseOrdersPage/components/wizard/StepSummary.tsx",
+    "kind": "unicode-symbol",
+    "context": "StepSummary > div > section > ul > call items.map > li > <span className=\"min-w-0 truncate leading-snug text-foreground\"> > <span className=\"text-muted-foreground\"> > ×",
+    "reason": "Multiplication notation between numeric factors in a formula, quote or document.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/PurchaseOrdersPage/components/wizard/StepSummary.tsx",
+    "kind": "unicode-symbol",
+    "context": "StepSummary > div > section > <div className=\"space-y-2.5 rounded-lg bg-muted/50 p-4 text-sm\"> > <p className=\"pt-1 text-2xs leading-snug text-muted-foreground\"> > `วิธีคิด: (${formatNumberDecimal(subtotal, 2)} − ${formatNumberDecimal(discountNum, 2)}) × 1.07 − ${formatNumberDecimal(discountAfterVatNum, 2)} = ${formatNumberDecimal(netAmount, 2)} บาท`",
+    "reason": "Multiplication notation between numeric factors in a formula, quote or document.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/PurchaseOrdersPage/components/wizard/StepSupplier.tsx",
+    "kind": "unicode-symbol",
+    "context": "StepSupplier > div > <div className=\"mt-3 rounded-lg bg-muted/50 px-3 py-2 text-sm leading-snug\"> > <span className=\"text-foreground\"> > วัน → ครบกำหนดชำระ",
+    "reason": "Explanatory text labels the due date calculated from the selected term.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/PurchaseOrdersPage/components/wizard/items/CatalogPicker.tsx",
+    "kind": "unicode-symbol",
+    "context": "CatalogPicker > div > Command > div > <div // keep focus in the input while clicking a result (blur would unmount the list first) onMouseDown={(e) => e.preventDefault()} className=\"absolute left-0 r… sha256:a9de1a858fbc105930bb038f93685f40653cea148e2a0e52b9a8d22c4d52f670 > <div className=\"border-t border-border px-3 py-1.5 text-2xs text-muted-foreground\"> > ↑↓ เลือก · Enter เพิ่ม · Esc ปิด",
+    "reason": "Keyboard shortcut or key combination label.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/PurchaseOrdersPage/po-list.util.ts",
+    "kind": "unicode-symbol",
+    "context": "itemsSummary > call po.items .map((i) => { let name: string; if (i.category === 'ACCESSORY') { const type = i.accessoryType ?? ''; name = looksLikeCode(type) ? i.model || type : [t… sha256:f8ae73aace18fb212d9fdac71e3a3b25044df910c0506786d24d276aacc19b74 > call po.items .map > ` ×${i.quantity}`",
+    "reason": "Multiplication sign between purchase-order item name and quantity.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/PurchaseOrdersPage/receiveResultMessage.ts",
+    "kind": "unicode-symbol",
+    "context": "receiveMessage > `${head}: ${counts} → เข้าคลัง ${r.mainWarehouse} พร้อมขาย`",
+    "reason": "Result text names the destination stock warehouse and receipt outcome.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/PurchaseOrdersPage/receiveResultMessage.ts",
+    "kind": "unicode-symbol",
+    "context": "receiveMessage > `${head}: ${counts} → เข้าคลัง ${r.mainWarehouse} แล้ว รอถ่ายรูป 6 มุมก่อนขึ้นขาย`",
+    "reason": "Result text names the destination stock warehouse and receipt outcome.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/PurchaseOrdersPage/receiveResultMessage.ts",
+    "kind": "unicode-symbol",
+    "context": "receiveMessage > `${head}: ${counts} → เข้าคลัง ${r.mainWarehouse}: พร้อมขาย ${inStock} ชิ้น, รอถ่ายรูป ${photoPending} ชิ้น`",
+    "reason": "Result text names the destination stock warehouse and receipt outcome.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/ReceiptVerifyPage.tsx",
+    "kind": "image-or-css-icon",
+    "context": "ReceiptVerifyPage > div > div > <div className=\"flex flex-col items-center justify-center py-16\"> > <div className=\"animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4\" /> > className=\"animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4\"",
+    "reason": "Indeterminate progress arc while verifying the receipt.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web/src/pages/RegisterInvitePage.tsx",
+    "kind": "image-or-css-icon",
+    "context": "RegisterInvitePage > AuthLayout > <div className=\"text-center py-8\"> > <div className=\"animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto\"> > className=\"animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto\"",
+    "reason": "Indeterminate progress arc while validating an invite link.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web/src/pages/ReportsPage.tsx",
+    "kind": "image-or-css-icon",
+    "context": "LoadingState > <div className=\"bg-card rounded-xl border border-border p-8 text-center\"> > <div className=\"animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-3\" /> > className=\"animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-3\"",
+    "reason": "Indeterminate progress arc in the unused local reports LoadingState helper.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web/src/pages/RichMenuPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "DEFAULT_BUTTONS > label: 'ดูสินค้า' > emoji > '📱'",
+    "reason": "Editable emoji published as part of the externally rendered LINE rich menu.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/RichMenuPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "DEFAULT_BUTTONS > label: 'ผ่อนชำระ' > emoji > '💳'",
+    "reason": "Editable emoji published as part of the externally rendered LINE rich menu.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/RichMenuPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "DEFAULT_BUTTONS > label: 'สัญญา' > emoji > '📄'",
+    "reason": "Editable emoji published as part of the externally rendered LINE rich menu.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/RichMenuPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "DEFAULT_BUTTONS > label: 'ชำระเงิน' > emoji > '💰'",
+    "reason": "Editable emoji published as part of the externally rendered LINE rich menu.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/RichMenuPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "DEFAULT_BUTTONS > label: 'โปรโมชัน' > emoji > '🎁'",
+    "reason": "Editable emoji published as part of the externally rendered LINE rich menu.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/RichMenuPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "DEFAULT_BUTTONS > label: 'ติดต่อ' > emoji > '📞'",
+    "reason": "Editable emoji published as part of the externally rendered LINE rich menu.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/RichMenuPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "LAYOUT_OPTIONS > label > '2 แถว × 3 ปุ่ม (6 ปุ่ม)'",
+    "reason": "Layout option text describes row and column counts.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/RichMenuPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "LAYOUT_OPTIONS > label > '1 แถว × 3 ปุ่ม (3 ปุ่ม)'",
+    "reason": "Layout option text describes row and column counts.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/RichMenuPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "LAYOUT_OPTIONS > label > '2 แถว × 2 ปุ่ม (4 ปุ่ม)'",
+    "reason": "Layout option text describes row and column counts.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/RichMenuPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "PhonePreview > div > div > div > div > <div className=\"flex justify-start\"> > <div className=\"bg-white text-[10px] px-2 py-1 rounded-xl rounded-bl-none shadow-sm max-w-[120px]\"> > ยินดีให้บริการครับ 😊",
+    "reason": "Greeting text inside the LINE rich-menu preview.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/RichMenuPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "RichMenuPage > div > div > div > div > <p className=\"text-xs text-muted-foreground mt-0.5\"> > <strong> > 2500×1686 px",
+    "reason": "Multiplication separator in image or document dimensions.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/RichMenuPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "RichMenuPage > div > QueryBoundary > div > call data.richmenus.map > div > <div className=\"px-5 py-3 border-t border-border/50 flex items-center gap-3\"> > <span className=\"text-xs text-muted-foreground/60\"> > 2500×1686 px",
+    "reason": "Multiplication separator in image or document dimensions.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/SalesHistoryPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "SalesHistoryPage > columns > call useMemo > call [ { key: 'index', label: '#', render: (_s: Sale, _col: unknown, idx?: number) => ( <span className=\"text-xs text-muted-foreground\">{((salesData?.page ?? 1) - 1)… sha256:1323ec534196fdb87c10399f97db1d3fa36e719982bb9e669bedbd7d439e4e2e > key: 'profit' > render > <span className={`text-sm font-medium ${profit >= 0 ? 'text-success' : 'text-destructive'}`}> > '+'",
+    "reason": "Numeric signs within transaction history amounts.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/SalesHistoryPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "SalesHistoryPage > div > div > Card > div > <CardContent className=\"p-5 flex-1\"> > <div className={`text-xl font-bold tabular-nums ${summary.totalProfit >= 0 ? 'text-success' : 'text-destructive'}`}> > '+'",
+    "reason": "Numeric signs within transaction history amounts.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/SalesHistoryPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "SalesHistoryPage > div > Sheet > SheetContent > QueryBoundary > <div className=\"space-y-5 text-sm\"> > <p className=\"tabular-nums\"> > บาท ×",
+    "reason": "Multiplication notation between numeric factors in a formula, quote or document.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/SettingsPage/components/PeakMappingSettings.tsx",
+    "kind": "unicode-symbol",
+    "context": "PeakMappingSettings > Card > <CardHeader> > <CardTitle className=\"leading-snug\"> > การจับคู่ผังบัญชี → PEAK",
+    "reason": "Text describes mapping the local chart of accounts to PEAK.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/SettingsPage/components/ReversePermissionCard.tsx",
+    "kind": "unicode-symbol",
+    "context": "ReversePermissionCard > Card > CardContent > <p className=\"text-sm text-muted-foreground leading-snug\"> > <span className=\"font-mono\"> > ↺ ยกเลิก/กลับรายการ",
+    "reason": "Instruction quotes the journal reversal control by its displayed name.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/ShopDailyCashPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "ShopDailyCashPage > div > QueryBoundary > div > <section aria-label=\"เงินเข้า-ออกของวัน\" className=\"grid overflow-hidden grid-cols-1 divide-y divide-border/70 rounded-xl border border-border bg-card sm:grid-cols-2 sm:divide-y-0 lg:grid-cols-[1.25fr_1fr_1fr_1.1fr]\"> > <MethodCell label=\"เงินสด\" icon value={`${baht(data.totals.expectedCashInDrawer)} ฿`} lines={[<>รับ {baht(data.totals.cashIn)} · จ่ายออก <span className=\"text-d… sha256:62e6b593d25b7333f75c38dd0d615a2dca05120d70f1a81aef8198f2016f4a9e > @lines > 'ผ่านมือพนักงาน → ต้องส่งยอด'",
+    "reason": "Explanatory text describes the follow-up step when staff collect cash.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/StickerPrintPage/StickerCard.tsx",
+    "kind": "unicode-symbol",
+    "context": "StickerCard > div > div > div > <span className=\"st-rate-monthly\"> > <span className=\"st-x\"> > ×",
+    "reason": "Multiplication notation between numeric factors in a formula, quote or document.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/StickerPrintPage/StickerCard.tsx",
+    "kind": "unicode-symbol",
+    "context": "StickerCard > div > div > div > <span className=\"st-rate-monthly\"> > <span className=\"st-x\"> > × (occurrence 2)",
+    "reason": "Multiplication notation between numeric factors in a formula, quote or document.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/StickerPrintPage/index.tsx",
+    "kind": "unicode-symbol",
+    "context": "StickerPrintPage > div > div > div > <section className=\"min-w-0 rounded-xl border border-border bg-card p-4\"> > <p className=\"mt-3 text-xs text-muted-foreground leading-snug\"> > เรียงตามวันที่รับเข้า ใหม่ → เก่า เป็นค่าเริ่มต้น · กดหัวคอลัมน์ รุ่น / เงินสด / รับเข้า เพื่อเรียงอย่างอื่น · ตัวเลขเรท 1 (ผ่อนกับร้าน) และเรท 2 (ไฟแนนซ์) เป็นชุดเดียวกับหน้ารายละเอียดสินค้า",
+    "reason": "Printed sticker workflow help describes the default sort direction.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/StickerPrintPage/stickerSizes.ts",
+    "kind": "unicode-symbol",
+    "context": "STICKER_SIZES > '60x40' > label > '60 × 40 มม.'",
+    "reason": "Multiplication separator in image or document dimensions.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/StickerPrintPage/stickerSizes.ts",
+    "kind": "unicode-symbol",
+    "context": "STICKER_SIZES > '50x40' > label > '50 × 40 มม.'",
+    "reason": "Multiplication separator in image or document dimensions.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/StickerPrintPage/stickerSizes.ts",
+    "kind": "unicode-symbol",
+    "context": "STICKER_SIZES > '50x30' > label > '50 × 30 มม.'",
+    "reason": "Multiplication separator in image or document dimensions.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/StockPage/components/StockActionZone.tsx",
+    "kind": "unicode-symbol",
+    "context": "StockActionZone > call cards.push > hint > 'ส่งซ่อม → QC → กลับเข้าคลัง'",
+    "reason": "Stock action hint describes the workflow and outcome.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/StockPage/components/StockActionZone.tsx",
+    "kind": "unicode-symbol",
+    "context": "StockActionZone > call cards.push > hint > 'ถ่าย 6 มุม → พร้อมขาย'",
+    "reason": "Stock action hint describes the workflow and outcome.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/StockPage/components/StockDashboardTab.tsx",
+    "kind": "image-or-css-icon",
+    "context": "StockDashboardTab > <div className=\"rounded-xl border border-border/60 p-8 text-center text-muted-foreground\"> > <div className=\"animate-spin rounded-full h-7 w-7 border-b-2 border-primary mx-auto mb-3\" /> > className=\"animate-spin rounded-full h-7 w-7 border-b-2 border-primary mx-auto mb-3\"",
+    "reason": "Indeterminate progress arc in the dashboard missing-data fallback.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web/src/pages/StockPage/components/StockHeroKpi.tsx",
+    "kind": "unicode-symbol",
+    "context": "StockHeroKpi > <div className=\"grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6\"> > <Metric label=\"MARGIN เฉลี่ย\" icon={<Wallet />} value={margin && margin.itemsWithPrice > 0 ? (margin.avgMarginPct ?? '—') : '—'} unit={ margin && margin.itemsWithPrice > 0 && margin.avgMarginPct != null ? '%' : undefined } > > →",
+    "reason": "Text separates numeric acquisition cost and listed sale price.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/StockPage/components/StockListTab.tsx",
+    "kind": "unicode-symbol",
+    "context": "StockListTab > section > QueryBoundary > <div className=\"flex items-end gap-2 px-4 pt-4\"> > <Button variant=\"outline\" className=\"h-11\" aria-label=\"สลับทิศทางการเรียง\" onClick={() => onSortChange({ ...sort, direction: sort.direction === 'asc' ? 'desc' : 'asc' }) } > > 'น้อย → มาก'",
+    "reason": "Text names the sort order and its two endpoints.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/StockPage/components/StockListTab.tsx",
+    "kind": "unicode-symbol",
+    "context": "StockListTab > section > QueryBoundary > <div className=\"flex items-end gap-2 px-4 pt-4\"> > <Button variant=\"outline\" className=\"h-11\" aria-label=\"สลับทิศทางการเรียง\" onClick={() => onSortChange({ ...sort, direction: sort.direction === 'asc' ? 'desc' : 'asc' }) } > > 'มาก → น้อย'",
+    "reason": "Text names the sort order and its two endpoints.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/StockPage/components/StockListTab.tsx",
+    "kind": "unicode-symbol",
+    "context": "StockListTab > section > <p className=\"space-y-1 border-t border-border/60 bg-background/30 px-4 py-3 text-xs text-muted-foreground leading-snug sm:px-5\"> > <span className=\"block\"> > BESTCHOICE / GFIN: บรรทัดบนคือเงินดาวน์ · บรรทัดล่างคือค่างวดต่อเดือน × จำนวนงวด · ตามเงื่อนไขที่ตั้งไว้",
+    "reason": "Multiplication notation between numeric factors in a formula, quote or document.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/StockPage/components/StockProductCells.tsx",
+    "kind": "unicode-symbol",
+    "context": "StockInstallmentPlan > div > <div className=\"flex flex-wrap justify-end gap-x-1 text-xs tabular-nums text-muted-foreground\" aria-label={`ผ่อนเดือนละ ${formatBaht(plan.quote.monthlyPayment)} บาท จำนวน ${plan.quote.months} งวด`} > > <span> > ×",
+    "reason": "Multiplication notation between numeric factors in a formula, quote or document.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/StockTransfersPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "StockTransfersPage > div > div > QueryBoundary > div > call batchGroups.map > div > div > <div className=\"flex items-center gap-4 text-xs text-muted-foreground shrink-0\"> > <span> > →",
+    "reason": "Text separates the sending and receiving stock locations.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/SystemStatusPage.tsx",
+    "kind": "inline-svg",
+    "context": "SystemStatusPage > div > QueryBoundary > A4Page > <div className=\"flex flex-col items-center\"> > <div className=\"w-80 max-w-full h-10 relative\"> > <svg className=\"w-full h-full\" viewBox=\"0 0 320 40\" preserveAspectRatio=\"none\"> <path d=\"M160,0 L160,20 L60,20 L60,40\" fill=\"none\" stroke={data.database.connect… sha256:3b3aefa5474fa376db69fcf3a13d95fd040ba3e8c427bf98519d97d9a03a2a35",
+    "reason": "Service status diagram draws links between backend nodes.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web/src/pages/TodosPage/components/TodoKanbanView.tsx",
+    "kind": "unicode-symbol",
+    "context": "TodoKanbanView > QueryBoundary > <KanbanBoard columns={columns} canDragCard={t => !['CHAT_HANDOFF', 'CHAT_SERVICE'].includes(t.workKind ?? '')} onCardClick={onCardClick} onCardMove={(id, from, … sha256:7fb2371d444d023ccb437be8e8450e39d7aa921454a0da944a8d2b29a2fbdd09 > @renderCard > div > div > <div className=\"flex flex-wrap items-center gap-1 pl-6\"> > <span className=\"text-2xs text-muted-foreground\"> > +",
+    "reason": "Signed count of additional visible or hidden tags.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/UnifiedInboxPage/components/AppointmentAlertBar.tsx",
+    "kind": "unicode-symbol",
+    "context": "AppointmentAlertBar > call useEffect > t > call setInterval > '🔔 ถึงเวลานัด'",
+    "reason": "Browser tab notice for a due appointment. Tab-title text has no SVG rendering.",
+    "category": "external-native"
+  },
+  {
+    "path": "apps/web/src/pages/UnifiedInboxPage/components/ChatMediaPicker.tsx",
+    "kind": "unicode-symbol",
+    "context": "EMOJI_CATEGORIES > label > '😊'",
+    "reason": "Category sample emoji previews the message emoji available in the picker.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/UnifiedInboxPage/components/ChatMediaPicker.tsx",
+    "kind": "unicode-symbol",
+    "context": "EMOJI_CATEGORIES > label: '😊' > emojis > [ '😊', '👍', '🙏', '❤️', '😄', '👋', '✅', '📱', '💰', '🎉', '😍', '🤣', '😢', '😮', '🔥', '💯', '👏', '🙌', '💪', '🤝', ]",
+    "reason": "Exact list of selectable emoji inserted as chat message content.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/UnifiedInboxPage/components/ChatMediaPicker.tsx",
+    "kind": "unicode-symbol",
+    "context": "EMOJI_CATEGORIES > label > '😀'",
+    "reason": "Category sample emoji previews the message emoji available in the picker.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/UnifiedInboxPage/components/ChatMediaPicker.tsx",
+    "kind": "unicode-symbol",
+    "context": "EMOJI_CATEGORIES > label: '😀' > emojis > [ '😀', '😃', '😁', '😆', '🥹', '😅', '🤣', '😂', '🙂', '😉', '😇', '🥰', '😍', '🤩', '😘', '😗', '😚', '😙', '🥲', '😋', '😛', '😜', '🤪', '😝', '🤑', '🤗', '🤭', '🤫', '🤔', '🫡', ]",
+    "reason": "Exact list of selectable emoji inserted as chat message content.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/UnifiedInboxPage/components/ChatMediaPicker.tsx",
+    "kind": "unicode-symbol",
+    "context": "EMOJI_CATEGORIES > label > '👍'",
+    "reason": "Category sample emoji previews the message emoji available in the picker.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/UnifiedInboxPage/components/ChatMediaPicker.tsx",
+    "kind": "unicode-symbol",
+    "context": "EMOJI_CATEGORIES > label: '👍' > emojis > [ '👍', '👎', '👊', '✊', '🤛', '🤜', '👏', '🙌', '🫶', '👐', '🤲', '🤝', '🙏', '✌️', '🤞', '🫰', '🤟', '🤘', '👌', '🤌', '🤏', '👈', '👉', '👆', '👇', '☝️', '✋', '🤚', '🖐️', '🖖', '👋', '🤙', '💪', ]",
+    "reason": "Exact list of selectable emoji inserted as chat message content.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/UnifiedInboxPage/components/ChatMediaPicker.tsx",
+    "kind": "unicode-symbol",
+    "context": "EMOJI_CATEGORIES > label > '❤️'",
+    "reason": "Category sample emoji previews the message emoji available in the picker.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/UnifiedInboxPage/components/ChatMediaPicker.tsx",
+    "kind": "unicode-symbol",
+    "context": "EMOJI_CATEGORIES > label: '❤️' > emojis > [ '❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❤️‍🔥', '❤️‍🩹', '💕', '💞', '💓', '💗', '💖', '💝', '💘', '💌', ]",
+    "reason": "Exact list of selectable emoji inserted as chat message content.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/UnifiedInboxPage/components/ChatMediaPicker.tsx",
+    "kind": "unicode-symbol",
+    "context": "EMOJI_CATEGORIES > label > '🏷️'",
+    "reason": "Category sample emoji previews the message emoji available in the picker.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/UnifiedInboxPage/components/ChatMediaPicker.tsx",
+    "kind": "unicode-symbol",
+    "context": "EMOJI_CATEGORIES > label: '🏷️' > emojis > [ '📱', '💻', '⌨️', '🖥️', '💰', '💵', '💳', '🧾', '📦', '🚚', '🏪', '🏢', '📋', '📄', '✏️', '📌', '🔔', '⭐', '🌟', '💡', ]",
+    "reason": "Exact list of selectable emoji inserted as chat message content.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/UnifiedInboxPage/components/ChatMediaPicker.tsx",
+    "kind": "image-or-css-icon",
+    "context": "stickerAnimUrl > `https://stickershop.line-scdn.net/stickershop/v1/sticker/${stickerId}/iPhone/sticker_animation.png`",
+    "reason": "LINE sticker image stored or rendered as message content.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/UnifiedInboxPage/components/ChatMediaPicker.tsx",
+    "kind": "image-or-css-icon",
+    "context": "stickerStaticUrl > `https://stickershop.line-scdn.net/stickershop/v1/sticker/${stickerId}/iPhone/sticker@2x.png`",
+    "reason": "LINE sticker image stored or rendered as message content.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/UnifiedInboxPage/components/ConversationItem.tsx",
+    "kind": "unicode-symbol",
+    "context": "formatMessagePreview > '📋 แจ้งเตือนค่างวด (Flex Card)'",
+    "reason": "Inbox snippet describes the underlying LINE Flex message content.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/UnifiedInboxPage/components/ConversationItem.tsx",
+    "kind": "unicode-symbol",
+    "context": "formatMessagePreview > '⚠️ แจ้งค้างชำระ (Flex Card)'",
+    "reason": "Inbox snippet describes the underlying LINE Flex message content.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/UnifiedInboxPage/components/ConversationItem.tsx",
+    "kind": "unicode-symbol",
+    "context": "formatMessagePreview > '🔐 ยืนยันตัวตน (Flex Card)'",
+    "reason": "Inbox snippet describes the underlying LINE Flex message content.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/UnifiedInboxPage/components/ConversationItem.tsx",
+    "kind": "unicode-symbol",
+    "context": "CHANNEL_CONFIG > TIKTOK > label > '♪'",
+    "reason": "TikTok musical note in the channel identity mark.",
+    "category": "brand"
+  },
+  {
+    "path": "apps/web/src/pages/UnifiedInboxPage/components/ConversationItem.tsx",
+    "kind": "unicode-symbol",
+    "context": "Avatar > channelCfg > label > '?'",
+    "reason": "Fallback avatar label for an unknown messaging channel.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/UnifiedInboxPage/components/ConversationItem.tsx",
+    "kind": "unicode-symbol",
+    "context": "ConversationItem > div > div > div > div > <div className=\"inbox-room-meta flex items-center gap-1.5 mt-2 overflow-hidden whitespace-nowrap\"> > call (() => { const pills: ReactNode[] = []; // Task 33 (mockup A2 + A4) — LINE ในห้องไม่ใช่ LINE ที่ลูกค้ายืนยัน OTP อยู่ตอนนี้: ป้ายแรกเสมอ (คนที่คุยอาจไม่ใช่ลูกค้… sha256:9d82c84e1d32b528b6f1258d707b60a84327913e2b87b5a2e1430a26a81c4c8b > <span className=\"inline-flex h-5 items-center rounded-full border border-border/60 px-1.5 text-[10px] leading-none text-muted-foreground tabular-nums\" title={`อีก ${hidden} ป้าย`}> > +",
+    "reason": "Signed count of additional visible or hidden tags.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/UnifiedInboxPage/components/Customer360Panel.tsx",
+    "kind": "unicode-symbol",
+    "context": "Customer360Panel > dialogs > Dialog > DialogContent > div > div > <div className=\"w-12 h-12 rounded-full bg-muted flex items-center justify-center overflow-hidden shrink-0\"> > <span className=\"text-muted-foreground text-base font-bold\"> > '?'",
+    "reason": "Fallback initial when the corresponding customer or participant name is unavailable.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/UnifiedInboxPage/components/Customer360Panel.tsx",
+    "kind": "unicode-symbol",
+    "context": "Customer360Panel > div > div > div > <div className=\"w-11 h-11 rounded-full bg-muted flex items-center justify-center overflow-hidden shrink-0\"> > <span className=\"text-muted-foreground text-lg font-bold\"> > '?'",
+    "reason": "Fallback initial when the corresponding customer or participant name is unavailable.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/UnifiedInboxPage/components/InboxWorkTools.tsx",
+    "kind": "image-or-css-icon",
+    "context": "InboxWorkTools > homeLink > <Link to=\"/\" className=\"inbox-rail-home\" aria-label=\"กลับหน้าหลัก\" title=\"กลับหน้าหลัก\"> > <img src=\"/logo-icon.svg\" alt=\"\" /> > @src > \"/logo-icon.svg\"",
+    "reason": "BESTCHOICE identity in a page header, nav, or storefront shell.",
+    "category": "brand"
+  },
+  {
+    "path": "apps/web/src/pages/UnifiedInboxPage/components/MessageBubble.tsx",
+    "kind": "unicode-symbol",
+    "context": "MessageBubble > div > div > <Avatar className=\"size-full\"> > <AvatarFallback className=\"text-xs text-primary\"> > '?'",
+    "reason": "Fallback initial when the corresponding customer or participant name is unavailable.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/UnifiedInboxPage/components/MessageBubble.tsx",
+    "kind": "unicode-symbol",
+    "context": "MessageBubble > div > <div className=\"w-7 h-7 rounded-full bg-muted flex items-center justify-center overflow-hidden shrink-0 mt-1\"> > <span className=\"text-muted-foreground text-[10px] font-bold\"> > '?'",
+    "reason": "Fallback initial when the corresponding customer or participant name is unavailable.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/UnifiedInboxPage/components/MessageBubble.tsx",
+    "kind": "unicode-symbol",
+    "context": "MessageBubble > div > div > <Avatar className=\"size-full\"> > <AvatarFallback className=\"text-xs text-primary\"> > '?' (occurrence 2)",
+    "reason": "Fallback initial when the corresponding customer or participant name is unavailable.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/UnifiedInboxPage/components/MessageBubble.tsx",
+    "kind": "unicode-symbol",
+    "context": "MessageBubble > div > <div className=\"w-7 h-7 rounded-full bg-muted flex items-center justify-center overflow-hidden shrink-0 mt-1\"> > <span className=\"text-muted-foreground text-[10px] font-bold\"> > '?' (occurrence 2)",
+    "reason": "Fallback initial when the corresponding customer or participant name is unavailable.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/UnifiedInboxPage/components/MessageBubble.tsx",
+    "kind": "image-or-css-icon",
+    "context": "MessageBubble > div > <div className=\"flex flex-col\"> > <img src={`https://stickershop.line-scdn.net/stickershop/v1/sticker/${stickerId}/iPhone/sticker_animation.png`} onError={(e) => { (e.target as HTMLImageElement)… sha256:42374cae96128dd858a388c414e074a3184ac71a4749157b4b6bfc17e976c014 > @src > `https://stickershop.line-scdn.net/stickershop/v1/sticker/${stickerId}/iPhone/sticker_animation.png`",
+    "reason": "LINE sticker image stored or rendered as message content.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/UnifiedInboxPage/components/MessageBubble.tsx",
+    "kind": "image-or-css-icon",
+    "context": "MessageBubble > div > <div className=\"flex flex-col\"> > <img src={`https://stickershop.line-scdn.net/stickershop/v1/sticker/${stickerId}/iPhone/sticker_animation.png`} onError={(e) => { (e.target as HTMLImageElement)… sha256:42374cae96128dd858a388c414e074a3184ac71a4749157b4b6bfc17e976c014 > @onError > `https://stickershop.line-scdn.net/stickershop/v1/sticker/${stickerId}/iPhone/sticker@2x.png`",
+    "reason": "LINE sticker image stored or rendered as message content.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/UnifiedInboxPage/components/MessageBubble.tsx",
+    "kind": "unicode-symbol",
+    "context": "MessageBubble > div > div > <Avatar className=\"size-full\"> > <AvatarFallback className=\"text-xs text-primary\"> > '?' (occurrence 3)",
+    "reason": "Fallback initial when the corresponding customer or participant name is unavailable.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/UnifiedInboxPage/components/MessageBubble.tsx",
+    "kind": "unicode-symbol",
+    "context": "MessageBubble > div > <div className=\"w-7 h-7 rounded-full bg-muted flex items-center justify-center overflow-hidden shrink-0 mt-1\"> > <span className=\"text-muted-foreground text-[10px] font-bold\"> > '?' (occurrence 3)",
+    "reason": "Fallback initial when the corresponding customer or participant name is unavailable.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/UnifiedInboxPage/components/MessageTemplatePicker.tsx",
+    "kind": "image-or-css-icon",
+    "context": "MessageTemplatePicker > Dialog > DialogContent > div > div > div > div > call preview.bubbles.map > div > <div className=\"flex items-center gap-2 text-xs text-muted-foreground\"> > <img src={`https://stickershop.line-scdn.net/stickershop/v1/sticker/${b.stickerId}/android/sticker.png`} alt=\"สติกเกอร์\" className=\"w-16 h-16\" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} /> > @src > `https://stickershop.line-scdn.net/stickershop/v1/sticker/${b.stickerId}/android/sticker.png`",
+    "reason": "LINE sticker image stored or rendered as message content.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/UnifiedInboxPage/components/PrepareOfferDialog.tsx",
+    "kind": "unicode-symbol",
+    "context": "PrepareOfferDialog > Dialog > DialogContent > div > call result.products.map > <article key={product.productId} className=\"rounded-lg border border-border p-3 text-sm leading-snug\"> > <p className=\"mt-2\"> > บาท/งวด ×",
+    "reason": "Multiplication notation between numeric factors in a formula, quote or document.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/UnifiedInboxPage/components/chat-notification.ts",
+    "kind": "image-or-css-icon",
+    "context": "showChatNotification > options > icon > '/logo-icon.svg'",
+    "reason": "BESTCHOICE identity used in a browser notification.",
+    "category": "brand"
+  },
+  {
+    "path": "apps/web/src/pages/UnifiedInboxPage/components/gfin/GfinSlotPicker.tsx",
+    "kind": "unicode-symbol",
+    "context": "GfinSlotPicker > Dialog > DialogContent > div > call slots.map > <button key={s} type=\"button\" role=\"radio\" aria-checked={on} onClick={() => setSlot(s)} className={cn('flex min-h-11 items-center justify-between rounded-lg bor… sha256:566e9aaeb6dbc4ed68f41f926645239202fcbebcc618bfbfcd69f1c88195c2b1 > <span className=\"text-xs font-semibold text-muted-foreground\"> > `${counts[s]} → ${counts[s] + 1}`",
+    "reason": "Text shows the GFIN slot count before and after booking.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/UsersPage/UserDetailPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "UserDetailPage > QueryBoundary > <div className=\"fixed bottom-0 inset-x-0 md:left-[264px] bg-background/95 backdrop-blur border-t border-border px-6 py-3 flex items-center justify-end gap-3 z-40\"> > <span className=\"text-xs text-muted-foreground mr-auto hidden sm:block\"> > บันทึกครั้งเดียว → อัปเดต บัญชี + บุคคล + HR พร้อมกัน",
+    "reason": "Text lists the records affected by saving this form.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/YearEndClosingPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "YearEndClosingPage > div > QueryBoundary > <div className=\"grid grid-cols-1 lg:grid-cols-2 gap-4\"> > <AccountTable title=\"รายได้ (Cr → 39-9999)\" rows={preview.revenues} total={preview.revenueTotal} totalLabel=\"รวมรายได้\" /> > @title > \"รายได้ (Cr → 39-9999)\"",
+    "reason": "Accounting text identifies the destination account or journal posting.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/YearEndClosingPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "YearEndClosingPage > div > QueryBoundary > <div className=\"grid grid-cols-1 lg:grid-cols-2 gap-4\"> > <AccountTable title=\"ค่าใช้จ่าย (39-9999 → Dr)\" rows={preview.expenses} total={preview.expenseTotal} totalLabel=\"รวมค่าใช้จ่าย\" /> > @title > \"ค่าใช้จ่าย (39-9999 → Dr)\"",
+    "reason": "Accounting text identifies the destination account or journal posting.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/after-sales/ApprovalTable.tsx",
+    "kind": "unicode-symbol",
+    "context": "deviceLine > `${old} → ${productLabel(ex.newProduct)}`",
+    "reason": "Exchange text describes the transition, destination or replacement device.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/after-sales/ApprovalTable.tsx",
+    "kind": "unicode-symbol",
+    "context": "ApprovalTable > div > ScreenTable > thead > <tr className=\"border-b border-border text-xs text-muted-foreground\"> > <th className=\"px-3 py-2 text-left font-normal\"> > เครื่องเดิม → ใหม่",
+    "reason": "Exchange text describes the transition, destination or replacement device.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/after-sales/ExchangeActionDialogs.tsx",
+    "kind": "unicode-symbol",
+    "context": "ConfirmExchangeDialog > Dialog > DialogContent > div > <ul className=\"list-disc space-y-0.5 pl-4\"> > <li> > เครื่องเดิม → รอเคลมผู้จัดจำหน่าย (ขอตัดจำหน่ายได้ที่เมนูตัดสินค้า)",
+    "reason": "Exchange text describes the transition, destination or replacement device.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/after-sales/ExchangeActionDialogs.tsx",
+    "kind": "unicode-symbol",
+    "context": "ConfirmExchangeDialog > Dialog > DialogContent > div > <ul className=\"list-disc space-y-0.5 pl-4\"> > <li> > เครื่องเดิม → รอส่งเคลมผู้จัดจำหน่าย · บันทึกผู้ยืนยันในไทม์ไลน์",
+    "reason": "Exchange text describes the transition, destination or replacement device.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/after-sales/ExchangeActionDialogs.tsx",
+    "kind": "unicode-symbol",
+    "context": "ConfirmExchangeDialog > Dialog > DialogContent > <div className=\"space-y-1 rounded-lg border border-border bg-muted p-3 text-xs leading-snug\"> > <p className=\"font-semibold text-foreground\"> > → เครื่องทดแทน",
+    "reason": "Exchange text describes the transition, destination or replacement device.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/after-sales/ExchangeCard.tsx",
+    "kind": "unicode-symbol",
+    "context": "ExchangeCard > <section className=\"space-y-3 rounded-xl border border-border bg-card p-4 sm:p-5\"> > <h2 className=\"text-base font-semibold leading-snug\"> > เครื่องเดิม → เครื่องใหม่",
+    "reason": "Exchange text describes the transition, destination or replacement device.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/after-sales/PricedExchangeFields.tsx",
+    "kind": "unicode-symbol",
+    "context": "PricedExchangeFields > <div className=\"space-y-3\"> > <p className=\"text-xs leading-snug text-muted-foreground\"> > → ค่างวด",
+    "reason": "Quote text explains the resulting monthly installment.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/after-sales/after-sales.ts",
+    "kind": "unicode-symbol",
+    "context": "secondaryActions > call out.push > label > 'ซ่อมไม่ได้ → เปลี่ยนรุ่นเดิม'",
+    "reason": "Exchange text describes the transition, destination or replacement device.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/after-sales/after-sales.ts",
+    "kind": "unicode-symbol",
+    "context": "secondaryActions > call out.push > label > 'ซ่อมไม่ได้ → เปลี่ยนรุ่นเดิม' (occurrence 2)",
+    "reason": "Exchange text describes the transition, destination or replacement device.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/assets/AssetDetailPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "AssetDetailPage > reverseMutation > call useMutation > onSuccess > call toast.success > `กลับรายการแล้ว → ${r.entryNo}`",
+    "reason": "Toast text pairs the completed operation with its resulting entry number.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/assets/AssetDetailPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "AssetDetailPage > reverseDisposeMutation > call useMutation > onSuccess > call toast.success > `คืนสถานะแล้ว → ${r.entryNo}`",
+    "reason": "Toast text pairs the completed operation with its resulting entry number.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/assets/AssetDetailPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "AssetDetailPage > postMutation > call useMutation > onSuccess > call toast.success > `ลงบัญชี แล้ว → ${r.entryNo}`",
+    "reason": "Toast text pairs the completed operation with its resulting entry number.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/assets/AssetDetailPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "AssetDetailPage > invoiceReceivedMutation > call useMutation > onSuccess > call toast.success > `บันทึกใบกำกับและโอน 11-4102 → 11-4101 แล้ว (${r.entryNo})`",
+    "reason": "Accounting text identifies the destination account or journal posting.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/assets/AssetDetailPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "AssetDetailPage > div > QueryBoundary > div > div > Card > CardContent > ul > call asset.transferHistory!.map > li > <div className=\"text-muted-foreground text-xs space-y-0.5 mt-1\"> > <div> > →",
+    "reason": "Audit or transfer row shows the source and destination of the asset movement.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/assets/AssetDetailPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "AssetDetailPage > div > QueryBoundary > div > div > Card > CardContent > ul > call asset.transferHistory!.map > li > <div className=\"text-muted-foreground text-xs space-y-0.5 mt-1\"> > <div> > → (occurrence 2)",
+    "reason": "Audit or transfer row shows the source and destination of the asset movement.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/assets/AssetDetailPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "AssetDetailPage > <div className=\"space-y-4 pb-6\"> > <ReverseConfirmDialog open={showReverseDisposal} onOpenChange={setShowReverseDisposal} module=\"asset\" docNumber={asset.assetCode} isLoading={reverseDisposeMutat… sha256:e948b2eeb33928fa912a0d5f961e8a482814c76d1fe82f8fffd4e8df348fd010 > @impactNotes > [ 'ระบบจะคืนสถานะสินทรัพย์จาก DISPOSED → POSTED', 'JE การจำหน่ายจะถูกกลับรายการ (สลับ Dr↔Cr)', 'ค่าเสื่อมราคาที่หยุดไว้ตอนจำหน่ายจะเริ่มคำนวณใหม่', ]",
+    "reason": "Disposition reversal instructions name the restored status and reversed journal sides.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/assets/AssetDetailPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "AssetDetailPage > <div className=\"space-y-4 pb-6\"> > <ConfirmDialog open={showInvoiceReceived} onOpenChange={setShowInvoiceReceived} title=\"บันทึกใบกำกับมาถึงแล้ว?\" description={`โอน VAT ${fmt(asset.vatAmount)} บา… sha256:67c44ff08793650da020444160a3fa5120f925e558fda9c40997e044a6b46173 > @description > `โอน VAT ${fmt(asset.vatAmount)} บาท จาก 11-4102 (รอเรียกเก็บ) → 11-4101 (เครดิตได้) — ภ.พ.30 งวดถัดไปจะหักภาษีซื้อได้`",
+    "reason": "Accounting text identifies the destination account or journal posting.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/assets/AssetDisposePage.tsx",
+    "kind": "unicode-symbol",
+    "context": "AssetDisposePage > disposeMutation > call useMutation > onSuccess > call toast.success > `จำหน่ายสำเร็จ → ${result.entryNo}`",
+    "reason": "Toast text pairs the completed operation with its resulting entry number.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/assets/AssetEntryPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "AssetEntryPage > postMutation > call useMutation > onSuccess > call toast.success > `ลงบัญชีแล้ว → ${result.entryNo}`",
+    "reason": "Toast text pairs the completed operation with its resulting entry number.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/assets/AssetEntryPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "AssetEntryPage > onSaveAndPost > call form.handleSubmit > call toast.success > `ลงบัญชีแล้ว → ${result.entryNo}`",
+    "reason": "Toast text pairs the completed operation with its resulting entry number.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/assets/AssetSummaryReportPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "AssetSummaryReportPage > div > Tabs > TabsContent > QueryBoundary > Card > CardContent > ul > call (movementQuery.data?.data ?? []).map > li > div > <div className=\"text-xs text-muted-foreground\"> > <span> > →",
+    "reason": "Audit or transfer row shows the source and destination of the asset movement.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/assets/AssetSummaryReportPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "AssetSummaryReportPage > div > Tabs > TabsContent > QueryBoundary > Card > CardContent > ul > call (movementQuery.data?.data ?? []).map > li > div > <div className=\"text-xs text-muted-foreground\"> > <span> > → (occurrence 2)",
+    "reason": "Audit or transfer row shows the source and destination of the asset movement.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/assets/components/AssetEntrySection2Cost.tsx",
+    "kind": "unicode-symbol",
+    "context": "AssetEntrySection2Cost > Card > CardContent > div > <div className=\"rounded-md border border-warning/30 bg-warning/5 p-3 text-sm\"> > <p className=\"mt-1 text-muted-foreground\"> > ไม่มีค่าติดตั้งและไม่ระบุฐานคำนวณ WHT → ระบบจะไม่หัก WHT (= 0). ถ้าซื้อสินค้าอย่างเดียวให้ตั้ง WHT% = 0",
+    "reason": "Explanatory copy gives the withholding result for the described tax conditions.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/attendance/AttendancePage/components/MonthTab.tsx",
+    "kind": "unicode-symbol",
+    "context": "MonthTab > div > QueryBoundary > div > <div className=\"flex flex-wrap justify-between gap-2 border-t border-border px-4 py-2 text-xs text-muted-foreground\"> > <span> > ชั่วโมง OT × 1.5 × (เงินเดือน ÷ 30 ÷ 8) คิดที่หน้าเงินเดือน",
+    "reason": "Multiplication notation between numeric factors in a formula, quote or document.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/attendance/AttendancePage/components/ScheduleTab.tsx",
+    "kind": "unicode-symbol",
+    "context": "ScheduleTab > div > <div className=\"flex flex-wrap items-center justify-between gap-3\"> > <span className=\"text-xs text-muted-foreground\"> > หยุดสัปดาห์ละ 1 วันสลับกัน · ไม่มีตาราง = ทุกวันเป็นวันทำงาน (ไม่มา = ขาด) · กดช่องเพื่อสลับ ทำงาน → หยุด → ลาป่วย → ลากิจ → ร้านปิด",
+    "reason": "Instruction lists the sequence of attendance states when cycling a schedule cell.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/canned-response-admin/bubble-editors/StickerBubbleEditor.tsx",
+    "kind": "image-or-css-icon",
+    "context": "StickerBubbleEditor > <div className=\"space-y-2\"> > <img src={`https://stickershop.line-scdn.net/stickershop/v1/sticker/${bubble.stickerId}/android/sticker.png`} alt=\"ตัวอย่างสติกเกอร์\" className=\"w-24 h-24 borde… sha256:c6dd2b67162987974af26e325f20e81adaea4205d46a1a0f9b5a3e131d7be730 > @src > `https://stickershop.line-scdn.net/stickershop/v1/sticker/${bubble.stickerId}/android/sticker.png`",
+    "reason": "LINE sticker image stored or rendered as message content.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/canned-response-admin/bubble-editors/VideoBubbleEditor.tsx",
+    "kind": "image-or-css-icon",
+    "context": "VideoBubbleEditor > div > <div> > <Input id=\"vid-thumb\" value={bubble.thumbnailUrl ?? ''} onChange={(e) => onChange({ thumbnailUrl: e.target.value })} placeholder=\"https://.../thumb.jpg\" /> > @placeholder > \"https://.../thumb.jpg\"",
+    "reason": "Example thumbnail URL for a video message.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/equity/EquityEntryPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "TXN_DESC > DRAW > 'กรรมการถอนเงินไปใช้ส่วนตัว → 22-1102 (Contra)'",
+    "reason": "Accounting text identifies the destination account or journal posting.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/equity/EquityEntryPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "TXN_DESC > DIV_DEC > 'มติประกาศจ่ายปันผล → ตั้งเจ้าหนี้ 21-4104'",
+    "reason": "Accounting text identifies the destination account or journal posting.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/finance/IntercompanyReportPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "SummaryCard > Card > div > div > <div className=\"grid grid-cols-2 gap-x-3 gap-y-1 mt-2 text-sm\"> > <div className=\"text-right tabular-nums leading-snug text-xs text-destructive\"> > +",
+    "reason": "Signed accounting data or column label for amounts added or deducted.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/finance/IntercompanyReportPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "IntercompanyReportPage > <div> > <PageHeader title=\"รายงานลูกหนี้ระหว่างบริษัท\" subtitle=\"FINANCE ↔ SHOP — ยอดเจ้าหนี้หน้าร้าน (21-1101, 21-1102)\" icon={<Building2 className=\"size-5\" />} /> > @subtitle > \"FINANCE ↔ SHOP — ยอดเจ้าหนี้หน้าร้าน (21-1101, 21-1102)\"",
+    "reason": "Text names the two companies on the intercompany payable report.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/finance/IntercompanyReportPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "IntercompanyReportPage > div > QueryBoundary > Card > CardContent > div > div > <div className=\"text-center\"> > <div className=\"text-2xs text-muted-foreground mb-0.5 leading-snug\"> > เกิดใหม่ (+)",
+    "reason": "Signed accounting data or column label for amounts added or deducted.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/finance/IntercompanyReportPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "IntercompanyReportPage > div > QueryBoundary > Card > CardContent > div > div > <div className=\"text-center\"> > <div className=\"font-medium text-destructive\"> > +",
+    "reason": "Signed accounting data or column label for amounts added or deducted.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/finance/IntercompanyReportPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "IntercompanyReportPage > div > QueryBoundary > Card > CardContent > div > div > <div className=\"text-center\"> > <div className=\"text-2xs text-muted-foreground mb-0.5 leading-snug\"> > ชำระแล้ว (−)",
+    "reason": "Signed accounting data or column label for amounts added or deducted.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/interco/ReverseBatchDialog.tsx",
+    "kind": "unicode-symbol",
+    "context": "ReverseBatchDialog > Dialog > DialogContent > <DialogHeader> > <DialogDescription className=\"leading-snug\"> > จะสร้าง รายการบัญชี กลับรายการทั้ง 2 ฝั่ง (สลับ Dr↔Cr) — สัญญาในรอบนี้จะกลับเข้าคิวรอจ่ายทันที",
+    "reason": "Accounting notation that describes reversal of debit and credit sides.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/interest-config/RateRowsEditor.tsx",
+    "kind": "unicode-symbol",
+    "context": "RateRowsEditor > <section aria-labelledby={`${fieldId}-title`} className=\"rounded-lg border border-border p-3\"> > <p className=\"mt-3 text-xs leading-snug text-muted-foreground\"> > ยังไม่มีตาราง — ใช้ดอกเบี้ยต่อเดือน × จำนวนงวด และเลือกได้ทุกงวดในช่วงต่ำสุด–สูงสุด",
+    "reason": "Multiplication notation between numeric factors in a formula, quote or document.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/liff/LiffContract.tsx",
+    "kind": "unicode-symbol",
+    "context": "LiffContract > customerInitial > '?'",
+    "reason": "Fallback initial when the corresponding customer or participant name is unavailable.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/liff/LiffContract.tsx",
+    "kind": "inline-svg",
+    "context": "LiffContract > div > div > section > <div className=\"rounded-[22px] border border-border/50 bg-card/80 backdrop-blur-sm p-5 shadow-sm grid grid-cols-[112px_1fr] gap-5 items-center\"> > <div className=\"relative h-[112px] w-[112px]\"> > <svg viewBox=\"0 0 112 112\" className=\"h-full w-full -rotate-90\"> <defs> <linearGradient id=\"ringGrad\" x1=\"0%\" y1=\"0%\" x2=\"100%\" y2=\"100%\"> <stop offset=\"0%\" sto… sha256:723922b8b73d7eb522adc98d7d465e46dd052624f1b3b3b402a928a5256d6a8d",
+    "reason": "Data-driven ring visualizes the progress of the LIFF contract.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web/src/pages/liff/LiffEarlyPayoff.tsx",
+    "kind": "unicode-symbol",
+    "context": "LiffEarlyPayoff > customerInitial > '?'",
+    "reason": "Fallback initial when the corresponding customer or participant name is unavailable.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/liff/LiffEarlyPayoff.tsx",
+    "kind": "image-or-css-icon",
+    "context": "LiffEarlyPayoff > Shell > section > <div className=\"relative h-16 w-16\"> > <div className=\"absolute inset-0 rounded-full animate-spin\" style={{ background: 'conic-gradient(from 0deg, rgb(245 158 11), rgb(217 119 6), rgb(245 158 11))', }} /> > className=\"absolute inset-0 rounded-full animate-spin\"",
+    "reason": "Indeterminate rotating gradient ring while creating the early-payoff payment link.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web/src/pages/liff/LiffHistory.tsx",
+    "kind": "unicode-symbol",
+    "context": "LiffHistory > customerInitial > '?'",
+    "reason": "Fallback initial when the corresponding customer or participant name is unavailable.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/liff/LiffPayment.tsx",
+    "kind": "unicode-symbol",
+    "context": "LiffPayment > customerInitial > '?'",
+    "reason": "Fallback initial when the corresponding customer or participant name is unavailable.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/liff/LiffProfile.tsx",
+    "kind": "unicode-symbol",
+    "context": "LiffProfile > customerInitial > '?'",
+    "reason": "Fallback initial when the corresponding customer or participant name is unavailable.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/price-list/parts.tsx",
+    "kind": "unicode-symbol",
+    "context": "RateBlock > <div role=\"group\" aria-label={title} className={cn('rounded-lg bg-muted/50 px-3 py-2 tabular-nums', !view.ok && 'text-muted-foreground')} > > <p className=\"text-sm leading-snug text-foreground\"> > ×",
+    "reason": "Multiplication notation between numeric factors in a formula, quote or document.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/pricing-templates/pricingTemplateImport.ts",
+    "kind": "unicode-symbol",
+    "context": "changesOf > call pairs.filter(([, a, b]) => a !== b).map > `${name} ${show(a)} → ${show(b)}`",
+    "reason": "Text summarizes configured values before and after a proposed rule change or shows its arithmetic.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/transfers/AssetTransfersListPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "AssetTransfersListPage > columns > call useMemo > key: 'custodian' > render > <span className=\"text-sm\"> > →",
+    "reason": "Audit or transfer row shows the source and destination of the asset movement.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/transfers/AssetTransfersListPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "AssetTransfersListPage > columns > call useMemo > key: 'location' > render > <span className=\"text-sm\"> > →",
+    "reason": "Audit or transfer row shows the source and destination of the asset movement.",
+    "category": "content"
+  }
+]

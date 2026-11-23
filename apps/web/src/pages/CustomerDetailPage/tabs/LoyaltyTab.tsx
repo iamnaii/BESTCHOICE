@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useIsMutating, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import api, { getErrorMessage } from '@/lib/api';
+import { Minus, Plus } from '@/lib/icons';
 import { toast } from 'sonner';
 import { formatDateShort } from '@/utils/formatters';
 import type { LoyaltyHistory, LoyaltyPoints, ReferralStats } from '../hooks/useCustomerDetailData';
@@ -147,7 +148,11 @@ export default function LoyaltyTab({ customerId, canEdit, loyaltyPoints, loyalty
                           : 'bg-warning/10 text-warning-strong dark:bg-warning/20'
                       }`}
                     >
-                      {item.type === 'EARN' ? '+' : '-'}
+                      {item.type === 'EARN' ? (
+                        <Plus size={16} aria-hidden="true" />
+                      ) : (
+                        <Minus size={16} aria-hidden="true" />
+                      )}
                     </span>
                     <div>
                       <div className="text-sm font-medium text-foreground">

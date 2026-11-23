@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { useDataGrid } from '@/components/ui/data-grid';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ChevronLeftIcon, ChevronRightIcon } from '@/lib/icons';
+import { ChevronLeftIcon, ChevronRightIcon, MoreHorizontal } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 
 interface DataGridPaginationProps {
@@ -88,9 +88,10 @@ function DataGridPagination(props: DataGridPaginationProps) {
           mode="icon"
           className={btnBaseClasses}
           variant="ghost"
+          aria-label="ไปกลุ่มหน้าก่อน"
           onClick={() => table.setPageIndex(currentGroupStart - 1)}
         >
-          ...
+          <MoreHorizontal size={16} aria-hidden="true" />
         </Button>
       );
     }
@@ -105,9 +106,10 @@ function DataGridPagination(props: DataGridPaginationProps) {
           variant="ghost"
           size="sm"
           mode="icon"
+          aria-label="ไปกลุ่มหน้าถัดไป"
           onClick={() => table.setPageIndex(currentGroupEnd)}
         >
-          ...
+          <MoreHorizontal size={16} aria-hidden="true" />
         </Button>
       );
     }

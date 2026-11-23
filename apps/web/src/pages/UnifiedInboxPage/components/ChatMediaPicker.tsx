@@ -292,7 +292,8 @@ export function ChatMediaPicker({
                 : 'text-muted-foreground hover:text-foreground',
             )}
           >
-            😊 อีโมจิ
+            <Smile className="size-4 shrink-0" aria-hidden="true" />
+            อีโมจิ
           </button>
 
           {isLineChannel && (

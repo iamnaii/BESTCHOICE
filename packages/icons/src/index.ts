@@ -16,6 +16,7 @@ import { ArrowClockwiseIcon as PhosphorArrowClockwise } from '@phosphor-icons/re
 import { ArrowCounterClockwiseIcon as PhosphorArrowCounterClockwise } from '@phosphor-icons/react/dist/csr/ArrowCounterClockwise';
 import { ArrowDownIcon as PhosphorArrowDown } from '@phosphor-icons/react/dist/csr/ArrowDown';
 import { ArrowDownRightIcon as PhosphorArrowDownRight } from '@phosphor-icons/react/dist/csr/ArrowDownRight';
+import { ArrowElbowDownRightIcon as PhosphorArrowElbowDownRight } from '@phosphor-icons/react/dist/csr/ArrowElbowDownRight';
 import { ArrowLeftIcon as PhosphorArrowLeft } from '@phosphor-icons/react/dist/csr/ArrowLeft';
 import { ArrowLineLeftIcon as PhosphorArrowLineLeft } from '@phosphor-icons/react/dist/csr/ArrowLineLeft';
 import { ArrowLineRightIcon as PhosphorArrowLineRight } from '@phosphor-icons/react/dist/csr/ArrowLineRight';
@@ -291,6 +292,10 @@ export const RotateCcw = /* @__PURE__ */ createAppIcon(
   'arrow-counter-clockwise',
 );
 export const ArrowDown = /* @__PURE__ */ createAppIcon(PhosphorArrowDown, 'arrow-down');
+export const CornerDownRight = /* @__PURE__ */ createAppIcon(
+  PhosphorArrowElbowDownRight,
+  'arrow-elbow-down-right',
+);
 export const ArrowDownRight = /* @__PURE__ */ createAppIcon(
   PhosphorArrowDownRight,
   'arrow-down-right',

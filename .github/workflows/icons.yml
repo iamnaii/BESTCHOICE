@@ -1,0 +1,81 @@
+name: System icons
+
+on:
+  pull_request:
+    paths:
+      - 'apps/web/**'
+      - 'apps/web-shop/**'
+      - 'packages/icons/**'
+      - 'packages/shared/**'
+      - 'apps/api/prisma/schema.prisma'
+      - 'tools/check-icons.mjs'
+      - 'tools/check-icons.test.mjs'
+      - 'tools/icon-exceptions.json'
+      - 'tools/local-check.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/actions/setup-deps/action.yml'
+      - '.github/workflows/icons.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/web/**'
+      - 'apps/web-shop/**'
+      - 'packages/icons/**'
+      - 'packages/shared/**'
+      - 'apps/api/prisma/schema.prisma'
+      - 'tools/check-icons.mjs'
+      - 'tools/check-icons.test.mjs'
+      - 'tools/icon-exceptions.json'
+      - 'tools/local-check.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/actions/setup-deps/action.yml'
+      - '.github/workflows/icons.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: system-icons-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  icons:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-deps
+        with:
+          node-version: '24'
+          prisma: shop
+      - name: Source guard and fixtures
+        run: |
+          node --test tools/check-icons.test.mjs
+          npm run check:icons
+      - name: Shared icon package
+        run: |
+          npm run test --workspace=@installment/icons
+          npm run typecheck --workspace=@installment/icons
+      - name: Admin icon consumers
+        run: >-
+          npm run test --workspace=@installment/web --
+          src/lib/icons/__tests__/icons.test.tsx
+          src/config/__tests__/navigation-icons.test.tsx
+          src/components/layout/__tests__/SettingsNav.test.tsx
+          src/components/ui/native-select.test.tsx
+          src/components/ui/sonner.test.tsx
+          src/components/ui/data-grid-pagination.test.tsx
+          src/pages/CustomerDetailPage/tabs/LoyaltyTab.test.tsx
+          src/pages/CustomersPage/components/FilterSelect.test.tsx
+          src/pages/PurchaseOrdersPage/components/wizard/PaymentSection.test.tsx
+          src/pages/UnifiedInboxPage/components/ChatMediaPicker.test.tsx
+      - name: Storefront icon consumers
+        run: >-
+          npm run test --workspace=@installment/web-shop --
+          src/lib/icons.test.tsx
+          src/components/ui/native-select.test.tsx
+          src/components/ui/sonner.test.tsx
+          src/pages/account/navigation-icons.test.tsx

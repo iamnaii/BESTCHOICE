@@ -42,6 +42,9 @@ describe('chat media picker extracted from composer', () => {
   });
   it('inserts emoji and offers LINE stickers without fetching GIFs', () => {
     render(<Harness line />);
+    const emojiTab = screen.getByRole('button', { name: /^อีโมจิ$/ });
+    expect(emojiTab.querySelector('svg.app-icon-smiley')).toHaveAttribute('aria-hidden', 'true');
+    expect(emojiTab).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(screen.getByRole('button', { name: '🙏' }));
     expect(emoji).toHaveBeenCalledWith('🙏');
     expect(screen.queryByRole('button', { name: 'GIF' })).not.toBeInTheDocument();
@@ -49,6 +52,7 @@ describe('chat media picker extracted from composer', () => {
     expect(stickerTab.querySelector('svg.app-icon-package')).toHaveAttribute('aria-hidden', 'true');
     fireEvent.click(stickerTab);
     expect(stickerTab).toHaveAttribute('aria-pressed', 'true');
+    expect(emojiTab).toHaveAttribute('aria-pressed', 'false');
     fireEvent.click(screen.getByTitle('สติกเกอร์ 52002734'));
     expect(sticker).toHaveBeenCalledWith(11537, 52002734);
     expect(fetchGif).not.toHaveBeenCalled();

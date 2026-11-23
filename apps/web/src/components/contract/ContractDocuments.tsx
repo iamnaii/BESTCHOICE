@@ -3,6 +3,7 @@ import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import QueryBoundary from '@/components/QueryBoundary';
 import { downloadGeneratedDocument } from '@/lib/document-download';
+import { Check, Square } from '@/lib/icons';
 import { queryErrorMessage } from '@/lib/query-error-message';
 import { formatDateMedium } from '@/utils/formatters';
 
@@ -50,14 +51,24 @@ export default function ContractDocuments({ signatureRequirements, signatures, e
           const sig = (signatures || []).find(s => (s.signerType === 'STAFF' ? 'COMPANY' : s.signerType) === type);
           return (
             <div key={type} className={`p-2 rounded-lg text-center text-xs ${sig ? 'bg-success/5 dark:bg-success/10 text-success' : 'bg-muted text-muted-foreground'}`}>
-              {sig ? '\u2713' : '\u2B1C'} {label}
+              <div className="inline-flex items-center justify-center gap-1">
+                {sig ? (
+                  <Check className="size-4 shrink-0" role="img" aria-label="ลงนามแล้ว" />
+                ) : (
+                  <Square className="size-4 shrink-0" role="img" aria-label="ยังไม่ได้ลงนาม" />
+                )}
+                {label}
+              </div>
               {sig && <div className="text-2xs mt-0.5">{formatDateMedium(sig.signedAt)}</div>}
             </div>
           );
         })}
       </div>
       {pdpaConsentId && (
-        <div className="text-xs text-success mb-3">{'\u2713'} ยินยอม PDPA แล้ว</div>
+        <div className="mb-3 flex items-center gap-1 text-xs text-success">
+          <Check className="size-4 shrink-0" aria-hidden="true" />
+          ยินยอม PDPA แล้ว
+        </div>
       )}
       <QueryBoundary isLoading={isLoading} isError={isError} error={error} onRetry={onRetry} errorTitle="โหลดเอกสารที่ระบบสร้างไม่สำเร็จ">
       {eDocuments.length > 0 ? (

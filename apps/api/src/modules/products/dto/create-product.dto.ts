@@ -1,3 +1,4 @@
+import { CreateAnglePhotosDto, EvidencePhotosDto } from '../../quality-control/dto/product-photo.dto';
 import {
   IsEnum,
   IsString,
@@ -28,6 +29,12 @@ export class CreatePriceDto {
 }
 
 export class CreateProductDto {
+  @IsOptional() @IsObject() @ValidateNested() @Type(() => CreateAnglePhotosDto)
+  anglePhotos?: CreateAnglePhotosDto;
+
+  @IsOptional() @IsObject() @ValidateNested() @Type(() => EvidencePhotosDto)
+  evidencePhotos?: EvidencePhotosDto;
+
   @IsOptional() @IsEnum(DeviceOrigin)
   deviceOrigin?: DeviceOrigin | null;
 

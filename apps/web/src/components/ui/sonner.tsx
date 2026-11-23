@@ -1,15 +1,26 @@
 import * as React from 'react';
 import { useTheme } from 'next-themes';
 import { Toaster as Sonner } from 'sonner';
+import { AlertTriangle, CheckCircle2, CircleX, Info, Loader2, X } from '@/lib/icons';
 
 type ToasterProps = React.ComponentProps<typeof Sonner>;
 
-const Toaster = ({ ...props }: ToasterProps) => {
+const statusIcons: NonNullable<ToasterProps['icons']> = {
+  success: <CheckCircle2 size={16} aria-hidden="true" />,
+  info: <Info size={16} aria-hidden="true" />,
+  warning: <AlertTriangle size={16} aria-hidden="true" />,
+  error: <CircleX size={16} aria-hidden="true" />,
+  loading: <Loader2 size={16} className="motion-safe:animate-spin" aria-hidden="true" />,
+  close: <X size={16} aria-hidden="true" />,
+};
+
+const Toaster = ({ icons, ...props }: ToasterProps) => {
   const { theme = 'system' } = useTheme();
 
   return (
     <Sonner
       theme={theme as ToasterProps['theme']}
+      icons={{ ...statusIcons, ...icons }}
       className="group toaster [&_[data-type=success]>[data-icon]]:text-success [&_[data-type=success]_[data-title]]:text-success [&_[data-type=info]_[data-title]]:text-info [&_[data-type=error]>[data-icon]]:text-destructive [&_[data-type=error]_[data-title]]:text-destructive"
       toastOptions={{
         classNames: {

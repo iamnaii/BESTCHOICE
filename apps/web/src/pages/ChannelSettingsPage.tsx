@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { formControlClass, formLabelClass } from '@/components/ui/form-styles';
-import { Save, Eye, EyeOff, CheckCircle, XCircle, Copy, ExternalLink } from '@/lib/icons';
+import { Save, Eye, EyeOff, CheckCircle, XCircle, Copy, ExternalLink, FacebookLogo, MessageSquare, TiktokLogo, type AppIcon } from '@/lib/icons';
 
 interface ChannelConfig {
   label: string;
@@ -13,10 +13,10 @@ interface ChannelConfig {
   settings: Record<string, string>;
 }
 
-const CHANNEL_META: Record<string, { color: string; icon: string; fields: { key: string; label: string; secret: boolean; placeholder: string }[] }> = {
+const CHANNEL_META: Record<string, { color: string; icon: AppIcon; fields: { key: string; label: string; secret: boolean; placeholder: string }[] }> = {
   LINE_SHOP: {
-    color: 'bg-success',
-    icon: '🟢',
+    color: 'text-success',
+    icon: MessageSquare,
     fields: [
       { key: 'line_channel_access_token', label: 'Channel Access Token', secret: true, placeholder: 'ดึงจาก LINE Developers Console' },
       { key: 'line_channel_secret', label: 'Channel Secret', secret: true, placeholder: 'ดึงจาก LINE Developers Console' },
@@ -24,8 +24,8 @@ const CHANNEL_META: Record<string, { color: string; icon: string; fields: { key:
     ],
   },
   LINE_FINANCE: {
-    color: 'bg-success',
-    icon: '💚',
+    color: 'text-success',
+    icon: MessageSquare,
     fields: [
       { key: 'line_finance_channel_access_token', label: "Channel Access Token (งานการเงิน)", secret: true, placeholder: 'Token ของ OA "ชำระค่างวด"' },
       { key: 'line_finance_channel_secret', label: "Channel Secret (งานการเงิน)", secret: true, placeholder: 'Secret ของ OA "ชำระค่างวด"' },
@@ -33,8 +33,8 @@ const CHANNEL_META: Record<string, { color: string; icon: string; fields: { key:
     ],
   },
   FACEBOOK: {
-    color: 'bg-info',
-    icon: '🔵',
+    color: 'text-info',
+    icon: FacebookLogo,
     fields: [
       { key: 'fb_page_access_token', label: 'Page Access Token', secret: true, placeholder: 'ดึงจาก Facebook Developer Console' },
       { key: 'fb_page_id', label: 'Page ID', secret: false, placeholder: 'เช่น 1234567890' },
@@ -43,8 +43,8 @@ const CHANNEL_META: Record<string, { color: string; icon: string; fields: { key:
     ],
   },
   TIKTOK: {
-    color: 'bg-secondary',
-    icon: '🎵',
+    color: 'text-secondary-foreground',
+    icon: TiktokLogo,
     fields: [
       { key: 'tiktok_bm_access_token', label: 'Business Messaging Access Token', secret: true, placeholder: 'ดึงจาก TikTok Business API Portal' },
       { key: 'tiktok_bm_business_id', label: "รหัสธุรกิจ", secret: false, placeholder: 'TikTok Business Account ID' },
@@ -82,7 +82,7 @@ export default function ChannelSettingsPage() {
     mutationFn: (channel: string) =>
       api.post('/channel-settings', { channel, settings: forms[channel] }),
     onSuccess: (_, channel) => {
-      toast.success(`บันทึก ${CHANNEL_META[channel]?.icon} ${(channelsQuery.data?.channels as Record<string, ChannelConfig>)?.[channel]?.label} เรียบร้อย`);
+      toast.success(`บันทึก ${(channelsQuery.data?.channels as Record<string, ChannelConfig>)?.[channel]?.label} เรียบร้อย`);
       queryClient.invalidateQueries({ queryKey: ['channel-settings'] });
     },
     onError: () => toast.error('ไม่สามารถบันทึกได้'),
@@ -112,7 +112,7 @@ export default function ChannelSettingsPage() {
                 {/* Header */}
                 <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6 border-b border-border">
                   <div className="flex min-w-0 items-center gap-3">
-                    <span className="text-2xl">{meta.icon}</span>
+                    <meta.icon className={`size-6 shrink-0 ${meta.color}`} aria-hidden="true" />
                     <div>
                       <h3 className="font-semibold text-foreground">{channelCfg.label}</h3>
                       <div className="flex items-center gap-1.5 mt-0.5">

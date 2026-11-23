@@ -1,6 +1,7 @@
 import { useId as useUiFieldId, useState, useCallback, useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
+import { Check, CheckCircle2 } from '@/lib/icons';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import SignaturePadFull from './SignaturePadFull';
@@ -142,7 +143,7 @@ export default function StepSignature({
       const freshSignedTypes = new Set(freshSignatures.map(s => normalizeSignerType(s.signerType)));
       const allDone = requiredSigners.every(t => freshSignedTypes.has(t));
       if (allDone) onAllSigned();
-      // Stay on current signer tab to show ✓ confirmation
+      // Stay on the current signer tab to show the signed status
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
@@ -206,7 +207,7 @@ export default function StepSignature({
     if (allDone) {
       return (
         <div className="flex flex-col items-center justify-center min-h-[50vh] px-4">
-          <div className="text-5xl mb-4 text-success">&#10003;</div>
+          <CheckCircle2 className="mb-4 size-12 text-success" aria-hidden="true" />
           <h2 className="text-xl font-semibold text-success">ลงนามครบถ้วนแล้ว</h2>
           <button onClick={onAllSigned} className="mt-6 px-8 py-3.5 bg-primary text-primary-foreground rounded-xl text-sm font-medium">
             ดำเนินการต่อ
@@ -249,7 +250,9 @@ export default function StepSignature({
                     : 'bg-muted border-border text-muted-foreground hover:bg-muted/80'
               } ${isCompanyAuto ? 'opacity-60 cursor-default' : 'cursor-pointer'}`}
             >
-              {signed ? '\u2713 ' : ''}{SIGNER_LABELS[type]}
+              {signed && <Check className="size-4 shrink-0" aria-hidden="true" />}
+              {SIGNER_LABELS[type]}
+              {signed && <span className="sr-only">ลงนามแล้ว</span>}
               {signed && type !== 'COMPANY' && (
                 <span
                   onClick={(e) => {
@@ -269,7 +272,7 @@ export default function StepSignature({
       {isCurrentSignerSigned ? (
         /* Signed state - show confirmation */
         <div className="w-full flex flex-col items-center py-8">
-          <div className="text-4xl mb-3 text-success">&#10003;</div>
+          <CheckCircle2 className="mb-3 size-9 text-success" aria-hidden="true" />
           <h3 className="text-lg font-semibold text-success mb-2">
             {SIGNER_LABELS[currentSigner]} ลงนามเรียบร้อยแล้ว
           </h3>

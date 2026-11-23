@@ -1,4 +1,4 @@
-import { Store, Truck, Package, MapPin, Clock, type LucideIcon } from 'lucide-react';
+import { Store, Truck, Package, MapPin, Clock, type AppIcon } from '@/lib/icons';
 import {
   CategoryHero,
   Container,
@@ -15,7 +15,7 @@ import { usePageMeta } from '@/hooks/usePageMeta';
 
 interface ShippingMethod {
   key: string;
-  Icon: LucideIcon;
+  Icon: AppIcon;
   name: string;
   fee: string;
   eta: string;

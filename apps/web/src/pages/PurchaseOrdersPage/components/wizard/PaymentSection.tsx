@@ -1,6 +1,6 @@
 import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
-import { CreditCard, ImagePlus, Paperclip } from '@/lib/icons';
+import { Plus, CreditCard, ImagePlus, Paperclip, X } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import { formatNumberDecimal } from '@/utils/formatters';
 import { paymentMethodLabels } from '../../constants';
@@ -243,7 +243,7 @@ export function PaymentSection({
               }}
               className="h-11 whitespace-nowrap rounded-lg bg-secondary px-3 text-sm hover:bg-muted/50"
             >
-              + เพิ่ม
+              <Plus className="inline size-4 align-text-bottom" aria-hidden="true" />{' '}เพิ่ม
             </button>
           </div>
           {attachments.length > 0 && (
@@ -265,7 +265,7 @@ export function PaymentSection({
                     onClick={() => setAttachments(attachments.filter((_, i) => i !== idx))}
                     className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-full bg-destructive text-2xs text-destructive-foreground opacity-0 transition-opacity group-hover:opacity-100"
                   >
-                    &times;
+                    <X size={16} aria-hidden="true" />
                   </button>
                 </div>
               ))}

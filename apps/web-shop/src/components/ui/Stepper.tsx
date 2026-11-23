@@ -1,4 +1,4 @@
-import { Check } from 'lucide-react';
+import { Check } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 
 export interface StepperStep {
@@ -19,7 +19,11 @@ export function Stepper({ steps, current, className }: Props) {
         const idx = i + 1;
         const state = idx < current ? 'done' : idx === current ? 'active' : 'future';
         return (
-          <li key={i} className="flex-1 flex flex-col items-center text-center relative">
+          <li
+            key={i}
+            aria-current={state === 'active' ? 'step' : undefined}
+            className="flex-1 flex flex-col items-center text-center relative"
+          >
             {i > 0 && (
               <div
                 className={cn(
@@ -47,6 +51,7 @@ export function Stepper({ steps, current, className }: Props) {
                 )}
               >
                 {step.label}
+                {state === 'done' && <span className="sr-only"> เสร็จแล้ว</span>}
               </div>
               {step.description && (
                 <div className="text-xs text-muted-foreground hidden md:block">

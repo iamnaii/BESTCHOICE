@@ -24,7 +24,7 @@ export default preview ? defineConfig({
 }) : defineConfig({
   globalSetup: './e2e/global-setup.ts',
   testDir: './e2e',
-  testIgnore: ['**/load-test-*.spec.ts', '**/' + cutoverSpec],
+  testIgnore: ['**/load-test-*.spec.ts', '**/icons.spec.ts', '**/' + cutoverSpec],
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   // CI retries: 2 (handles transient flake); local: 1

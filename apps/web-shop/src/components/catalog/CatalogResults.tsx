@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import { Search } from 'lucide-react';
+import { Search } from '@/lib/icons';
 import { ProductCard, type ProductGroup } from './ProductCard';
 import { LoadingState } from '@/components/states/LoadingState';
 import { EmptyState } from '@/components/states/EmptyState';

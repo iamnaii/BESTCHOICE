@@ -6,7 +6,7 @@ import { canApproveAccountingDoc } from '@installment/shared';
 import { useNavigate, useParams } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Wallet } from '@/lib/icons';
+import { BookOpen, CheckCircle2, Clock, PencilLine, RotateCcw, Wallet, type AppIcon } from '@/lib/icons';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import {
@@ -129,13 +129,13 @@ export function mapExpenseStatusToIcab(status: ExpenseStatus): IcabStatus {
   }
 }
 
-const STATUS_BADGE: Record<ExpenseStatus, { label: string; cls: string }> = {
-  DRAFT: { label: '📝 ฉบับร่าง', cls: 'border-warning/40 bg-warning/10 text-warning-strong' },
-  PENDING_APPROVAL: { label: '⏳ รออนุมัติ', cls: 'border-info/40 bg-info/10 text-info' },
-  APPROVED: { label: '✓ อนุมัติแล้ว', cls: 'border-success/40 bg-success/10 text-success' },
-  ACCRUAL: { label: '📒 ตั้งค้างจ่าย', cls: 'border-info/40 bg-info/10 text-info' },
-  POSTED: { label: '✓ ลงบัญชีแล้ว', cls: 'border-success/40 bg-success/10 text-success' },
-  VOIDED: { label: '↺ กลับรายการแล้ว', cls: 'border-destructive/40 bg-destructive/10 text-destructive' },
+const STATUS_BADGE: Record<ExpenseStatus, { label: string; icon: AppIcon; cls: string }> = {
+  DRAFT: { label: 'ฉบับร่าง', icon: PencilLine, cls: 'border-warning/40 bg-warning/10 text-warning-strong' },
+  PENDING_APPROVAL: { label: 'รออนุมัติ', icon: Clock, cls: 'border-info/40 bg-info/10 text-info' },
+  APPROVED: { label: 'อนุมัติแล้ว', icon: CheckCircle2, cls: 'border-success/40 bg-success/10 text-success' },
+  ACCRUAL: { label: 'ตั้งค้างจ่าย', icon: BookOpen, cls: 'border-info/40 bg-info/10 text-info' },
+  POSTED: { label: 'ลงบัญชีแล้ว', icon: CheckCircle2, cls: 'border-success/40 bg-success/10 text-success' },
+  VOIDED: { label: 'กลับรายการแล้ว', icon: RotateCcw, cls: 'border-destructive/40 bg-destructive/10 text-destructive' },
 };
 
 function StatusBadge({ status }: { status: ExpenseStatus }) {
@@ -144,6 +144,7 @@ function StatusBadge({ status }: { status: ExpenseStatus }) {
     <span
       className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium leading-snug ${b.cls}`}
     >
+      <b.icon className="size-4 shrink-0" aria-hidden="true" />
       {b.label}
     </span>
   );

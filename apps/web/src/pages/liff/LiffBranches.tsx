@@ -1,7 +1,7 @@
 import { useLiffInit } from '@/hooks/useLiffInit';
 import { liffApi } from '@/lib/api';
 import { useQuery } from '@tanstack/react-query';
-import { MapPin, Phone } from '@/lib/icons';
+import { AlertCircle, ArrowLeft, MapPin, Phone } from '@/lib/icons';
 import { toast } from 'sonner';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -44,7 +44,7 @@ export default function LiffBranches() {
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <Card className="max-w-md w-full">
           <CardContent className="text-center py-10">
-            <div className="text-destructive text-5xl mb-4">!</div>
+            <AlertCircle size={48} className="mx-auto mb-4 text-destructive" aria-hidden="true" />
             <h2 className="text-lg font-bold mb-2">{LIFF_ERRORS.LOAD_FAILED}</h2>
             <p className="text-muted-foreground text-sm">{error || (dataError as Error)?.message}</p>
           </CardContent>
@@ -123,7 +123,7 @@ export default function LiffBranches() {
       <div className="text-center mt-4">
         <Button variant="ghost" mode="link" className="text-primary" asChild>
           <a href={`/liff/contract${lineId ? `?lineId=${encodeURIComponent(lineId)}` : ''}`}>
-            ← กลับไปดูสัญญา
+            <ArrowLeft className="inline size-4 align-text-bottom" aria-hidden="true" />{' '}กลับไปดูสัญญา
           </a>
         </Button>
       </div>

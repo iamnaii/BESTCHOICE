@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { getStatusBadgeProps, sessionStatusMap } from '@/lib/status-badges';
 import { Card, CardContent } from '@/components/ui/card';
 import { formatDateTime } from '@/utils/formatters';
-import { User, Bot, Briefcase, Clock, Settings, Pin } from '@/lib/icons';
+import { ArrowLeft, ArrowRight, User, Bot, Briefcase, Clock, Settings, Pin } from '@/lib/icons';
 
 interface SessionItem {
   id: string;
@@ -178,7 +178,7 @@ export default function ChatbotFinanceSessionsPage() {
                 disabled={page === 1}
                 className="text-primary disabled:text-muted-foreground/50"
               >
-                ← ก่อนหน้า
+                <ArrowLeft className="inline size-4 align-text-bottom" aria-hidden="true" />{' '}ก่อนหน้า
               </button>
               <span className="text-muted-foreground">
                 {page} / {Math.ceil(list.data.total / list.data.limit)}
@@ -188,7 +188,7 @@ export default function ChatbotFinanceSessionsPage() {
                 disabled={page * list.data.limit >= list.data.total}
                 className="text-primary disabled:text-muted-foreground/50"
               >
-                ถัดไป →
+                ถัดไป{' '}<ArrowRight className="inline size-4 align-text-bottom" aria-hidden="true" />
               </button>
             </div>
           )}

@@ -1,6 +1,6 @@
 import { LandingFaq } from '@/components/LandingFaq';
 import { Link } from 'react-router';
-import { BadgeCheck, BatteryCharging, ShieldCheck, Repeat } from 'lucide-react';
+import { BadgeCheck, BatteryCharging, ShieldCheck, Repeat } from '@/lib/icons';
 import {
   CategoryHero,
   Container,

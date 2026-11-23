@@ -103,7 +103,7 @@ export default function OnlineListingPanel({
       const { data } = await api.get(`/products/${product.id}/photos`);
       return data;
     },
-    enabled: product.category === 'PHONE_USED',
+    enabled: product.category !== 'ACCESSORY',
   });
 
   const invalidateProduct = () => Promise.all([['product', product.id], ['stock-list'], ['products'], ['pos-products'], ['products-available']].map(queryKey => queryClient.invalidateQueries({ queryKey })));

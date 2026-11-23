@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Ban, CalendarClock } from '@/lib/icons';
+import { Plus, Ban, CalendarClock } from '@/lib/icons';
 import api, { getErrorMessage } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUiFlags } from '@/hooks/useUiFlags';
@@ -123,7 +123,8 @@ export default function RecurringBillsPage() {
               icon={CalendarClock}
               title="ยังไม่มีบิลประจำในเดือนนี้"
               description="ตั้งบิลประจำจากหน้ารายการโปรด แล้วระบบจะสร้างร่างใบรายจ่ายและเตือนให้ก่อนครบกำหนด"
-              actionLabel="+ บิลประจำ"
+              actionLabel="บิลประจำ"
+              actionIcon={Plus}
               onAction={goCreate}
             />
           ) : (

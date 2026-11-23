@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Package } from 'lucide-react';
+import { Package } from '@/lib/icons';
 import { api } from '../lib/api';
 import ShopLayout from '../components/layout/ShopLayout';
 import OrderCard from '../components/orders/OrderCard';

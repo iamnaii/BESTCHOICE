@@ -1,5 +1,5 @@
 import { Fragment, useId, useState } from 'react';
-import { ChevronDown, ChevronRight, Clock, Coins, Lock, Percent, Undo2 } from '@/lib/icons';
+import { Minus, ChevronDown, ChevronRight, Clock, Coins, Lock, Percent, Undo2 } from '@/lib/icons';
 import ScreenTable from '@/components/ui/ScreenTable';
 import { formatNumberDecimal } from '@/utils/formatters';
 import { THAI_MONTHS_SHORT } from '@/lib/date';
@@ -212,7 +212,7 @@ export function PayrollSystemDeductions({
     <section aria-labelledby={titleId} className="rounded-lg border border-warning/40 bg-card overflow-hidden">
       <div className="flex items-center gap-1.5 bg-warning/10 px-3 py-1.5 text-xs font-medium text-warning-strong leading-snug">
         <Lock className="size-3.5 shrink-0" aria-hidden="true" />
-        <span aria-hidden="true">−</span>
+        <Minus className="size-4 shrink-0" aria-hidden="true" />
         <span id={titleId}>{SYSTEM_DEDUCTIONS_TITLE}</span>
       </div>
       <ScreenTable className="w-full text-xs">

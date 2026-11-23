@@ -1,3 +1,4 @@
+import { ArrowRight } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import { Link } from 'react-router';
 
@@ -29,7 +30,7 @@ export function SectionHeader({ title, description, cta, align = 'left', classNa
           to={cta.to}
           className="text-sm font-medium text-emerald-600 hover:text-emerald-700 leading-snug whitespace-nowrap"
         >
-          {cta.label} →
+          {cta.label}{' '}<ArrowRight className="inline size-4 align-text-bottom" aria-hidden="true" />
         </Link>
       )}
     </div>

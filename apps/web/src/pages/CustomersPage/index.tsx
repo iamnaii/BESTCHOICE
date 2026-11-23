@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router';
-import { Download } from '@/lib/icons';
+import { Plus, Download } from '@/lib/icons';
 import { toast } from 'sonner';
 import PageHeader from '@/components/ui/PageHeader';
 import { Card, CardContent } from '@/components/ui/card';
@@ -275,7 +275,8 @@ export default function CustomersPage() {
                 onClick={() => setIsModalOpen(true)}
                 className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
               >
-                {isBuyers ? '+ เพิ่มลูกค้าใหม่' : '+ เพิ่มผู้สนใจใหม่'}
+                <Plus className="inline size-4 align-text-bottom" aria-hidden="true" />
+                {' '}{isBuyers ? 'เพิ่มลูกค้าใหม่' : 'เพิ่มผู้สนใจใหม่'}
               </button>
             )}
           </div>

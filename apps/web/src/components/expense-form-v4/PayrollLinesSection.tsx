@@ -703,7 +703,7 @@ function CustomIncomeSubTable({
   return (
     <div className="rounded-lg border border-border bg-card overflow-hidden">
       <div className="bg-muted/50 px-3 py-1.5 text-xs font-medium text-foreground leading-snug">
-        + รายได้พิเศษ (โบนัส / OT / เบี้ยเลี้ยง) — กรอกเอง
+        <Plus className="inline size-4 align-text-bottom" aria-hidden="true" />{' '}รายได้พิเศษ (โบนัส / OT / เบี้ยเลี้ยง) — กรอกเอง
       </div>
       <ScreenTable className="w-full text-xs">
         <thead className="bg-muted/30 text-muted-foreground">

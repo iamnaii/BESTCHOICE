@@ -1,7 +1,7 @@
 import { NumberInput } from '@/components/ui/NumberInput';
 import { useId as useExtraFieldId, useId as useUiFieldId, useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Phone, PhoneIncoming, PhoneOutgoing, Clock } from '@/lib/icons';
+import { Plus, Phone, PhoneIncoming, PhoneOutgoing, Clock } from '@/lib/icons';
 import api from '@/lib/api';
 import Modal from '@/components/ui/Modal';
 import { formatNumber } from '@/utils/formatters';
@@ -499,7 +499,7 @@ export default function ContactLogDialog({ open, contract, onClose, onSaved }: P
                 onClick={addSlot}
                 className="w-full px-3 py-2 rounded-lg border-2 border-dashed border-border hover:bg-muted text-sm font-medium leading-snug transition-colors"
               >
-                + เพิ่ม &ldquo;ที่&rdquo;
+                <Plus className="inline size-4 align-text-bottom" aria-hidden="true" />{' '}เพิ่ม &ldquo;ที่&rdquo;
               </button>
 
               {/* Installment picker link (Task 22) */}

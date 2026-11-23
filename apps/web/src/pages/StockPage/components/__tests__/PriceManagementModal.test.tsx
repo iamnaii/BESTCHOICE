@@ -261,7 +261,7 @@ describe('PriceManagementModal — Task 13 column-awareness', () => {
     const product = makeProduct([]); // no rows at all yet
     renderHarness(product);
 
-    fireEvent.click(screen.getByRole('button', { name: '+ เพิ่มราคาใหม่' }));
+    fireEvent.click(screen.getByRole('button', { name: 'เพิ่มราคาใหม่' }));
 
     // Before typing a canonical label the ordinary "ค่าเริ่มต้น" checkbox is
     // still there (label not yet canonical).

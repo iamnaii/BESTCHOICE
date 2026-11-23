@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router';
-import { ArrowRight, Store } from 'lucide-react';
+import { ArrowRight, Store } from '@/lib/icons';
 import { copy } from '@/lib/copy';
 import ShopLayout from '@/components/layout/ShopLayout';
 import { Button, Container } from '@/components';

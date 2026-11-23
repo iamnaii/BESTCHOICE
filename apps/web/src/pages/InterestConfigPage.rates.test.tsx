@@ -76,7 +76,7 @@ describe('InterestConfigPage — ตารางดอกเบี้ยรา�
     expect(monthInputs.map((el) => (el as HTMLInputElement).value)).toEqual(['10', '12']);
 
     fireEvent.click(screen.getByRole('button', { name: 'ลบแถว 10 งวด' }));
-    fireEvent.click(screen.getByRole('button', { name: '+ เพิ่มงวด' }));
+    fireEvent.click(screen.getByRole('button', { name: 'เพิ่มงวด' }));
     const after = screen.getAllByLabelText('จำนวนงวด');
     fireEvent.change(after[after.length - 1], { target: { value: '8' } });
     const rates = screen.getAllByLabelText('ดอกเบี้ยรวม (%)');
@@ -95,7 +95,7 @@ describe('InterestConfigPage — ตารางดอกเบี้ยรา�
     await screen.findByText('มือ 2');
     fireEvent.click(screen.getAllByRole('button', { name: 'แก้ไข' })[1]);
     await screen.findAllByLabelText('จำนวนงวด');
-    fireEvent.click(screen.getByRole('button', { name: '+ เพิ่มงวด' }));
+    fireEvent.click(screen.getByRole('button', { name: 'เพิ่มงวด' }));
     const after = screen.getAllByLabelText('จำนวนงวด');
     fireEvent.change(after[after.length - 1], { target: { value: '12' } });
     const rates = screen.getAllByLabelText('ดอกเบี้ยรวม (%)');
@@ -130,7 +130,7 @@ describe('InterestConfigPage — ตารางดอกเบี้ยรา�
     await screen.findByText('มือ 2');
     fireEvent.click(screen.getAllByRole('button', { name: 'แก้ไข' })[1]);
     await screen.findAllByLabelText('จำนวนงวด');
-    fireEvent.click(screen.getByRole('button', { name: '+ เพิ่มงวด' }));
+    fireEvent.click(screen.getByRole('button', { name: 'เพิ่มงวด' }));
     const months = screen.getAllByLabelText('จำนวนงวด').map((el) => (el as HTMLInputElement).value);
     expect(months).toEqual(['10', '12', '6']);
     const rates = screen.getAllByLabelText('ดอกเบี้ยรวม (%)').map((el) => (el as HTMLInputElement).value);

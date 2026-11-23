@@ -2,7 +2,7 @@ import { toBangkokDateString } from '@/lib/date';
 import { useId as useUiFieldId, useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { BarChart3, ArrowRightLeft, Monitor, Wrench, Sofa, Car, Package } from '@/lib/icons';
+import { ArrowRight, BarChart3, ArrowRightLeft, Monitor, Wrench, Sofa, Car, Package } from '@/lib/icons';
 import type { AppIcon } from '@/lib/icons';
 import PageHeader from '@/components/ui/PageHeader';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
@@ -302,7 +302,7 @@ export default function AssetSummaryReportPage() {
                   <p className="text-sm text-muted-foreground text-center mt-4">
                     แสดง 100 รายการล่าสุดจากทั้งหมด {movementQuery.data?.total} รายการ ·{' '}
                     <Link to="/assets/transfers" className="text-primary underline">
-                      ดูทั้งหมด →
+                      ดูทั้งหมด{' '}<ArrowRight className="inline size-4 align-text-bottom" aria-hidden="true" />
                     </Link>
                   </p>
                 )}

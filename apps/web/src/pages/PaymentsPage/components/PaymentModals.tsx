@@ -1,4 +1,5 @@
 import {
+  ArrowLeft,
   Banknote as InlineBanknoteIcon,
   Camera as InlineCameraIcon,
   ClipboardList as InlineClipboardListIcon,
@@ -163,7 +164,7 @@ export function RecordPaymentModal({
         {/* Sticky Header */}
         <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-xs border-b px-6 py-4 flex items-center justify-between">
           <button onClick={onClose} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
-            ← กลับ
+            <ArrowLeft className="inline size-4 align-text-bottom" aria-hidden="true" />{' '}กลับ
           </button>
           <h2 className="text-lg font-semibold text-foreground">บันทึกการรับชำระ</h2>
           <div className="w-16" />

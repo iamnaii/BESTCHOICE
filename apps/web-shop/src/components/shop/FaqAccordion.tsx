@@ -1,5 +1,5 @@
 import { useId, useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus } from '@/lib/icons';
 
 interface FaqItem {
   question: string;

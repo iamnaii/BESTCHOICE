@@ -1,5 +1,5 @@
 import { Link } from 'react-router';
-import { Facebook, MessageCircle, Music2, MapPin, Phone } from 'lucide-react';
+import { FacebookLogo, MessageCircle, TiktokLogo, MapPin, Phone } from '@/lib/icons';
 import { shopInfo } from '@/lib/copy';
 
 const SERVICE_LINKS = [
@@ -52,7 +52,7 @@ export default function ShopFooter() {
                 aria-label="Facebook"
                 className={`${socialCls} hover:bg-[#1877F2] hover:text-white hover:ring-[#1877F2]`}
               >
-                <Facebook className="size-5" aria-hidden />
+                <FacebookLogo className="size-5" aria-hidden />
               </a>
               <a
                 href={shopInfo.lineUrl}
@@ -70,7 +70,7 @@ export default function ShopFooter() {
                 aria-label="TikTok"
                 className={`${socialCls} hover:bg-white hover:text-ink hover:ring-white`}
               >
-                <Music2 className="size-5" aria-hidden />
+                <TiktokLogo className="size-5" aria-hidden />
               </a>
             </div>
           </div>

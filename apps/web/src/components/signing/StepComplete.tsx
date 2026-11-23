@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router';
 import api from '@/lib/api';
 import { queryErrorMessage } from '@/lib/query-error-message';
 import { toast } from 'sonner';
+import { CheckCircle2 } from '@/lib/icons';
 
 interface StepCompleteProps {
   contractId: string;
@@ -69,7 +70,7 @@ export default function StepComplete({
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] px-4 text-center">
-      <div className="text-6xl mb-6 text-success">&#10003;</div>
+      <CheckCircle2 className="mb-6 size-15 text-success" aria-hidden="true" />
       <h2 className="text-2xl font-bold text-foreground mb-2">เซ็นสัญญาเรียบร้อยแล้ว!</h2>
       <p className="text-muted-foreground mb-6">สัญญาเลขที่ {contractNumber}</p>
 

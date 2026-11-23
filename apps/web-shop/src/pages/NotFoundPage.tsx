@@ -1,5 +1,5 @@
 import { Link } from 'react-router';
-import { Compass } from 'lucide-react';
+import { Compass } from '@/lib/icons';
 import ShopLayout from '@/components/layout/ShopLayout';
 import { Button, Container } from '@/components';
 import { copy } from '@/lib/copy';

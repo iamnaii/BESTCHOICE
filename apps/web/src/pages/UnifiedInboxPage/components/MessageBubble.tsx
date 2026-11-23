@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { PaymentFlexPreview, parsePaymentFlex } from './PaymentFlexPreview';
 import FlexBubblePreview from './FlexBubblePreview';
-import { Check, CheckCheck, Lock, FileText, ImageOff, Download, Copy, ShieldCheck, AlertCircle, Landmark } from '@/lib/icons';
+import { Bot, Check, CheckCheck, Lock, FileText, ImageOff, Download, Copy, ShieldCheck, AlertCircle, Landmark } from '@/lib/icons';
 import { CREDIT_MESSAGE_MIME } from './credit-statement';
 import { GFIN_MESSAGE_MIME, isGfinPickable } from './gfin/gfin';
 import { linkifyText } from '@/lib/linkify';
@@ -125,18 +125,19 @@ function DeliveryMark({ message, readColor }: { message: DeliveryMessage; readCo
 /**
  * AI auto-reply indicator — chat-engine tags auto-sent bot messages with
  * intent prefix "AUTO:<route>" (see AiAutoReplyService). When present we
- * render a small 🤖 next to the timestamp so staff can tell at a glance
+ * show a robot icon next to the timestamp so staff can tell at a glance
  * which messages were sent by AI vs. drafted-then-approved by a human.
  */
 function AiAutoIndicator({ intent, role }: { intent?: string | null; role: string }) {
   if (role !== 'BOT' || !intent?.startsWith('AUTO:')) return null;
   return (
     <span
-      className="ml-1 text-[10px] text-emerald-600"
+      className="ml-1 inline-flex text-emerald-600"
       title="AI ตอบอัตโนมัติ"
+      role="img"
       aria-label="AI ตอบอัตโนมัติ"
     >
-      🤖
+      <Bot className="size-4" aria-hidden="true" />
     </span>
   );
 }

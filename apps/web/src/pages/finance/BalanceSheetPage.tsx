@@ -6,7 +6,7 @@ import api from '@/lib/api';
 import QueryBoundary from '@/components/QueryBoundary';
 import PageHeader from '@/components/ui/PageHeader';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { Scale } from '@/lib/icons';
+import { Check, Scale, X } from '@/lib/icons';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { formatDateMedium } from '@/utils/formatters';
 import CompanyFilter from '@/components/CompanyFilter';
@@ -144,13 +144,18 @@ export default function BalanceSheetPage() {
                 ณ วันที่ {formatDateMedium(bs.asOfDate)}
               </span>
               <span
-                className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium leading-snug ${
+                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium leading-snug ${
                   bs.isBalanced
                     ? 'bg-success/10 text-success'
                     : 'bg-destructive/10 text-destructive'
                 }`}
               >
-                {bs.isBalanced ? "ยอดสมดุล ✓" : "ยอดไม่สมดุล ✗"}
+                {bs.isBalanced ? 'ยอดสมดุล' : 'ยอดไม่สมดุล'}
+                {bs.isBalanced ? (
+                  <Check className="size-4 shrink-0" aria-hidden="true" />
+                ) : (
+                  <X className="size-4 shrink-0" aria-hidden="true" />
+                )}
               </span>
             </div>
 

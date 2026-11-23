@@ -7,6 +7,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { CornerDownRight } from '@/lib/icons';
 
 /**
  * `<Select>` ของ Radix **ห้าม** `value=""` ⇒ ทุกตัวกรองใช้ sentinel `ALL` แทน "ทั้งหมด"
@@ -17,7 +18,7 @@ export const ALL = 'ALL';
 export interface FilterOption {
   value: string;
   label: string;
-  /** ตัวเลือกย่อยใต้หัวข้อ — เยื้องด้วย `↳` ตาม mockup */
+  /** ตัวเลือกย่อยใต้หัวข้อ */
   indent?: boolean;
 }
 
@@ -43,6 +44,10 @@ export default function FilterSelect({
   width: number;
   groups: FilterGroup[];
 }) {
+  const selectedLabel = value
+    ? groups.flatMap(({ options }) => options).find((option) => option.value === value)?.label
+    : placeholder;
+
   return (
     <Select value={value || ALL} onValueChange={(v) => onChange(v === ALL ? '' : v)}>
       <SelectTrigger
@@ -50,7 +55,7 @@ export default function FilterSelect({
         className="h-10 w-full min-w-0"
         style={{ maxWidth: `${width}px` }}
       >
-        <SelectValue placeholder={placeholder} />
+        <SelectValue placeholder={placeholder}>{selectedLabel}</SelectValue>
       </SelectTrigger>
       <SelectContent>
         <SelectItem value={ALL}>{placeholder}</SelectItem>
@@ -58,8 +63,13 @@ export default function FilterSelect({
           <SelectGroup key={group.label ?? `g-${index}`}>
             {group.label && <SelectLabel>{group.label}</SelectLabel>}
             {group.options.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.indent ? `↳ ${option.label}` : option.label}
+              <SelectItem key={option.value} value={option.value} textValue={option.label}>
+                {option.indent ? (
+                  <span className="inline-flex items-center gap-1">
+                    <CornerDownRight size={16} className="shrink-0" aria-hidden="true" />
+                    {option.label}
+                  </span>
+                ) : option.label}
               </SelectItem>
             ))}
           </SelectGroup>

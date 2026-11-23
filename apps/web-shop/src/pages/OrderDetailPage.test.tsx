@@ -37,6 +37,14 @@ it('shows recovery instead of loading forever, and retry loads the order', async
   expect(get).toHaveBeenLastCalledWith('/api/shop/orders/TEST-ORDER');
 });
 
+it('announces the completed and current steps of a paid order', async () => {
+  get.mockResolvedValue({ data: order });
+  openOrder();
+  const completed = (await screen.findByText('รอชำระ')).closest('li');
+  expect(completed).toHaveTextContent('เสร็จแล้ว');
+  expect(screen.getByRole('listitem', { current: 'step' })).toHaveTextContent('ชำระแล้ว');
+});
+
 it('keeps the loaded order visible when a background refresh fails', async () => {
   get.mockResolvedValueOnce({ data: order }).mockRejectedValue(new Error('offline'));
   const client = openOrder();

@@ -7,6 +7,7 @@ interface EmptyStateProps {
   title: string;
   description?: string;
   actionLabel?: string;
+  actionIcon?: AppIcon;
   onAction?: () => void;
   className?: string;
 }
@@ -20,6 +21,7 @@ export default function EmptyState({
   title,
   description,
   actionLabel,
+  actionIcon: ActionIcon,
   onAction,
   className,
 }: EmptyStateProps) {
@@ -41,6 +43,7 @@ export default function EmptyState({
       {/* Action button */}
       {actionLabel && onAction && (
         <Button variant="primary" size="md" onClick={onAction} className="mt-5">
+          {ActionIcon && <ActionIcon className="size-4" aria-hidden="true" />}
           {actionLabel}
         </Button>
       )}

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { MapPin, Plus } from 'lucide-react';
+import { MapPin, Plus } from '@/lib/icons';
 import { api } from '@/lib/api';
 import ShopLayout from '@/components/layout/ShopLayout';
 import AddressForm from '@/components/account/AddressForm';

@@ -1,5 +1,5 @@
 import { Link } from 'react-router';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight } from '@/lib/icons';
 import { Container } from '@/components/layout/Container';
 
 interface Breadcrumb {
@@ -28,7 +28,7 @@ export function CategoryHero({ title, description, breadcrumbs }: Props) {
                   ) : (
                     <span>{b.label}</span>
                   )}
-                  {i < breadcrumbs.length - 1 && <ChevronRight className="size-3" />}
+                  {i < breadcrumbs.length - 1 && <ChevronRight className="size-4" aria-hidden />}
                 </span>
               ))}
             </nav>

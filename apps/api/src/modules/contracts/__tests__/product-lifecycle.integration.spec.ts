@@ -1146,11 +1146,19 @@ describe('State diagram ของเครื่อง — flow จริงบ�
         OWNER_USER() as never,
       ),
     ).rejects.toThrow(/พร้อมขาย/);
+    // Previous ownership's condition screenshots must not become evidence for the next buyer.
+    await prisma.productPhoto.upsert({ where: { productId: product.id },
+      create: { productId: product.id, imeiScreen: 'old-imei', regulatory: 'old-regulatory', batteryScreen: 'old-battery', partsHistoryScreen: 'old-parts' },
+      update: { imeiScreen: 'old-imei', regulatory: 'old-regulatory', batteryScreen: 'old-battery', partsHistoryScreen: 'old-parts' },
+    });
     await repossessionsService.markReadyForSale(
       repossession.id,
       { resellPrice: 8900, installmentPrice: 10900 },
       OWNER_USER() as never,
     );
+    expect(await prisma.productPhoto.findUnique({ where: { productId: product.id } })).toMatchObject({
+      imeiScreen: null, regulatory: null, batteryScreen: null, partsHistoryScreen: null,
+    });
     const refurbished = await prisma.product.findUniqueOrThrow({ where: { id: product.id } });
     expect(refurbished.status).toBe('PHOTO_PENDING');
     expect(refurbished.cashPrice?.toString()).toBe('8900');

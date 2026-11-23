@@ -1,3 +1,4 @@
+import { Plus } from '@/lib/icons';
 import { NumberInput } from '@/components/ui/NumberInput';
 import ScreenTable from '@/components/ui/ScreenTable';
 import { NativeSelect } from '@/components/ui/native-select';
@@ -297,7 +298,7 @@ export default function PricingTemplatesPage() {
             </button>
             <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFileImport} />
             <button data-ui-control="button" onClick={openCreate} className="px-4 py-2 bg-primary text-primary-foreground text-sm font-medium whitespace-nowrap rounded-lg hover:bg-primary/90">
-              + เพิ่มราคาตั้งต้น
+              <Plus className="inline size-4 align-text-bottom" aria-hidden="true" />{' '}เพิ่มราคาตั้งต้น
             </button>
           </div>
         }

@@ -7,6 +7,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import Decimal from 'decimal.js';
 import {
+  Plus,
   AlertCircle,
   Loader2,
   Banknote,
@@ -1245,7 +1246,7 @@ export function RecordPaymentWizard({
                 <details className="group">
                   <summary className="cursor-pointer list-none flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors select-none">
                     <span className="leading-snug">หมายเหตุ (ไม่บังคับ)</span>
-                    <span className="text-[10px] group-open:hidden">+ เพิ่ม</span>
+                    <span className="text-[10px] group-open:hidden"><Plus className="inline size-4 align-text-bottom" aria-hidden="true" />{' '}เพิ่ม</span>
                   </summary>
                   <div className="mt-2">
                     <Textarea

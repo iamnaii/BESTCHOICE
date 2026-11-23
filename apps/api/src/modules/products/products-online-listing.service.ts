@@ -3,7 +3,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
-import { BulkOnlineVisibilityDto, PromoteListingPhotoDto, UpdateOnlineListingDto } from './dto/online-listing.dto';
+import { PHOTO_ANGLES, BulkOnlineVisibilityDto, PromoteListingPhotoDto, UpdateOnlineListingDto } from './dto/online-listing.dto';
 import {
   SHOP_BRAND,
   SHOP_PHONE_CATEGORIES,
@@ -77,6 +77,8 @@ export class ProductsOnlineListingService {
     if (dto.source === 'LEGACY') {
       candidate = dto.index !== undefined ? product.photos[dto.index] : undefined;
     } else {
+      // Service-level allowlist: evidence must never be promoted, even by internal callers.
+      if (!dto.angle || !PHOTO_ANGLES.includes(dto.angle)) throw new BadRequestException('รูปหลักฐานภายในไม่สามารถนำขึ้นเว็บได้');
       const row = await this.prisma.productPhoto.findUnique({ where: { productId: id } });
       candidate = dto.angle && row ? (row as Record<string, unknown>)[dto.angle] as string | null : undefined;
     }

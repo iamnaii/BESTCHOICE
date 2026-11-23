@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Navigate, useSearchParams } from 'react-router';
-import { MessageCircle } from 'lucide-react';
+import { MessageCircle } from '@/lib/icons';
 import ShopLayout from '@/components/layout/ShopLayout';
 import {
   Button,

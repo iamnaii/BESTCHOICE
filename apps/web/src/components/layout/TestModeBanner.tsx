@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { testModeApi, testModeKeys } from '@/lib/api/test-mode';
+import { AlertTriangle } from '@/lib/icons';
 
 /**
  * App-wide loud banner shown on every page when test-mode is ON.
@@ -20,7 +21,8 @@ export default function TestModeBanner() {
       role="alert"
       className="bg-destructive text-destructive-foreground px-4 py-2 text-center text-sm font-semibold leading-snug"
     >
-      ⚠️ โหมดทดสอบ — เช็คเครดิต/OTP ถูกปิด ห้ามใช้กับลูกค้าจริง
+      <AlertTriangle className="mr-1 inline-block size-4 align-text-bottom" aria-hidden="true" />
+      โหมดทดสอบ — เช็คเครดิต/OTP ถูกปิด ห้ามใช้กับลูกค้าจริง
     </div>
   );
 }

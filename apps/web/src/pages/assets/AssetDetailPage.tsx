@@ -8,6 +8,7 @@ import { Link, useNavigate, useParams } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
+  ArrowRight,
   MoreVertical,
   Edit,
   Copy,
@@ -420,7 +421,7 @@ export default function AssetDetailPage() {
                         to="/assets/transfers"
                         className="text-muted-foreground hover:text-primary underline"
                       >
-                        ดูประวัติการโอนทั้งหมด →
+                        ดูประวัติการโอนทั้งหมด{' '}<ArrowRight className="inline size-4 align-text-bottom" aria-hidden="true" />
                       </Link>
                     </div>
                   </CardContent>
@@ -453,7 +454,7 @@ export default function AssetDetailPage() {
                       to={`/assets/${id}/audit`}
                       className="text-sm text-muted-foreground hover:text-primary underline cursor-pointer block mt-3"
                     >
-                      ดูประวัติทั้งหมด →
+                      ดูประวัติทั้งหมด{' '}<ArrowRight className="inline size-4 align-text-bottom" aria-hidden="true" />
                     </Link>
                   ) : null}
                 </CardContent>

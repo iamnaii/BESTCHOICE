@@ -1,6 +1,8 @@
 import { useNavigate } from 'react-router';
 import { Card, CardContent } from '@/components/ui/card';
 import {
+  ArrowDown,
+  ArrowUp,
   FileCheck,
   AlertTriangle,
   TrendingUp,
@@ -120,7 +122,17 @@ export default function DashboardKPIs({ kpis, comparativePL }: DashboardKPIsProp
             <MoMIndicator value={paymentsMoM} />
             {comparativePL?.yoyChange.revenue != null && (
               <div className="flex items-center gap-0.5 text-2xs font-medium mt-0.5 text-muted-foreground">
-                <span>{comparativePL.yoyChange.revenue >= 0 ? '↑' : '↓'}{Math.abs(comparativePL.yoyChange.revenue).toFixed(1)}% vs ปีก่อน</span>
+                {comparativePL.yoyChange.revenue >= 0 ? (
+                  <ArrowUp className="size-4 shrink-0" aria-hidden="true" />
+                ) : (
+                  <ArrowDown className="size-4 shrink-0" aria-hidden="true" />
+                )}
+                <span>
+                  <span className="sr-only">
+                    {comparativePL.yoyChange.revenue >= 0 ? 'เพิ่มขึ้น ' : 'ลดลง '}
+                  </span>
+                  {Math.abs(comparativePL.yoyChange.revenue).toFixed(1)}% vs ปีก่อน
+                </span>
               </div>
             )}
           </div>

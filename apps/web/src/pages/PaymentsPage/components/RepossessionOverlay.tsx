@@ -5,6 +5,7 @@ import { WizardStackedOverlay } from '@/components/WizardStackedOverlay';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
+  ArrowLeft,
   PackageX,
   ClipboardCheck,
   Calculator,
@@ -294,7 +295,7 @@ export function RepossessionOverlay({
           onClick={() => !submitting.current && !rejectOpen && onClose()}
           className="flex items-center gap-1.5 text-sm leading-snug text-muted-foreground hover:text-foreground transition-colors"
         >
-          ← กลับ
+          <ArrowLeft className="inline size-4 align-text-bottom" aria-hidden="true" />{' '}กลับ
         </button>
         <h2 className="text-lg font-semibold text-foreground leading-snug">
           ยืนยันรับเครื่องคืน (JP5)

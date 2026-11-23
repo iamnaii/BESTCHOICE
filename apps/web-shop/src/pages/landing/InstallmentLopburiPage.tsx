@@ -1,6 +1,6 @@
 import { LandingFaq } from '@/components/LandingFaq';
 import { Link } from 'react-router';
-import { UserCheck, Clock3, Store, ShieldCheck } from 'lucide-react';
+import { UserCheck, Clock3, Store, ShieldCheck } from '@/lib/icons';
 import {
   CategoryHero,
   Container,

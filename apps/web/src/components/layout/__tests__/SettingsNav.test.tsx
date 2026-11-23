@@ -1,4 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router';
@@ -6,6 +8,7 @@ import { LayoutProvider, useLayout } from '../LayoutContext';
 import { ExitSettingsBar, SettingsNavList, useSettingsZone } from '../SettingsNav';
 import { getZoneEntryPathForRole, resolveZoneForPath, COMMON_PATHS } from '@/config/menu';
 import { settingsNavEntries } from '@/config/settings-access';
+import { MENU_ICONS } from '@/config/navigation-icons';
 import type { SettingsRole } from '@/config/settings-registry';
 
 let role = 'OWNER';
@@ -109,10 +112,20 @@ describe('getZoneEntryPathForRole', () => {
 });
 
 describe('SettingsNavList', () => {
-  it('เห็นครบทุกหมวดทันที ไม่ต้องกาง accordion ก่อน', () => {
+  it('renders every visible settings link with its registered decorative glyph', () => {
     render(<Harness entry="/settings/accounting" />);
     for (const entry of settingsNavEntries('OWNER' as SettingsRole)) {
-      expect(screen.getByTestId(`settings-nav-${entry.id}`)).toBeTruthy();
+      const link = screen.getByTestId(`settings-nav-${entry.id}`);
+      expect(link).toHaveAttribute('href', entry.path);
+      const icon = link.querySelector('svg[data-nav-icon]');
+      expect(icon).toHaveAttribute('aria-hidden', 'true');
+      expect(icon).toHaveAttribute('data-icon-style', 'duotone');
+      expect(icon?.innerHTML).toBe(
+        renderToStaticMarkup(createElement(MENU_ICONS[entry.path])).replace(
+          /<svg[^>]*>|<\/svg>/g,
+          '',
+        ),
+      );
     }
   });
 

@@ -1,4 +1,4 @@
-import { Pencil as InlinePencilIcon, Trash2 as InlineTrash2Icon } from '@/lib/icons';
+import { Plus, Pencil as InlinePencilIcon, Trash2 as InlineTrash2Icon } from '@/lib/icons';
 import { NumberInput } from '@/components/ui/NumberInput';
 import { UseMutationResult, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -360,7 +360,7 @@ export function PriceManagementModal({
               onClick={startAddPrice}
               className="w-full py-2 border-2 border-dashed border-input rounded-lg text-sm text-muted-foreground hover:border-primary/60 hover:text-primary transition-colors"
             >
-              + เพิ่มราคาใหม่
+              <Plus className="inline size-4 align-text-bottom" aria-hidden="true" />{' '}เพิ่มราคาใหม่
             </button>
           )}
 

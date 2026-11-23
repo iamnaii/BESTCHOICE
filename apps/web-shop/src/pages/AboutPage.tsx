@@ -1,4 +1,4 @@
-import { BadgeCheck, ShieldCheck, MapPin, type LucideIcon } from 'lucide-react';
+import { BadgeCheck, ShieldCheck, MapPin, type AppIcon } from '@/lib/icons';
 import {
   CategoryHero,
   Container,
@@ -20,7 +20,7 @@ interface Milestone {
 }
 
 interface Value {
-  Icon: LucideIcon;
+  Icon: AppIcon;
   title: string;
   description: string;
 }

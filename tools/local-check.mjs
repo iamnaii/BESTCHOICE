@@ -36,6 +36,10 @@ save();
 try {
   const steps = [
     ['Local tooling', process.execPath, ['--test', 'tools/local-preview.test.mjs', 'tools/local-platform.test.mjs', 'tools/preview-chat-credit.test.mjs', 'tools/import-yellobe-reference.test.mjs', 'tools/hosting-microphone.test.mjs']],
+    ['Icon scanner tests', process.execPath, ['--test', 'tools/check-icons.test.mjs']],
+    ['Icon inventory', 'npm', ['run', 'check:icons']],
+    ['Shared icon tests', 'npm', ['run', 'test', '--workspace=@installment/icons']],
+    ['Shared icon types', 'npm', ['run', 'typecheck', '--workspace=@installment/icons']],
     ['API access-policy coverage', process.execPath, ['tools/check-access-coverage.mjs']],
     ['Prisma SHOP', join(repo, 'node_modules/.bin/prisma'), ['generate', '--schema', 'apps/api/prisma/schema.prisma']],
     ['Prisma FINANCE', join(repo, 'node_modules/.bin/prisma'), ['generate', '--schema', 'apps/api/prisma-finance/schema.prisma']],

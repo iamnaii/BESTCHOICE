@@ -5,6 +5,7 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import Decimal from 'decimal.js';
 import {
+  AlertCircle,
   ChevronLeft,
   ChevronRight,
   Percent,
@@ -130,7 +131,7 @@ export default function LiffEarlyPayoff() {
         <TopBar theme="early-payoff" title="ปิดยอดก่อนกำหนด" initial={customerInitial} />
         <section className="relative z-[1] px-5 pt-10 pb-8 flex flex-col items-center text-center">
           <div className="grid h-20 w-20 place-items-center rounded-full bg-destructive/10 border border-destructive/30 mb-5">
-            <span className="text-destructive text-4xl font-light leading-none">!</span>
+            <AlertCircle size={36} className="text-destructive" aria-hidden="true" />
           </div>
           <h2 className="text-[18px] font-semibold text-foreground tracking-tight leading-snug">
             ไม่สามารถดำเนินการได้

@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import { useDebounce } from '@/hooks/useDebounce';
+import { AlertTriangle } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -114,7 +115,8 @@ export default function ValuationsTab() {
   return (
     <div className="space-y-4">
       <div className="rounded-lg border border-border bg-warning/10 p-3 text-sm leading-snug">
-        ⚠️ แถว Apple + เกรด A ของรุ่น iPhone = <strong>ราคารับซื้อสูงสุด</strong> ที่ลูกค้าเห็นบนเว็บทันที
+        <AlertTriangle className="mr-1 inline-block size-4 align-text-bottom" aria-hidden="true" />
+        แถว Apple + เกรด A ของรุ่น iPhone = <strong>ราคารับซื้อสูงสุด</strong> ที่ลูกค้าเห็นบนเว็บทันที
         และราคาชุดนี้ยังใช้กับ quote เก่าแลกใหม่ + กรอบ ±15% ของการตีราคาหน้าร้านด้วย
       </div>
 

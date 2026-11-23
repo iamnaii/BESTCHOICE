@@ -1,3 +1,4 @@
+import { ArrowRight } from '@/lib/icons';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { CannedResponseBubble } from '../types';
@@ -30,7 +31,7 @@ export default function LocationBubbleEditor({ bubble, onChange }: Props) {
       </div>
       {bubble.latitude && bubble.longitude && (
         <a href={`https://www.google.com/maps?q=${bubble.latitude},${bubble.longitude}`} target="_blank" rel="noreferrer" className="text-xs text-primary hover:underline">
-          ดูใน Google Maps →
+          ดูใน Google Maps{' '}<ArrowRight className="inline size-4 align-text-bottom" aria-hidden="true" />
         </a>
       )}
     </div>

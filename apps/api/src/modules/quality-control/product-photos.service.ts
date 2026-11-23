@@ -1,3 +1,5 @@
+import { validateEvidencePhoto } from './evidence-photo.util';
+import { EVIDENCE_PHOTO_KEYS, PRODUCT_PHOTO_KEYS } from './photo-angles.util';
 import { domainAccessClient } from '../employee-access/access-execution-context';
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -40,12 +42,12 @@ export class ProductPhotosService {
   async getPhotos(productId: string) {
     const product = await this.prisma.product.findUnique({
       where: { id: productId },
-      select: { id: true, status: true, category: true, productPhotos: true },
+      select: { id: true, status: true, category: true, deletedAt: true, productPhotos: true },
     });
-    if (!product) throw new NotFoundException('ไม่พบสินค้า');
+    if (!product || product.deletedAt) throw new NotFoundException('ไม่พบสินค้า');
 
-    // รูปถ่าย 6 มุมเฉพาะมือสอง
-    if (product.category !== 'PHONE_USED') {
+    // รูปถ่ายและหลักฐานของมือถือ/แท็บเล็ต
+    if (product.category === 'ACCESSORY') {
       return { productId, applicable: false };
     }
 
@@ -58,10 +60,11 @@ export class ProductPhotosService {
      */
     const pendingStockEntry = product.status === PENDING_STOCK_ENTRY_STATUS;
 
-    if (!product.productPhotos) {
+    if (!product.productPhotos || product.productPhotos.deletedAt) {
       return {
         productId,
         photos: { front: null, back: null, left: null, right: null, top: null, bottom: null },
+        evidencePhotos: Object.fromEntries(EVIDENCE_PHOTO_KEYS.map(key => [key, null])),
         isCompleted: false,
         completedCount: 0,
         totalCount: 6,
@@ -82,6 +85,7 @@ export class ProductPhotosService {
         top: pp.top,
         bottom: pp.bottom,
       },
+      evidencePhotos: Object.fromEntries(EVIDENCE_PHOTO_KEYS.map(key => [key, pp[key] ?? null])),
       isCompleted: pp.isCompleted,
       completedCount,
       totalCount: 6,
@@ -96,23 +100,25 @@ export class ProductPhotosService {
     });
     if (!product || product.deletedAt) throw new NotFoundException('ไม่พบสินค้า');
 
-    if (product.category !== 'PHONE_USED') {
-      throw new BadRequestException('ถ่ายรูป 6 มุมเฉพาะสินค้ามือสองเท่านั้น');
+    if (product.category === 'ACCESSORY') {
+      throw new BadRequestException('ถ่ายรูป 6 มุมเฉพาะมือถือ/แท็บเล็ตเท่านั้น');
     }
 
     if (!ALLOWED_UPLOAD_STATUSES.includes(product.status)) {
       throw new BadRequestException(`ไม่สามารถอัปโหลดรูปในสถานะ ${product.status} ได้`);
     }
 
-    if (!ANGLES.includes(angle as Angle)) {
+    if (!PRODUCT_PHOTO_KEYS.includes(angle as typeof PRODUCT_PHOTO_KEYS[number])) {
       throw new BadRequestException('angle ไม่ถูกต้อง');
     }
+
+    if (EVIDENCE_PHOTO_KEYS.includes(angle as typeof EVIDENCE_PHOTO_KEYS[number])) validateEvidencePhoto(photo);
 
     // Use upsert to avoid race condition between concurrent uploads
     const pp = await this.prisma.productPhoto.upsert({
       where: { productId },
       create: { productId, [angle]: photo, uploadedById: userId },
-      update: { [angle]: photo, uploadedById: userId },
+      update: { [angle]: photo, uploadedById: userId, deletedAt: null },
     });
 
     return {
@@ -132,15 +138,15 @@ export class ProductPhotosService {
     });
     if (!product || product.deletedAt) throw new NotFoundException('ไม่พบสินค้า');
 
-    if (product.category !== 'PHONE_USED') {
-      throw new BadRequestException('ลบรูป 6 มุมเฉพาะสินค้ามือสองเท่านั้น');
+    if (product.category === 'ACCESSORY') {
+      throw new BadRequestException('ลบรูป 6 มุมเฉพาะมือถือ/แท็บเล็ตเท่านั้น');
     }
 
     if (!ALLOWED_UPLOAD_STATUSES.includes(product.status)) {
       throw new BadRequestException(`ไม่สามารถลบรูปในสถานะ ${product.status} ได้`);
     }
 
-    if (!ANGLES.includes(angle as Angle)) {
+    if (!PRODUCT_PHOTO_KEYS.includes(angle as typeof PRODUCT_PHOTO_KEYS[number])) {
       throw new BadRequestException('angle ไม่ถูกต้อง');
     }
 
@@ -149,7 +155,7 @@ export class ProductPhotosService {
 
     const updated = await this.prisma.productPhoto.update({
       where: { productId },
-      data: { [angle]: null, isCompleted: false },
+      data: { [angle]: null, ...(ANGLES.includes(angle as Angle) ? { isCompleted: false } : {}) },
     });
 
     return {
@@ -199,8 +205,8 @@ export class ProductPhotosService {
       });
       if (!product || product.deletedAt) throw new NotFoundException('ไม่พบสินค้า');
 
-      if (product.category !== 'PHONE_USED') {
-        throw new BadRequestException('ยืนยันรูป 6 มุมเฉพาะสินค้ามือสองเท่านั้น');
+      if (product.category === 'ACCESSORY') {
+        throw new BadRequestException('ยืนยันรูป 6 มุมเฉพาะมือถือ/แท็บเล็ตเท่านั้น');
       }
 
       if (!ALLOWED_UPLOAD_STATUSES.includes(product.status)) {

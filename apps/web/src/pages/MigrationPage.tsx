@@ -1,3 +1,4 @@
+import { Package } from '@/lib/icons';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -247,7 +248,7 @@ export default function MigrationPage() {
             </div>
           ) : (
             <div className="text-center text-muted-foreground py-16">
-              <div className="text-4xl mb-2">&#128230;</div>
+              <Package size={36} className="mx-auto mb-2" aria-hidden="true" />
               <div className="text-sm">ยังไม่มีผลลัพธ์</div>
               <div className="text-xs mt-1">วาง JSON แล้วกดนำเข้าข้อมูล</div>
             </div>

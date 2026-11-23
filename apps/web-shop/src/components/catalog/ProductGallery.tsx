@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronLeft, ChevronRight, Expand, ImageOff } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Expand, ImageOff } from '@/lib/icons';
 import { ImageLightbox } from './ImageLightbox';
 import { Product360Viewer } from './Product360Viewer';
 import { GalleryImage } from './GalleryImage';

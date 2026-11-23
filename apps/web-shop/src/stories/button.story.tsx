@@ -1,5 +1,5 @@
 import { Button } from '@/components/ui/button';
-import { ArrowRight, LogIn } from 'lucide-react';
+import { ArrowRight, LogIn } from '@/lib/icons';
 
 export default function ButtonStory() {
   return (

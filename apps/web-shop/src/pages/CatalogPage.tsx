@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router';
-import { SlidersHorizontal, ChevronDown, X, Banknote, CalendarClock } from 'lucide-react';
+import { SlidersHorizontal, ChevronDown, X, Banknote, CalendarClock } from '@/lib/icons';
 import ShopLayout from '@/components/layout/ShopLayout';
 import {
   FilterSidebar,
@@ -311,7 +311,7 @@ export default function CatalogPage() {
                 className="mb-3 min-h-11 inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 font-head text-sm text-emerald-800"
               >
                 {deviceOriginLabel(filters.deviceOrigin)}
-                <X className="size-3.5" aria-hidden />
+                <X className="size-4" aria-hidden />
               </button>
             )}
             {/* Toolbar */}
@@ -340,7 +340,7 @@ export default function CatalogPage() {
                           : 'font-medium text-zinc-600 hover:text-primary',
                       )}
                     >
-                      <Icon className="size-3.5" aria-hidden />
+                      <Icon className="size-4" aria-hidden />
                       {m.label}
                     </button>
                   );
@@ -372,7 +372,7 @@ export default function CatalogPage() {
                     type="button"
                     className="min-h-11 lg:hidden inline-flex items-center gap-1.5 px-4 py-1.5 font-head text-sm rounded-full bg-card text-foreground ring-1 ring-inset ring-border leading-snug"
                   >
-                    <SlidersHorizontal className="size-3.5" aria-hidden />
+                    <SlidersHorizontal className="size-4" aria-hidden />
                     ตัวกรอง
                   </button>
                 </DialogTrigger>
@@ -397,7 +397,7 @@ export default function CatalogPage() {
                   className="min-h-11 inline-flex items-center gap-1.5 px-3 py-1.5 font-head text-sm rounded-full bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors leading-snug"
                 >
                   ค้นหา: “{filters.search}”
-                  <X className="size-3.5" aria-label="ล้างคำค้นหา" />
+                  <X className="size-4" aria-label="ล้างคำค้นหา" />
                 </button>
               )}
 
@@ -416,7 +416,7 @@ export default function CatalogPage() {
                 >
                   <span className="text-muted-foreground">เรียง:</span>
                   <span>{activeSortLabel}</span>
-                  <ChevronDown className="size-3.5 text-muted-foreground" aria-hidden />
+                  <ChevronDown className="size-4 text-muted-foreground" aria-hidden />
                 </button>
                 {sortOpen && (
                   <>

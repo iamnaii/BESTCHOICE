@@ -2,7 +2,7 @@ import ScreenTable from '@/components/ui/ScreenTable';
 import DocumentDownloadButton from '@/components/DocumentDownloadButton';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { BookOpen, FileText, Lock, X } from '@/lib/icons';
+import { CheckCircle2, BookOpen, FileText, Lock, X } from '@/lib/icons';
 import api from '@/lib/api';
 import {
   Dialog,
@@ -484,7 +484,7 @@ export default function PaymentHistorySheet({ contractId, onClose, onVoided }: P
                                   </span>
                                 ) : (
                                   <span className="px-2 py-0.5 rounded-full text-xs bg-success/10 text-success">
-                                    ● ชำระแล้ว
+                                    <CheckCircle2 className="inline size-4 align-text-bottom" aria-hidden="true" />{' '}ชำระแล้ว
                                   </span>
                                 )}
                               </Td>

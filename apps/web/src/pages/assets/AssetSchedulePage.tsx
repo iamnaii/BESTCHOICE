@@ -1,7 +1,7 @@
 import ScreenTable from '@/components/ui/ScreenTable';
 import { useNavigate, useParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import { TrendingDown } from '@/lib/icons';
+import { ArrowLeft, TrendingDown } from '@/lib/icons';
 import PageHeader from '@/components/ui/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -90,7 +90,16 @@ export default function AssetSchedulePage() {
                       const isCurrent = r.period === currentMonth;
                       return (
                         <tr key={r.period} className={`border-b ${isCurrent ? 'bg-muted/40' : ''}`}>
-                          <td className="py-2 px-2 font-mono">{r.period}{isCurrent ? ' ←' : ''}</td>
+                          <td className="py-2 px-2 font-mono">
+                            {r.period}
+                            {isCurrent && (
+                              <>
+                                {' '}
+                                <ArrowLeft className="inline size-4 align-text-bottom" aria-hidden="true" />
+                                <span className="sr-only">งวดปัจจุบัน</span>
+                              </>
+                            )}
+                          </td>
                           <td className="py-2 px-2 text-right tabular-nums">{r.days}</td>
                           <td className="py-2 px-2 text-right tabular-nums">{formatNumberDecimal(parseFloat(r.monthlyDepr))}</td>
                           <td className="py-2 px-2 text-right tabular-nums">{formatNumberDecimal(parseFloat(r.accumulatedDepr))}</td>

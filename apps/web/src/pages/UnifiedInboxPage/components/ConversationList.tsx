@@ -391,7 +391,7 @@ export default function ConversationList({
                   onClick={() => onFiltersChange({ ...filters, view: 'expired' })}
                   className="text-xs text-primary hover:underline mt-1"
                 >
-                  มี {expiredCount.toLocaleString('th-TH')} ห้องที่พ้นเวลาตอบ →
+                  มี {expiredCount.toLocaleString('th-TH')} ห้องที่พ้นเวลาตอบ{' '}<ArrowRight className="inline size-4 align-text-bottom" aria-hidden="true" />
                 </button>
               </>
             ) : allClear ? (

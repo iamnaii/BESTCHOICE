@@ -122,7 +122,10 @@ export default function ExpenseFavoritesPage() {
           <Button variant="outline" size="sm" onClick={() => navigate('/expenses/recurring-bills')}>
             <CalendarClock className="size-3.5" aria-hidden="true" />บิลประจำเดือนนี้
           </Button>
-          <Button variant="primary" size="sm" onClick={() => setBillDialog({ open: true, template: null })}>+ บิลประจำ</Button>
+          <Button variant="primary" size="sm" onClick={() => setBillDialog({ open: true, template: null })}>
+            <Plus className="size-4" aria-hidden="true" />
+            บิลประจำ
+          </Button>
         </div>
       </div>
 

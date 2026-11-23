@@ -103,7 +103,7 @@ describe('ChartOfAccountsPage — แท็บ FINANCE | SHOP', () => {
     await waitFor(() => expect(chart().getByText('11-1101')).toBeInTheDocument());
 
     await user.click(screen.getByRole('button', { name: /SHOP \(หน้าร้าน\)/ }));
-    await user.click(screen.getByRole('button', { name: /\+ เพิ่มบัญชี/ }));
+    await user.click(screen.getByRole('button', { name: /เพิ่มบัญชี/ }));
     await user.type(screen.getByPlaceholderText('เช่น S11-1101'), '42-1199');
     await user.type(screen.getByPlaceholderText('เช่น เงินสด'), 'รายได้อื่นๆ ทั่วไป');
     await user.click(screen.getByRole('button', { name: 'เพิ่มบัญชี' }));

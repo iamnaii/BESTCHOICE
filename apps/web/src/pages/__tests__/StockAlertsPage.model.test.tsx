@@ -28,7 +28,7 @@ function renderPage() {
 }
 
 async function openCreate(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(await screen.findByRole('button', { name: '+ จุดสั่งซื้อซ้ำ' }));
+  await user.click(await screen.findByRole('button', { name: 'จุดสั่งซื้อซ้ำ' }));
   return screen.getByRole('dialog', { name: 'สร้าง จุดสั่งซื้อซ้ำ ใหม่' });
 }
 

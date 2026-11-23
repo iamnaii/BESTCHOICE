@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import QueryBoundary from '@/components/QueryBoundary';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { ChevronLeft } from '@/lib/icons';
+import { Plus, ChevronLeft } from '@/lib/icons';
 import { usersApi, userKeys, type EmploymentType } from '@/lib/api/users';
 import { roleLabels, inputClass, labelClass, MIN_PASSWORD_LENGTH } from './types';
 import PersonalFields, { type PersonalForm } from './components/PersonalFields';
@@ -285,7 +285,10 @@ export default function UserDetailPage() {
                 <div className="text-center py-10 border border-dashed border-border rounded-xl">
                   <div className="font-medium text-foreground leading-snug">ยังไม่ได้ตั้งเป็นพนักงาน</div>
                   <p className="text-sm text-muted-foreground mt-1 mb-4">ผู้ใช้คนนี้ยังไม่มีข้อมูล HR / เงินเดือน</p>
-                  <Button onClick={() => setHr({ ...hr, enabled: true })}>+ เพิ่มข้อมูล HR / เงินเดือน</Button>
+                  <Button onClick={() => setHr({ ...hr, enabled: true })}>
+                    <Plus className="size-4" aria-hidden="true" />
+                    เพิ่มข้อมูล HR / เงินเดือน
+                  </Button>
                 </div>
               ) : (
                 <div className="grid md:grid-cols-2 gap-5">

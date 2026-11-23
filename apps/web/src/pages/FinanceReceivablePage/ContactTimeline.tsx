@@ -1,5 +1,6 @@
 import { Badge } from '@/components/ui/badge';
-import { FinanceContactLog } from '@/lib/api/finance-contacts';
+import type { FinanceContactLog } from '@/lib/api/finance-contacts';
+import { CheckCircle2, Clock, XCircle } from '@/lib/icons';
 import { formatDateShortThai } from '@/utils/formatters';
 
 const RESULT_LABEL: Record<FinanceContactLog['result'], string> = {
@@ -30,6 +31,11 @@ export default function ContactTimeline({ logs }: { logs: FinanceContactLog[] })
       {logs.map((log) => {
         const promiseBroken = !!log.promisedBrokenAt;
         const promiseKept = !!log.promisedKeptAt;
+        const promiseStatus = promiseKept
+          ? { label: 'นัดสำเร็จ', icon: CheckCircle2 }
+          : promiseBroken
+            ? { label: 'ผิดนัด', icon: XCircle }
+            : { label: 'นัดไว้', icon: Clock };
         return (
           <li key={log.id} className="ml-4">
             <span className="absolute -left-1.5 mt-1.5 w-3 h-3 bg-primary rounded-full" />
@@ -62,7 +68,8 @@ export default function ContactTimeline({ logs }: { logs: FinanceContactLog[] })
                       : 'bg-amber-50 text-amber-700 border border-amber-200'
                 }`}
               >
-                {promiseKept ? '✓ นัดสำเร็จ ' : promiseBroken ? '✗ ผิดนัด ' : '⏳ นัดไว้ '}
+                <promiseStatus.icon className="mr-1 inline-block size-4 align-text-bottom" aria-hidden="true" />
+                <span>{promiseStatus.label}</span>{' '}
                 {formatDateShortThai(log.promisedDate)}
                 {log.promisedAmount && ` • ${Number(log.promisedAmount).toLocaleString('th-TH')} บาท`}
               </div>

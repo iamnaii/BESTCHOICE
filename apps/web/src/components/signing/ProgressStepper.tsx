@@ -1,3 +1,5 @@
+import { Check } from '@/lib/icons';
+
 interface Step {
   label: string;
   key: string;
@@ -27,7 +29,9 @@ export default function ProgressStepper({ steps, currentStep }: ProgressStepperP
                         : 'bg-muted border-border text-muted-foreground'
                   }`}
                 >
-                  {isCompleted ? '\u2713' : i + 1}
+                  {isCompleted ? (
+                    <Check className="size-4" role="img" aria-label="เสร็จแล้ว" />
+                  ) : i + 1}
                 </div>
                 <span
                   className={`mt-1.5 text-xs font-medium text-center whitespace-nowrap ${

@@ -218,11 +218,14 @@ const API: Array<[string, RegExp, Handler]> = [
 ];
 
 export interface ShopApiFixture {
-  /** "METHOD /path" of every same-origin /api request answered {} because no handler knew it */
+  /** "METHOD /path" of every same-origin /api request without a handler */
   unmatched: string[];
 }
 
-export async function routeShopApi(page: Page): Promise<ShopApiFixture> {
+export async function routeShopApi(
+  page: Page,
+  { strict = false } = {},
+): Promise<ShopApiFixture> {
   const fixture: ShopApiFixture = { unmatched: [] };
   await page.route(
     (url) => LOCAL_HOSTS.has(url.hostname) && (url.pathname === '/api' || url.pathname.startsWith('/api/')),
@@ -235,7 +238,9 @@ export async function routeShopApi(page: Page): Promise<ShopApiFixture> {
       }
       const key = `${request.method()} ${url.pathname}`;
       if (!fixture.unmatched.includes(key)) fixture.unmatched.push(key);
-      return route.fulfill({ json: {} });
+      return strict
+        ? route.fulfill({ status: 501, json: { message: "Unmatched isolated test endpoint" } })
+        : route.fulfill({ json: {} });
     },
   );
   return fixture;

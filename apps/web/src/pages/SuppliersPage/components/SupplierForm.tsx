@@ -1,4 +1,5 @@
 import {
+  Plus,
   ChevronLeft as InlineChevronLeftIcon,
   CreditCard as InlineCreditCardIcon,
   FileText as InlineFileTextIcon,
@@ -465,7 +466,7 @@ export default function SupplierForm({
                   onClick={addPaymentMethod}
                   className="min-h-11 shrink-0 px-3 py-2 text-xs bg-primary/5 dark:bg-primary/10 text-primary rounded-lg hover:bg-primary/15 transition-colors font-medium"
                 >
-                  + เพิ่มวิธีชำระเงิน
+                  <Plus className="inline size-4 align-text-bottom" aria-hidden="true" />{' '}เพิ่มวิธีชำระเงิน
                 </button>
               </div>
 

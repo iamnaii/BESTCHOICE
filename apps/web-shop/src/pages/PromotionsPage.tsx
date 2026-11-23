@@ -1,5 +1,5 @@
 import { Link } from 'react-router';
-import { Gift, MessageCircle } from 'lucide-react';
+import { Gift, MessageCircle } from '@/lib/icons';
 import ShopLayout from '@/components/layout/ShopLayout';
 import {
   Container,

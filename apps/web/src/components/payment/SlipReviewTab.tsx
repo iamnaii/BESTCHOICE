@@ -1,4 +1,4 @@
-import { ChevronLeft as InlineChevronLeftIcon } from '@/lib/icons';
+import { Minus, Plus, ChevronLeft as InlineChevronLeftIcon } from '@/lib/icons';
 import { NumberInput } from '@/components/ui/NumberInput';
 import { NativeSelect } from '@/components/ui/native-select';
 import { useId as useUiFieldId, useState, useEffect } from 'react';
@@ -505,10 +505,11 @@ export default function SlipReviewTab() {
             <div className="space-y-2">
               <div className="flex justify-center gap-2 p-2 border rounded-lg bg-muted/50">
                 <button data-ui-control="button"
+                  aria-label="ย่อรูปสลิป"
                   onClick={() => setZoomLevel((z) => Math.max(0.5, z - 0.25))}
                   className="px-2 py-1 text-sm border rounded hover:bg-muted"
                 >
-                  -
+                  <Minus className="size-4" aria-hidden="true" />
                 </button>
                 <button data-ui-control="button"
                   onClick={() => { setZoomLevel(1); setRotation(0); }}
@@ -517,10 +518,11 @@ export default function SlipReviewTab() {
                   รีเซ็ต
                 </button>
                 <button data-ui-control="button"
+                  aria-label="ขยายรูปสลิป"
                   onClick={() => setZoomLevel((z) => Math.min(3, z + 0.25))}
                   className="px-2 py-1 text-sm border rounded hover:bg-muted"
                 >
-                  +
+                  <Plus className="size-4" aria-hidden="true" />
                 </button>
                 <button data-ui-control="button"
                   onClick={() => setRotation((r) => r + 90)}

@@ -269,7 +269,7 @@ describe('แท็บ ลูกค้า | ผู้สนใจ', () => {
     );
     // ไม่ส่ง view = "ทุกคน" ซึ่งเป็นพฤติกรรมที่ตัวเลือกลูกค้าหน้าอื่นพึ่งอยู่ ⇒ หน้านี้ต้องส่งเสมอ
     expect(lastListParams().view).toBe('customers');
-    expect(screen.getByRole('button', { name: '+ เพิ่มลูกค้าใหม่' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'เพิ่มลูกค้าใหม่' })).toBeInTheDocument();
     expect(screen.getByText('ซื้อกับเราแล้ว 10 ราย · ผู้สนใจอีก 30 ราย')).toBeInTheDocument();
   });
 
@@ -284,8 +284,8 @@ describe('แท็บ ลูกค้า | ผู้สนใจ', () => {
     await screen.findByText('ผู้สนใจ หนึ่ง');
     expect(locationText()).toContain('view=prospects');
     expect(lastListParams().view).toBe('prospects');
-    expect(screen.getByRole('button', { name: '+ เพิ่มผู้สนใจใหม่' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '+ เพิ่มลูกค้าใหม่' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'เพิ่มผู้สนใจใหม่' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'เพิ่มลูกค้าใหม่' })).not.toBeInTheDocument();
 
     // คอลัมน์เฉพาะแท็บ
     for (const label of ['ที่มา', 'แท็ก', 'ติดต่อล่าสุด', 'ผู้ดูแล', 'เพิ่มเมื่อ']) {
@@ -759,7 +759,7 @@ describe('สิทธิ์', () => {
     const row = await screen.findByRole('row', { name: /สมชาย ผ่อนดี/ });
     expect(within(row).queryByRole('link', { name: /เปิดแชท/ })).not.toBeInTheDocument();
     expect(within(row).getByText('Facebook')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '+ เพิ่มลูกค้าใหม่' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'เพิ่มลูกค้าใหม่' })).not.toBeInTheDocument();
   });
 });
 

@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router';
-import { Gift, Percent, Tag, Sparkles, ChevronRight } from 'lucide-react';
+import { Gift, Percent, Tag, Sparkles, ChevronRight } from '@/lib/icons';
 import { api } from '@/lib/api';
 import type { ShopPromotion } from '@/types/promotion';
 

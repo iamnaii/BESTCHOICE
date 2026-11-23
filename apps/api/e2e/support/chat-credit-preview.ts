@@ -1,3 +1,5 @@
+import { UseGuards, UseInterceptors } from '@nestjs/common';
+import { ContractEvidenceCaptureInterceptor, registerContractEvidenceCapture } from '../../src/modules/contracts/services/contract-evidence-capture-context';
 import { ImportedSalesService } from '../../src/modules/imported-sales/imported-sales.service';
 import { QueryImportedSalesDto } from '../../src/modules/imported-sales/dto/query-imported-sales.dto';
 import { ChatDispatchService } from '../../src/modules/chat-engine/services/chat-dispatch.service';
@@ -92,6 +94,7 @@ import { ProductsStockService } from '../../src/modules/products/products-stock.
 import { StockScopeQueryDto } from '../../src/modules/products/dto/stock-scope-query.dto';
 import { ProductsService } from '../../src/modules/products/products.service';
 import { PoQueryService } from '../../src/modules/purchase-orders/services/po-query.service';
+import { CreateProductDto } from '../../src/modules/products/dto/create-product.dto';
 import { UpdateProductDto } from '../../src/modules/products/dto/update-product.dto';
 import { InterestConfigService } from '../../src/modules/interest-config/interest-config.service';
 import { PromotionsService } from '../../src/modules/promotions/promotions.service';
@@ -365,6 +368,7 @@ class PreviewController {
   @Get('products/transfers/pending') stockPending(@Query('branchId') branchId: string, @Query() scope: StockScopeQueryDto) {
     return stockOverview.getPendingTransfers(branchId,scope.inventoryScope);
   }
+  @Post('products') createProduct(@Body() dto: CreateProductDto) { return products.create(dto); }
   @Get('products/:id') product(@Param('id') id: string) { return products.findOne(id); }
   @Patch('products/:id') updateProduct(@Param('id') id: string, @Body() dto: UpdateProductDto) {
     return products.update(id, dto, actor.id);
@@ -414,7 +418,7 @@ class PreviewController {
     return db.interestConfig.findFirst({ where: { productCategories: { has: category as never }, isActive: true } });
   }
   @Post('contracts/quote') quoteContract(@Body() dto: ContractQuoteDto) { return new ContractQuoteService(db).resolve(dto, actor); }
-  @Post('contracts') createContract(@Body() dto: CreateContractDto) { return lifecycle.create(dto, actor.id, actor.role); }
+  @Post('contracts') @UseGuards(JwtAuthGuard) @UseInterceptors(ContractEvidenceCaptureInterceptor) createContract(@Body() dto: CreateContractDto) { return lifecycle.create(dto, actor.id, actor.role); }
   @Get('contracts/:id') contract(@Param('id') id: string) { return contractQuery.findOne(id); }
   @Get('preview/info') info() {
     return info;
@@ -533,6 +537,8 @@ function maskForActor<T extends { nationalId?: string | null }>(customer: T): T 
   if (actor.role !== 'SALES') return customer;
   return { ...customer, nationalId: customer.nationalId ? maskNationalId(customer.nationalId) : customer.nationalId };
 }
+
+registerContractEvidenceCapture(PreviewController.prototype.createContract);
 
 async function main() {
   await db.$connect();

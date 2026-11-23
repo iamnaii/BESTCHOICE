@@ -1,4 +1,4 @@
-import { MessageCircle } from 'lucide-react';
+import { MessageCircle } from '@/lib/icons';
 import { shopInfo } from '@/lib/copy';
 
 const LINE_URL = shopInfo.lineUrl;

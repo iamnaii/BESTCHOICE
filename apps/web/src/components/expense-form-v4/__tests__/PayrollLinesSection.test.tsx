@@ -386,7 +386,7 @@ describe('PayrollLinesSection — fix round 1', () => {
     v.lines[0].customIncome = [{ uid: 'c1', accountCode: 'S52-1204', name: 'เบี้ยขยัน', amount: '500', isTaxable: true, isAdjustment: false }];
     wrap(<Harness initial={v} />);
     await user.click(screen.getByRole('button', { name: 'ขยาย' }));
-    const box = screen.getByText('+ รายได้พิเศษ (โบนัส / OT / เบี้ยเลี้ยง) — กรอกเอง').parentElement as HTMLElement;
+    const box = screen.getByText('รายได้พิเศษ (โบนัส / OT / เบี้ยเลี้ยง) — กรอกเอง').parentElement as HTMLElement;
     const header = within(box).getByRole('columnheader', { name: 'บัญชี' });
     expect(header).toHaveClass('min-w-56');
     expect(header).not.toHaveClass('w-40');

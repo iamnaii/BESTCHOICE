@@ -1,5 +1,5 @@
 import { Link } from 'react-router';
-import { MessageCircle, CreditCard, PartyPopper, ShieldCheck, type LucideIcon } from 'lucide-react';
+import { MessageCircle, CreditCard, PartyPopper, ShieldCheck, type AppIcon } from '@/lib/icons';
 import {
   CategoryHero,
   Container,
@@ -20,7 +20,7 @@ interface Step {
   number: number;
   title: string;
   description: string;
-  Icon: LucideIcon;
+  Icon: AppIcon;
 }
 
 interface FaqItem {

@@ -77,6 +77,13 @@
     "category": "content"
   },
   {
+    "path": "apps/web-shop/src/components/catalog/ProductCard.tsx",
+    "kind": "unicode-symbol",
+    "context": "ProductCard > article > div > <Link to={to} className=\"block\"> > <div className=\"mt-1 text-xs text-muted-foreground leading-snug truncate\"> > '—'",
+    "reason": "Placeholder when the product card has no specification value.",
+    "category": "content"
+  },
+  {
     "path": "apps/web-shop/src/components/catalog/SortDropdown.tsx",
     "kind": "unicode-symbol",
     "context": "SortDropdown > <NativeSelect wrapperClassName=\"max-w-full w-auto\" className=\"border border-border rounded p-2\" value={value} onChange={(e) => onChange(e.target.value)} > > <option value=\"price_asc\"> > ราคา: ต่ำ → สูง",
@@ -490,6 +497,13 @@
     "category": "content"
   },
   {
+    "path": "apps/web/src/components/appointments/CustomerAppointments.tsx",
+    "kind": "unicode-symbol",
+    "context": "CustomerAppointments > section > call query.data.map > article > <Link className=\"block space-y-2 rounded-md text-sm hover:text-primary focus-visible:outline-2 focus-visible:outline-primary\" to={`${url}&appointmentId=${a.id}`} > > <p className=\"flex items-center gap-2 font-semibold\"> > –",
+    "reason": "Time range separator between the start and end of a customer appointment.",
+    "category": "content"
+  },
+  {
     "path": "apps/web/src/components/chat/ChannelBadge.tsx",
     "kind": "unicode-symbol",
     "context": "CHANNEL_META > TIKTOK > letter > '♪'",
@@ -501,6 +515,27 @@
     "kind": "unicode-symbol",
     "context": "EarlyPayoffOverlay > WizardStackedOverlay > div > div > <ul className=\"space-y-1.5 text-sm\"> > <Effect text=\"โอนกรรมสิทธิ์สินค้าจาก FINANCE → ลูกค้า\" /> > @text > \"โอนกรรมสิทธิ์สินค้าจาก FINANCE → ลูกค้า\"",
     "reason": "Explanatory label describing transfer of ownership from FINANCE to the customer.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/components/contract/ContractPaymentSchedule.tsx",
+    "kind": "unicode-symbol",
+    "context": "ContractPaymentSchedule > div > ScreenTable > tbody > call payments.map > Fragment > tr > <td className=\"px-4 py-3\"> > <span className=\"text-xs text-muted-foreground\"> > —",
+    "reason": "Placeholder when the installment has no amount paid.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/components/contract/ContractPaymentSchedule.tsx",
+    "kind": "unicode-symbol",
+    "context": "ContractPaymentSchedule > div > ScreenTable > tbody > call payments.map > Fragment > tr > <td className=\"px-4 py-3 text-sm\"> > <span className=\"text-xs text-muted-foreground\"> > —",
+    "reason": "Placeholder when the installment has no late fee.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/components/contract/ContractPaymentSchedule.tsx",
+    "kind": "unicode-symbol",
+    "context": "ContractPaymentSchedule > div > ScreenTable > tbody > call payments.map > Fragment > <tr className={`border-b border-border transition-colors ${hasActivity ? 'cursor-pointer hover:bg-muted/30' : ''} ${isOpen ? 'bg-muted/20' : ''}`} onClick={() => hasActivity && toggle(p.installmentNo)} > > <td className=\"px-4 py-3 text-xs text-muted-foreground\"> > '—'",
+    "reason": "Placeholder when the installment has no paid date.",
     "category": "content"
   },
   {
@@ -613,6 +648,27 @@
     "kind": "unicode-symbol",
     "context": "ApproverSection > div > <div> > <p className=\"mt-1 text-xs text-muted-foreground\"> > เจ้าของกำหนดสิทธิ์รายคนที่ ตั้งค่า → สิทธิ์รายการบัญชีรายรับ–รายจ่าย",
     "reason": "Arrows separate application menu names in instructions.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/components/expense-form-v4/CreditNoteLinesSection.tsx",
+    "kind": "unicode-symbol",
+    "context": "CreditNoteLinesSection > FormRow > div > div > div > div > call searchResults!.data .filter((d) => ['POSTED', 'ACCRUAL'].includes(d.status)) .map > button > <div className=\"min-w-0\"> > <div className=\"text-xs text-muted-foreground\"> > '—'",
+    "reason": "Placeholder when the source credit note has no supplier name.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/components/expense-form-v4/PayrollLinesSection.tsx",
+    "kind": "unicode-symbol",
+    "context": "CustomIncomeSubTable > div > <div role=\"alert\" className=\"flex items-start gap-2 px-3 py-2 border-t border-border bg-warning/5 text-warning-strong\" > > <div className=\"text-xs leading-snug\"> > —",
+    "reason": "Punctuation between the tax-exemption heading and the number of exempt payroll rows.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/components/expense-form-v4/QuickStartPanel.tsx",
+    "kind": "unicode-symbol",
+    "context": "QuickStartPanel > div > div > div > div > call top6.map > button > div > <div className=\"text-xs text-muted-foreground leading-snug\"> > <span className=\"font-mono\"> > '—'",
+    "reason": "Placeholder when the expense template does not set a category.",
     "category": "content"
   },
   {
@@ -875,6 +931,20 @@
     "category": "content"
   },
   {
+    "path": "apps/web/src/pages/BookingsPage/components/BookingCardList.tsx",
+    "kind": "unicode-symbol",
+    "context": "BookingCardList > ul > call rows.map > li > <button type=\"button\" onClick={() => onOpen(b)} aria-label={`เปิดใบจอง ${b.bookingNumber}`} className=\"flex w-full flex-col gap-1.5 rounded-xl border border-border bg-card px-3.5 py-3 text-left shadow-card\" > > <span className=\"truncate text-sm leading-snug\"> > '—'",
+    "reason": "Placeholder when the booking does not include a product description.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/BookingsPage/components/BookingDetailSheet.tsx",
+    "kind": "unicode-symbol",
+    "context": "BookingDetailSheet > Sheet > SheetContent > fieldset > <p role=\"alert\" className=\"flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 leading-snug\" > > <span> > —",
+    "reason": "Punctuation separating the product state from the booking guidance.",
+    "category": "content"
+  },
+  {
     "path": "apps/web/src/pages/BookingsPage/components/BookingDetailSheet.tsx",
     "kind": "unicode-symbol",
     "context": "BookingDetailSheet > Sheet > SheetContent > fieldset > <p role=\"alert\" className=\"flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 leading-snug\" > > <span> > 'รับมัดจำไม่ได้ ที่เมนู ⋯ เลือก แก้ไขใบจอง → เปลี่ยนเครื่อง'",
@@ -898,6 +968,13 @@
   {
     "path": "apps/web/src/pages/ChatbotFinanceLearningPage.tsx",
     "kind": "unicode-symbol",
+    "context": "ChatbotFinanceLearningPage > div > div > div > QueryBoundary > call suggestions.data?.items.map > <div key={s.id} onClick={() => setSelectedSuggestion(s)} className={`p-3 border rounded-lg cursor-pointer hover:bg-accent ${ selectedSuggestion?.id === s.id ? 'border-primary bg-primary/5' : 'bg-card' }`} > > <p className=\"text-xs text-muted-foreground mt-1\"> > —",
+    "reason": "Separator between the suggestion date and its stated intent.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/ChatbotFinanceLearningPage.tsx",
+    "kind": "unicode-symbol",
     "context": "ChatbotFinanceLearningPage > div > div > div > div > <div className=\"flex gap-2 pt-3 border-t\"> > <button data-ui-control=\"button\" onClick={() => approveMutation.mutate(selectedSuggestion.id)} disabled={approveMutation.isPending} className=\"px-4 py-2 bg-prim… sha256:0d468a08e303523bb244ac140bcb8058e8e24d2cbaad248fda43bc58b1162f05 > \"อนุมัติ → สร้าง KB\"",
     "reason": "Action label describes the operation and its resulting knowledge-base entry.",
     "category": "content"
@@ -914,6 +991,13 @@
     "kind": "unicode-symbol",
     "context": "EvidenceThumbnailGrid > <p className=\"mt-1 text-xs text-muted-foreground\"> > +",
     "reason": "Signed count of additional evidence photos.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/CollectionsPage/components/InstallmentPickerPopover.tsx",
+    "kind": "unicode-symbol",
+    "context": "InstallmentPickerPopover > div > div > call installments.map > button > div > <div className=\"text-sm leading-snug\"> > <div className=\"font-medium\"> > —",
+    "reason": "Separator between the installment number and its date.",
     "category": "content"
   },
   {
@@ -949,6 +1033,13 @@
     "kind": "unicode-symbol",
     "context": "SORT_OPTIONS > label > 'ยอดค้าง ต่ำ→สูง'",
     "reason": "Text names the sort order and its two endpoints.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/CollectionsPage/components/WorkloadGrid.tsx",
+    "kind": "unicode-symbol",
+    "context": "WorkloadGrid > Card > CardContent > QueryBoundary > DragDropContext > div > call columns.map > Droppable > div > div > call col.contracts.map > Draggable > <div ref={dragProvided.innerRef} {...dragProvided.draggableProps} {...dragProvided.dragHandleProps} onClick={(e) => toggleSelect(ct.id, col.collectorId, e.shift… sha256:3fecabe57da973f738a44a7b2e66ee9b751264577efa02ae776e0dec8d719f7c > <div className=\"text-muted-foreground leading-snug truncate\"> > '—'",
+    "reason": "Placeholder when the workload record has no customer name.",
     "category": "content"
   },
   {
@@ -1071,6 +1162,20 @@
     "category": "content"
   },
   {
+    "path": "apps/web/src/pages/DashboardPage/components/DashboardWatchList.tsx",
+    "kind": "unicode-symbol",
+    "context": "DashboardWatchList > Card > CardTable > div > ScreenTable > tbody > call upsell.candidates.map > tr > <td className=\"px-5 py-3.5 hidden sm:table-cell\"> > <span className=\"text-xs text-foreground\"> > '-'",
+    "reason": "Placeholder when an upsell candidate has no product model.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/DashboardPage/widgets/PromiseDueTodayWidget.tsx",
+    "kind": "unicode-symbol",
+    "context": "PromiseDueTodayWidget > Card > CardContent > QueryBoundary > ul > call data.slice(0, 8).map > li > Link > <div className=\"min-w-0 flex-1\"> > <p className=\"text-2xs text-muted-foreground leading-snug\"> > '—'",
+    "reason": "Placeholder when the payment-promise record has no phone number.",
+    "category": "content"
+  },
+  {
     "path": "apps/web/src/pages/DunningSettingsPage.tsx",
     "kind": "unicode-symbol",
     "context": "DunningSettingsPage > div > Card > CardContent > <div className=\"space-y-4\"> > <LetterAssetField label=\"ลายเซ็นต์ผู้มีอำนาจ *\" hint=\"PNG 200×80px พื้นหลังโปร่งใส\" currentUrl={signatureUrl} uploadKind=\"LETTER_SIGNATURE\" onSaved={(url) => saveConfig('letter_signature_url', url)} /> > @hint > \"PNG 200×80px พื้นหลังโปร่งใส\"",
@@ -1089,6 +1194,20 @@
     "kind": "unicode-symbol",
     "context": "DunningSettingsPage > div > Card > CardContent > <div className=\"space-y-4\"> > <LetterAssetField label=\"ภาพพื้นหลัง เตือนบนเครื่องลูกค้า\" hint=\"PNG 1080×1920px แนวตั้ง · แสดงบน lock screen เมื่อ MDM ล็อคเครื่อง\" currentUrl={wallpaperUrl} u… sha256:2152b6b4702685bd9dd9708d9a57e2191b7e9f8192713940fa1d93e75aca5df5 > @hint > \"PNG 1080×1920px แนวตั้ง · แสดงบน lock screen เมื่อ MDM ล็อคเครื่อง\"",
     "reason": "Multiplication separator in image or document dimensions.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/EquityStatementPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "EquityStatementPage > div > QueryBoundary > Card > CardContent > div > ScreenTable > tbody > call equity.rows.map > <tr key={row.accountCode} className={`border-t border-border ${ hasDetails ? 'cursor-pointer hover:bg-accent/50' : 'cursor-default' }`} onClick={() => { if (hasDetails) setDrillRow(row); }} > > <td className=\"p-3 text-right tabular-nums text-success\"> > '—'",
+    "reason": "Placeholder when the equity account has no increase amount.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/EquityStatementPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "EquityStatementPage > div > QueryBoundary > Card > CardContent > div > ScreenTable > tbody > call equity.rows.map > <tr key={row.accountCode} className={`border-t border-border ${ hasDetails ? 'cursor-pointer hover:bg-accent/50' : 'cursor-default' }`} onClick={() => { if (hasDetails) setDrillRow(row); }} > > <td className=\"p-3 text-right tabular-nums text-destructive\"> > '—'",
+    "reason": "Placeholder when the equity account has no decrease amount.",
     "category": "content"
   },
   {
@@ -1463,6 +1582,13 @@
     "category": "content"
   },
   {
+    "path": "apps/web/src/pages/ProductDetailPage/components/SameModelCard.tsx",
+    "kind": "unicode-symbol",
+    "context": "SameModelCard > Card > CardContent > ul > call others.map > li > Link > <span className=\"flex items-center gap-2 shrink-0\"> > <span className=\"text-sm font-semibold tabular-nums\"> > '-'",
+    "reason": "Placeholder when a matching model has no cash price.",
+    "category": "content"
+  },
+  {
     "path": "apps/web/src/pages/ProductDetailPage/components/calc/GfinPanel.tsx",
     "kind": "unicode-symbol",
     "context": "SubmitPriceCard > overLabel > ' × 50%'",
@@ -1523,6 +1649,20 @@
     "kind": "unicode-symbol",
     "context": "ReceivingFlow > div > <div className=\"flex items-center justify-between gap-4 px-4 pt-4 sm:px-6\"> > <div className=\"flex flex-wrap items-center gap-2\" role=\"tablist\" aria-label=\"รายการที่รับ\"> > call screens.map > label > `${unitTitle(units[s.indices[0]]).title} ×${s.indices.length}`",
     "reason": "Multiplication sign between purchase-order item name and quantity.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/PurchaseOrdersPage/components/ReceivingSummary.tsx",
+    "kind": "unicode-symbol",
+    "context": "ReceivingSummary > div > div > div > ScreenTable > tbody > call screens.map > <tr key={sIdx} role=\"button\" tabIndex={0} aria-label={`แก้ไข ${title}`} onClick={() => onEditScreen(sIdx)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key ==… sha256:c714e41f48115e8082112501d297ffdaf7ac17bedb35ff694edde01e78b66302 > <td className={tdCls}> > '-'",
+    "reason": "Placeholder when the first received device in the group has no storage value.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/PurchaseOrdersPage/components/ReceivingSummary.tsx",
+    "kind": "unicode-symbol",
+    "context": "ReceivingSummary > div > div > div > ScreenTable > tbody > call screens.map > <tr key={sIdx} role=\"button\" tabIndex={0} aria-label={`แก้ไข ${title}`} onClick={() => onEditScreen(sIdx)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key ==… sha256:c714e41f48115e8082112501d297ffdaf7ac17bedb35ff694edde01e78b66302 > <td className={tdCls}> > '-' (occurrence 2)",
+    "reason": "Placeholder when the first received device in the group has no color value.",
     "category": "content"
   },
   {
@@ -1736,6 +1876,13 @@
     "category": "content"
   },
   {
+    "path": "apps/web/src/pages/ShopDailyCashPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "ShopDailyCashPage > div > QueryBoundary > div > Section > div > <button type=\"button\" aria-expanded={kindOpen} aria-controls=\"daily-cash-by-kind\" onClick={() => setKindOpen(!kindOpen)} className=\"flex min-h-11 w-full items-c… sha256:b947ed2fbe9b816fef61d1e33590af699ec237694fdd051f144c84aefde9391a > <span> > —",
+    "reason": "Punctuation separating the breakdown label from the cash-type counts.",
+    "category": "content"
+  },
+  {
     "path": "apps/web/src/pages/StickerPrintPage/StickerCard.tsx",
     "kind": "unicode-symbol",
     "context": "StickerCard > div > div > div > <span className=\"st-rate-monthly\"> > <span className=\"st-x\"> > ×",
@@ -1775,6 +1922,13 @@
     "kind": "unicode-symbol",
     "context": "STICKER_SIZES > '50x30' > label > '50 × 30 มม.'",
     "reason": "Multiplication separator in image or document dimensions.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/StockPage/OverviewPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "SectionStatus > <p role=\"status\" className=\"p-4 mb-4 rounded-xl bg-muted\"> > …",
+    "reason": "Ellipsis ending the loading message after its interpolated section label.",
     "category": "content"
   },
   {
@@ -1836,8 +1990,29 @@
   {
     "path": "apps/web/src/pages/StockTransfersPage.tsx",
     "kind": "unicode-symbol",
+    "context": "StockTransfersPage > div > div > QueryBoundary > div > call batchGroups.map > div > div > <div className=\"flex-1 min-w-0 flex items-center gap-3 flex-wrap\"> > <span className=\"font-mono text-sm font-semibold text-primary\"> > '-'",
+    "reason": "Placeholder when the outgoing stock transfer group has no batch number.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/StockTransfersPage.tsx",
+    "kind": "unicode-symbol",
     "context": "StockTransfersPage > div > div > QueryBoundary > div > call batchGroups.map > div > div > <div className=\"flex items-center gap-4 text-xs text-muted-foreground shrink-0\"> > <span> > →",
     "reason": "Text separates the sending and receiving stock locations.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/StockTransfersPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "StockTransfersPage > div > div > div > call incomingBatchGroups.map > div > div > <div className=\"flex-1 min-w-0 flex items-center gap-3 flex-wrap\"> > <span className=\"font-mono text-sm font-semibold text-primary\"> > '-'",
+    "reason": "Placeholder when the incoming stock transfer group has no batch number.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/StoreAppointmentsPage/AppointmentCalendar.tsx",
+    "kind": "unicode-symbol",
+    "context": "AppointmentCalendar > div > section > call details.data.rows.map > <Link key={a.id} to={`/appointments?appointmentId=${a.id}&customerId=${a.customer.id}`} className=\"block space-y-2 rounded-xl border border-border bg-card p-4 t… sha256:5913cb0fc505d361cd66c7687530408f5c97971735a9010262d141d04615eb1e > <p className=\"flex items-center gap-2 text-sm\"> > –",
+    "reason": "Time range separator between the appointment start and end.",
     "category": "content"
   },
   {
@@ -1990,6 +2165,13 @@
   {
     "path": "apps/web/src/pages/UnifiedInboxPage/components/Customer360Panel.tsx",
     "kind": "unicode-symbol",
+    "context": "Customer360Panel > blocks > div > call (crossRooms as CrossRoomItem[]).map > button > <div className=\"flex-1 min-w-0\"> > <p className=\"text-[12px] truncate\"> > '...'",
+    "reason": "Ellipsis placeholder when a linked conversation has no message preview.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/UnifiedInboxPage/components/Customer360Panel.tsx",
+    "kind": "unicode-symbol",
     "context": "Customer360Panel > dialogs > Dialog > DialogContent > div > div > <div className=\"w-12 h-12 rounded-full bg-muted flex items-center justify-center overflow-hidden shrink-0\"> > <span className=\"text-muted-foreground text-base font-bold\"> > '?'",
     "reason": "Fallback initial when the corresponding customer or participant name is unavailable.",
     "category": "content"
@@ -2079,6 +2261,13 @@
     "category": "content"
   },
   {
+    "path": "apps/web/src/pages/UnifiedInboxPage/components/WorkQueue.tsx",
+    "kind": "unicode-symbol",
+    "context": "WorkQueue > section > div > call (Object.keys(labels) as WorkQueueView[]).map > <Button key={v} variant={v === view ? 'primary' : 'outline'} className=\"h-11 justify-between gap-2\" aria-pressed={v === view} onClick={() => onView(v)}> > <span className=\"tabular-nums\"> > '—'",
+    "reason": "Placeholder when the work queue count is unavailable.",
+    "category": "content"
+  },
+  {
     "path": "apps/web/src/pages/UnifiedInboxPage/components/chat-notification.ts",
     "kind": "image-or-css-icon",
     "context": "showChatNotification > options > icon > '/logo-icon.svg'",
@@ -2163,6 +2352,20 @@
     "category": "content"
   },
   {
+    "path": "apps/web/src/pages/after-sales/ReplacementProductPicker.tsx",
+    "kind": "unicode-symbol",
+    "context": "ReplacementProductPicker > div > call products.map > <button key={p.id} type=\"button\" aria-pressed={selected} onClick={() => onChange(p.id)} className={`rounded-lg border p-3 text-left leading-snug ${ selected ? '… sha256:db30a9f3460927646cfc7f2539531b420e0d7ee102853624f8d114b188c9c43d > <span className=\"mt-0.5 block text-xs text-muted-foreground\"> > '—'",
+    "reason": "Placeholder when the replacement product has no IMEI.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/after-sales/ReplacementProductPicker.tsx",
+    "kind": "unicode-symbol",
+    "context": "ReplacementProductPicker > div > call products.map > <button key={p.id} type=\"button\" aria-pressed={selected} onClick={() => onChange(p.id)} className={`rounded-lg border p-3 text-left leading-snug ${ selected ? '… sha256:db30a9f3460927646cfc7f2539531b420e0d7ee102853624f8d114b188c9c43d > <span className=\"mt-0.5 block text-xs text-muted-foreground\"> > '—' (occurrence 2)",
+    "reason": "Placeholder when the replacement product has no cash price.",
+    "category": "content"
+  },
+  {
     "path": "apps/web/src/pages/after-sales/after-sales.ts",
     "kind": "unicode-symbol",
     "context": "secondaryActions > call out.push > label > 'ซ่อมไม่ได้ → เปลี่ยนรุ่นเดิม'",
@@ -2174,6 +2377,27 @@
     "kind": "unicode-symbol",
     "context": "secondaryActions > call out.push > label > 'ซ่อมไม่ได้ → เปลี่ยนรุ่นเดิม' (occurrence 2)",
     "reason": "Exchange text describes the transition, destination or replacement device.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/assets/AssetAuditPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "AssetAuditPage > div > QueryBoundary > Card > CardContent > ul > call filtered.map > li > button > div > div > <span className=\"inline-flex items-center gap-1 text-xs text-muted-foreground\"> > <span className=\"font-mono\"> > '—'",
+    "reason": "Placeholder when an audit event has no asset code.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/assets/AssetAuditPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "AssetAuditPage > div > QueryBoundary > Card > CardContent > ul > call filtered.map > li > button > div > div > <span className=\"inline-flex items-center gap-1 text-xs text-muted-foreground\"> > <span> > '—'",
+    "reason": "Placeholder when an audit event has no asset name.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/assets/AssetAuditPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "AssetAuditPage > div > QueryBoundary > Card > CardContent > ul > call filtered.map > li > button > div > <div className=\"flex items-center gap-2 flex-wrap\"> > <span className=\"text-sm\"> > —",
+    "reason": "Punctuation between the audit timestamp and the actor name.",
     "category": "content"
   },
   {
@@ -2317,6 +2541,13 @@
     "category": "content"
   },
   {
+    "path": "apps/web/src/pages/equity/EquityListPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "EquityListPage > div > QueryBoundary > Card > CardContent > div > ScreenTable > tbody > call (listQuery.data?.data ?? []).map > <tr key={d.id} className=\"border-b border-border hover:bg-accent cursor-pointer\" onClick={() => navigate(`/finance/equity/${d.id}`)} > > <td className=\"text-muted-foreground max-w-[280px] truncate leading-snug\"> > '—'",
+    "reason": "Placeholder when an equity transaction has no description.",
+    "category": "content"
+  },
+  {
     "path": "apps/web/src/pages/finance/IntercompanyReportPage.tsx",
     "kind": "unicode-symbol",
     "context": "SummaryCard > Card > div > div > <div className=\"grid grid-cols-2 gap-x-3 gap-y-1 mt-2 text-sm\"> > <div className=\"text-right tabular-nums leading-snug text-xs text-destructive\"> > +",
@@ -2349,6 +2580,48 @@
     "kind": "unicode-symbol",
     "context": "IntercompanyReportPage > div > QueryBoundary > Card > CardContent > div > div > <div className=\"text-center\"> > <div className=\"text-2xs text-muted-foreground mb-0.5 leading-snug\"> > ชำระแล้ว (−)",
     "reason": "Signed accounting data or column label for amounts added or deducted.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/interco/BatchesTab.tsx",
+    "kind": "unicode-symbol",
+    "context": "BatchesTab > div > QueryBoundary > Card > CardContent > div > ScreenTable > tbody > call batches.map > <tr key={b.id} className=\"border-t border-border hover:bg-accent/30 cursor-pointer\" onClick={() => onRowClick(b.id)} > > <td className=\"p-3 text-xs text-muted-foreground\"> > '-'",
+    "reason": "Placeholder when the settlement batch has no approver name.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/interco/PendingTab.tsx",
+    "kind": "unicode-symbol",
+    "context": "PendingTab > div > QueryBoundary > div > Card > CardContent > div > ScreenTable > tbody > call pending.map > <tr key={p.contractId} className=\"border-t border-border hover:bg-accent/30 cursor-pointer\" onClick={() => onToggle(p.contractId)} > > <td className=\"p-3 text-center text-xs text-muted-foreground\"> > '-'",
+    "reason": "Placeholder when the pending contract has no activation date.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/interco/PendingTab.tsx",
+    "kind": "unicode-symbol",
+    "context": "PendingTab > div > QueryBoundary > div > Card > CardContent > div > ScreenTable > tbody > call pending.map > tr > <td className=\"p-3 text-right tabular-nums\"> > <span className=\"text-warning-strong\"> > −",
+    "reason": "Minus sign on the swap-credit deduction amount.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/interco/PendingTab.tsx",
+    "kind": "unicode-symbol",
+    "context": "PendingTab > div > QueryBoundary > div > Card > CardContent > div > ScreenTable > tbody > call pending.map > tr > <td className=\"p-3 text-right tabular-nums\"> > <span className=\"text-muted-foreground\"> > -",
+    "reason": "Placeholder when the swap-credit deduction is absent.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/interco/PendingTab.tsx",
+    "kind": "unicode-symbol",
+    "context": "PendingTab > div > QueryBoundary > div > Card > CardContent > div > ScreenTable > tbody > call recalls.map > <tr key={r.contractId} className={`border-t border-border ${ mismatch ? 'opacity-70' : 'hover:bg-accent/30 cursor-pointer' }`} onClick={() => !mismatch && onToggleRecall(r.contractId)} > > <td className=\"p-3 text-right tabular-nums text-warning-strong\"> > −",
+    "reason": "Minus sign on the recall deduction amount.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/interco/PendingTab.tsx",
+    "kind": "unicode-symbol",
+    "context": "PendingTab > div > QueryBoundary > div > Card > CardContent > div > ScreenTable > tbody > call deviceReturns.map > <tr key={d.contractId} className={`border-t border-border ${ mismatch ? 'opacity-70' : 'hover:bg-accent/30 cursor-pointer' }`} onClick={() => !mismatch && onToggleDeviceReturn(d.contractId)} > > <td className=\"p-3 text-right tabular-nums text-warning-strong\"> > −",
+    "reason": "Minus sign on the returned-device deduction amount.",
     "category": "content"
   },
   {
@@ -2415,6 +2688,41 @@
     "category": "content"
   },
   {
+    "path": "apps/web/src/pages/other-income/OtherIncomeDailySheetPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "OtherIncomeDailySheetPage > div > QueryBoundary > div > div > ScreenTable > tbody > call sheet.data.docs.map > <tr key={d.id} className=\"border-t hover:bg-accent cursor-pointer\" onClick={() => navigate(`/other-income/${d.id}`)} > > <td className=\"px-2 py-2 font-mono text-xs text-muted-foreground\"> > '-'",
+    "reason": "Placeholder when the daily other-income document has no receipt number.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/other-income/OtherIncomeDailySheetPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "OtherIncomeDailySheetPage > div > QueryBoundary > div > div > ScreenTable > tbody > call sheet.data.docs.map > <tr key={d.id} className=\"border-t hover:bg-accent cursor-pointer\" onClick={() => navigate(`/other-income/${d.id}`)} > > <td className=\"px-2 py-2 text-sm\"> > '-'",
+    "reason": "Placeholder when the daily other-income document has no customer or counterparty name.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/other-income/OtherIncomeDailySheetPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "OtherIncomeDailySheetPage > div > QueryBoundary > div > div > ScreenTable > tbody > call sheet.data.docs.map > <tr key={d.id} className=\"border-t hover:bg-accent cursor-pointer\" onClick={() => navigate(`/other-income/${d.id}`)} > > <td className=\"px-2 py-2 font-mono text-xs\"> > '-'",
+    "reason": "Placeholder when the daily other-income document has no first account code.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/other-income/OtherIncomeListPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "OtherIncomeListPage > div > QueryBoundary > div > div > ScreenTable > tbody > call docs.map > tr > <td className=\"min-w-56 px-4 py-3\"> > <span className=\"text-muted-foreground\"> > —",
+    "reason": "Placeholder when the other-income record has no counterparty or customer name.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/other-income/OtherIncomePendingApprovalPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "OtherIncomePendingApprovalPage > div > QueryBoundary > div > ScreenTable > tbody > call (data?.data ?? []).map > tr > <td className=\"px-4 py-2\"> > <span className=\"text-muted-foreground\"> > —",
+    "reason": "Placeholder when the pending other-income record has no counterparty or customer name.",
+    "category": "content"
+  },
+  {
     "path": "apps/web/src/pages/price-list/parts.tsx",
     "kind": "unicode-symbol",
     "context": "RateBlock > <div role=\"group\" aria-label={title} className={cn('rounded-lg bg-muted/50 px-3 py-2 tabular-nums', !view.ok && 'text-muted-foreground')} > > <p className=\"text-sm leading-snug text-foreground\"> > ×",
@@ -2426,6 +2734,48 @@
     "kind": "unicode-symbol",
     "context": "changesOf > call pairs.filter(([, a, b]) => a !== b).map > `${name} ${show(a)} → ${show(b)}`",
     "reason": "Text summarizes configured values before and after a proposed rule change or shows its arithmetic.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/settings/CategoryPage.tsx",
+    "kind": "unicode-symbol",
+    "context": "ItemSection > div > <Suspense fallback={ <p data-settings-loading role=\"status\" className=\"py-4 text-sm text-muted-foreground leading-snug\"> กำลังโหลด{item.label}… </p> }> > @fallback > <p data-settings-loading role=\"status\" className=\"py-4 text-sm text-muted-foreground leading-snug\"> > …",
+    "reason": "Ellipsis ending the settings section loading message after the item label.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/settings/SettingsItemRoute.tsx",
+    "kind": "unicode-symbol",
+    "context": "SettingsItemRoute > <Suspense fallback={ <p role=\"status\" className=\"py-4 text-sm text-muted-foreground leading-snug\"> กำลังโหลด{found.item.label}… </p> }> > @fallback > <p role=\"status\" className=\"py-4 text-sm text-muted-foreground leading-snug\"> > …",
+    "reason": "Ellipsis ending the settings item route loading message after the item label.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/shop-daily-cash/CashCloseHistory.tsx",
+    "kind": "unicode-symbol",
+    "context": "CashCloseHistory > div > QueryBoundary > div > <div role=\"alert\" className=\"space-y-1 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm leading-snug text-destructive\"> > <div> > —",
+    "reason": "Punctuation separating the monthly cash shortage totals from the per-branch counts.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/shop-daily-cash/CashCloseHistory.tsx",
+    "kind": "unicode-symbol",
+    "context": "CashCloseHistory > div > QueryBoundary > div > div > ScreenTable > tbody > call data.rows.map > Fragment > tr > <td className=\"px-3 py-3 text-right tabular-nums\"> > <span className=\"text-muted-foreground\"> > —",
+    "reason": "Placeholder when the cash close has no received amount.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/shop-daily-cash/CashCloseHistory.tsx",
+    "kind": "unicode-symbol",
+    "context": "CashCloseHistory > div > QueryBoundary > div > div > ScreenTable > tbody > call data.rows.map > Fragment > tr > <td className=\"px-3 py-3\"> > <span className=\"text-muted-foreground\"> > —",
+    "reason": "Placeholder when the cash close has no confirmation actor.",
+    "category": "content"
+  },
+  {
+    "path": "apps/web/src/pages/shop-daily-cash/CashStatusHero.tsx",
+    "kind": "unicode-symbol",
+    "context": "CashStatusHero > section > call sentBack.map > <div key={item.id} role=\"alert\" className=\"flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-[13px] leading-snug text-foreground\"> > <span> > '-'",
+    "reason": "Placeholder when the returned cash-count attempt has no reviewer name.",
     "category": "content"
   },
   {

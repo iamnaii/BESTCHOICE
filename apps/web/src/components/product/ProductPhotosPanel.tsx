@@ -302,7 +302,7 @@ export default function ProductPhotosPanel({
                     <>
                       <InlineCameraIcon className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
                       <span className="text-[10px] text-muted-foreground">
-                        {canEdit ? 'ถ่าย' : '-'}
+                        {canEdit ? 'ถ่าย' : 'ยังไม่มีรูป'}
                       </span>
                     </>
                   )}

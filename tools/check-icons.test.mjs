@@ -157,6 +157,80 @@ test('finds pagination, remove, tab and hierarchy glyphs in their controls', asy
   }
 });
 
+test('finds nested control marks, standalone status marks and rendered literal constants', async (t) => {
+  const root = await fixture(t, {
+    [app]: `
+      export const View = () => <button><span>...</span><span>-</span></button>;
+      export const Status = () => <span className="size-7 rounded-full flex items-center justify-center">-</span>;
+      const INDICATOR = "!";
+      export const Error = () => <div role="alert">{INDICATOR}</div>;
+      export function Shadowed() {
+        const INDICATOR = "Error!";
+        return <div role="alert">{INDICATOR}</div>;
+      }
+      const delimiter = "!";
+      export const Content = ({ amount }) => <button><span>-125</span><span>Continue?</span>-{amount}</button>;
+    `,
+  });
+  const findings = await scanIconUsage(root);
+  assert.equal(findings.length, 5);
+  assert.ok(findings.every(({ kind }) => kind === 'unicode-symbol'));
+  assert.equal(findings.filter(({ context }) => context.includes('View')).length, 2);
+  assert.equal(findings.filter(({ context }) => context.includes('Status')).length, 1);
+  const warning = findings.find(({ context }) => context.includes('Error'));
+  assert.match(warning.context, /role="alert".*INDICATOR.*"!"/);
+  const signed = findings.find(({ context }) => context.includes('Content'));
+  const review = reviewIconUsage(findings, [exception(signed, 'Arithmetic sign for the amount.')]);
+  assert.deepEqual(review.approved, [signed]);
+  assert.equal(review.unclassified.length, 4);
+});
+
+test('finds a rotating CSS ring using a partial border shorthand', async (t) => {
+  const root = await fixture(t, {
+    'apps/web/src/styles.css': `
+      .spinner { border: 2px solid transparent; border-top: 2px solid currentColor; animation: spin 1s linear; }
+      .divider { border-top: 2px solid currentColor; }
+      .square { border: 2px solid currentColor; animation: spin 1s linear; }
+    `,
+  });
+  const [ring, ...other] = await scanIconUsage(root);
+  assert.equal(ring?.kind, 'image-or-css-icon');
+  assert.match(ring.context, /\.spinner.*border-top/);
+  assert.deepEqual(other, []);
+});
+
+test('finds extensionless literal JSX image sources without flagging links', async (t) => {
+  const root = await fixture(t, {
+    [app]: `
+      export const View = () => <>
+        <button><img src="/assets/close?format=svg" alt="" /></button>
+        <button><img src={'/assets/add'} alt="" /></button>
+        <a href="/assets/help">Help</a>
+      </>;
+    `,
+  });
+  const findings = await scanIconUsage(root);
+  assert.equal(findings.length, 2);
+  assert.ok(findings.every(({ kind }) => kind === 'image-or-css-icon'));
+  assert.match(findings[0].context, /@src.*close\?format=svg/);
+  assert.match(findings[1].context, /@src.*assets\/add/);
+});
+
+test('rejects legacy CDN imports before URL queries and fragments', async (t) => {
+  const root = await fixture(t, {
+    'apps/web/public/example.html': `
+      <script type="module">
+        import { Check } from "https://esm.sh/lucide-react?bundle";
+        export * from "https://esm.sh/react-icons#fragment";
+        import "https://esm.sh/unrelated-package?from=lucide-react";
+      </script>
+    `,
+  });
+  const findings = await scanIconUsage(root);
+  assert.equal(findings.length, 2);
+  assert.ok(findings.every(({ kind }) => kind === 'legacy-import'));
+});
+
 test('binds review to the containing array, property and markup and to a nonempty reason', async (t) => {
   const root = await fixture(t, {
     [shop]: `

@@ -168,40 +168,97 @@ function moduleSpecifier(node) {
 }
 
 function importKind(module, path) {
-  // Strip a CDN host for module scripts that reference known icon packages by URL.
-  const specifier = module.replace(/^https?:\/\/[^/]+\/(?:npm\/)?/, '');
+  const [specifier] = module.replace(/^https?:\/\/[^/]+\/(?:npm\/)?/, '').split(/[?#]/, 1);
   if (legacyLibrary.test(specifier)) return 'legacy-import';
   if (phosphorLibrary.test(specifier) && !centralPhosphor.has(path)) return 'direct-phosphor';
 }
 
 function renderContext(node) {
+  let visible = false;
   for (let parent = node.parent; parent; parent = parent.parent) {
     if (ts.isJsxAttribute(parent)) {
       const name = parent.name.getText();
-      if (!visibleHtmlAttributes.has(name) && name !== 'label') return {};
-      return { visible: true };
+      return { visible: visible || visibleHtmlAttributes.has(name) || name === 'label' };
     }
     if (ts.isJsxElement(parent)) {
       const opening = parent.openingElement;
       const tag = opening.tagName.getText();
       const attributes = opening.attributes.getText();
       if (tag === 'style' || tag === 'script') return { code: true };
-      return { visible: true, affordance: isAffordance(tag, attributes) };
+      if (isAffordance(tag, attributes)) return { visible: true, affordance: true };
+      visible = true;
+      continue;
     }
-    if (ts.isCallExpression(parent) || ts.isStatement(parent)) return {};
+    if (ts.isCallExpression(parent) || ts.isStatement(parent)) break;
     if (ts.isVariableDeclaration(parent) || ts.isPropertyAssignment(parent)) {
+      if (visible) break;
       const name = parent.name.getText();
       const affordance = /(?:icons?|glyphs?|symbols?|keycaps?|chevron|mark|badge)$/i.test(name);
       return { visible: affordance || /(?:labels?|initials?$|^keys$)/i.test(name), affordance };
     }
   }
-  return {};
+  return { visible };
 }
 
 function isAffordance(tag, attributes) {
+  const fixedSize =
+    /\bsize-/.test(attributes) || (/\bh-/.test(attributes) && /\bw-/.test(attributes));
+  const centeredCircle =
+    fixedSize &&
+    /\brounded-full\b/.test(attributes) &&
+    /\bitems-center\b/.test(attributes) &&
+    /\bjustify-center\b/.test(attributes);
   return (
     /^(?:a|kbd|button|\w*Button|\w*Link|\w*Trigger)$/.test(tag) ||
-    /\bonClick\b|\brole\s*=\s*["']button["']/i.test(attributes)
+    /\bonClick\b|\brole\s*=\s*["'](?:button|alert|status)["']/i.test(attributes) ||
+    centeredCircle
+  );
+}
+
+// Look up direct const declarations within the JSX's enclosing blocks and source file.
+function localStringConstant(expression) {
+  const { text: name } = expression;
+  for (let scope = expression.parent; scope; scope = scope.parent) {
+    if (
+      ts.isFunctionLike(scope) &&
+      scope.parameters.some(
+        (parameter) => ts.isIdentifier(parameter.name) && parameter.name.text === name,
+      )
+    )
+      return;
+    if (!ts.isBlock(scope) && !ts.isSourceFile(scope)) continue;
+    for (const statement of scope.statements) {
+      if (!ts.isVariableStatement(statement)) continue;
+      const list = statement.declarationList;
+      const declaration = list.declarations.find(
+        (candidate) => ts.isIdentifier(candidate.name) && candidate.name.text === name,
+      );
+      if (!declaration) continue;
+      if (
+        list.flags & ts.NodeFlags.Const &&
+        declaration.initializer &&
+        ts.isStringLiteralLike(declaration.initializer)
+      ) {
+        return declaration.initializer;
+      }
+      return;
+    }
+  }
+}
+
+function isImageSource(tag, attribute) {
+  const name = attribute.toLowerCase();
+  return (
+    (name === 'src' && (tag === 'img' || tag === 'image')) ||
+    (name === 'srcset' && (tag === 'img' || tag === 'source'))
+  );
+}
+
+function isJsxImageSource(node, file) {
+  const owner = ts.isJsxExpression(node.parent) ? node.parent.parent : node.parent;
+  return (
+    ts.isJsxAttribute(owner) &&
+    isImageSource(owner.parent.parent.tagName.getText(file), owner.name.getText(file))
   );
 }
 
@@ -262,6 +319,21 @@ function scanScript(source, path, add, { importsOnly = false, htmlContext = '' }
           emit('image-or-css-icon');
         }
       }
+      if (ts.isJsxExpression(node) && node.expression && ts.isIdentifier(node.expression)) {
+        const context = renderContext(node);
+        if (context.visible) {
+          const literal = localStringConstant(node.expression);
+          if (literal && hasGlyph(literal.text, true, context.affordance)) {
+            const declaration = renderContext(literal);
+            if (!hasGlyph(literal.text, declaration.visible, declaration.affordance)) {
+              add(
+                'unicode-symbol',
+                `${htmlContext}${sourceContext(node, file)} = ${compactSyntax(literal.getText(file))}`,
+              );
+            }
+          }
+        }
+      }
       if (ts.isJsxText(node) || ts.isStringLiteralLike(node) || ts.isTemplateExpression(node)) {
         const value = textOf(node);
         const { visible, affordance, code } = renderContext(node);
@@ -274,7 +346,13 @@ function scanScript(source, path, add, { importsOnly = false, htmlContext = '' }
               emit('unicode-symbol');
             }
             // An asset reference can occur in JSX, a CSS-in-JS property, or a static data constant.
-            if (imageReference(value) || imageUrlInStyle(value)) emit('image-or-css-icon');
+            if (
+              imageReference(value) ||
+              imageUrlInStyle(value) ||
+              (value.trim() && ts.isStringLiteralLike(node) && isJsxImageSource(node, file))
+            ) {
+              emit('image-or-css-icon');
+            }
             if (/<svg[\s>]/i.test(value) && /<\/svg>/i.test(value)) emit('inline-svg');
           }
         } else if (!ts.isTemplateExpression(node)) {
@@ -315,7 +393,11 @@ function scanCss(source, path, add, context = '') {
     );
     const ring = declarations.some(
       ({ prop, value }) =>
-        /^border-.*(?:color|width)$/i.test(prop) || /conic-gradient/i.test(value),
+        /^border-.*(?:color|width)$/i.test(prop) ||
+        /^border-(?:top|right|bottom|left|block-(?:start|end)|inline-(?:start|end))(?:-style)?$/i.test(
+          prop,
+        ) ||
+        /conic-gradient/i.test(value),
     );
     if (rotates && ring) add('image-or-css-icon', `${context}${compactSyntax(rule.toString())}`);
   });
@@ -375,8 +457,7 @@ function scanHtml(source, path, add) {
           add('unicode-symbol', `${context} > @${name}`);
         }
         if (
-          (name === 'src' && (tag === 'img' || tag === 'image')) ||
-          (name === 'srcset' && (tag === 'img' || tag === 'source')) ||
+          isImageSource(tag, name) ||
           (name === 'href' && tag === 'link' && iconLinkRels.has(attrs.rel?.toLowerCase()))
         ) {
           add('image-or-css-icon', `${context} > @${name}`);

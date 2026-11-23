@@ -1,9 +1,10 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, useLocation } from 'react-router';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 import { AuthContext } from '@/contexts/AuthContext';
 import { shopInfo } from '@/lib/copy';
+import HowItWorksPage from '@/pages/HowItWorksPage';
 import AccountPage from './AccountPage';
 
 function CurrentUrl() {
@@ -24,7 +25,10 @@ function renderAccount() {
           logout,
         }}
       >
-        <AccountPage />
+        <Routes>
+          <Route path="/how-it-works" element={<HowItWorksPage />} />
+          <Route path="*" element={<AccountPage />} />
+        </Routes>
         <CurrentUrl />
       </AuthContext.Provider>
     </MemoryRouter>,
@@ -40,25 +44,31 @@ function iconGeometry(control: HTMLElement) {
 }
 
 describe('storefront navigation glyphs', () => {
-  it('draws distinct destination glyphs in the header and account hubs', async () => {
+  it('draws distinct destination glyphs in the header, account hubs and installment guide', async () => {
     const logout = renderAccount();
-    const destinations = [
-      ['/account', 'บัญชี'],
-      ['/orders', 'ออเดอร์'],
-      ['/account/addresses', 'ที่อยู่'],
-    ] as const;
     const usedGeometry = new Map<string, string>();
-    for (const [path, name] of destinations) {
-      const link = screen.getByRole('link', { name });
+    function checkDestination(path: string, link: HTMLElement) {
       expect(link).toHaveAttribute('href', path);
       const shape = iconGeometry(link);
       expect(usedGeometry.get(shape), `${path} duplicates ${usedGeometry.get(shape)}`).toBeUndefined();
       usedGeometry.set(shape, path);
     }
+    checkDestination('/account', screen.getByRole('link', { name: 'บัญชี' }));
+    checkDestination('/orders', screen.getByRole('link', { name: 'ออเดอร์' }));
+    checkDestination('/account/addresses', screen.getByRole('link', { name: 'ที่อยู่' }));
+
     const logoutButton = screen.getByRole('button', { name: 'ออกจากระบบ' });
-    expect(usedGeometry.has(iconGeometry(logoutButton))).toBe(false);
+    const logoutGeometry = iconGeometry(logoutButton);
     await userEvent.click(logoutButton);
     expect(logout).toHaveBeenCalledOnce();
+
+    const header = within(screen.getByRole('banner'));
+    await userEvent.click(header.getByRole('link', { name: /^วิธีผ่อน$/ }));
+    expect(screen.getByLabelText('URL').textContent).toBe('/how-it-works');
+    const terms = screen.getByRole('link', { name: /^อ่านเงื่อนไขการผ่อนแบบละเอียด/ });
+    checkDestination('/installment-terms', terms);
+    expect(terms.querySelector('svg.app-icon-shield-check')).toHaveAttribute('aria-hidden', 'true');
+    expect(usedGeometry.has(logoutGeometry)).toBe(false);
   });
 
   it('keeps plain menus text-only and uses consistent header and contact action glyphs', async () => {
@@ -83,7 +93,7 @@ describe('storefront navigation glyphs', () => {
     expect(search.querySelector('svg')).toHaveClass('app-icon-magnifying-glass');
     await user.click(search);
     await user.type(header.getByRole('searchbox', { name: 'ค้นหาสินค้า' }), 'iPhone 15{enter}');
-    expect(screen.getByLabelText('URL')).toHaveTextContent('/products?search=iPhone%2015#catalog');
+    expect(screen.getByLabelText('URL').textContent).toBe('/products?search=iPhone%2015#catalog');
 
     const internalLinks = footer.getAllByRole('link').filter((link) => link.getAttribute('href')?.startsWith('/'));
     expect(internalLinks).toHaveLength(11);

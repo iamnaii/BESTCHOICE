@@ -157,7 +157,7 @@ describe('Stock product pricing', () => {
     }
     const row = screen.getByRole('row', { name: /iPhone 13/ });
     expect(within(row).getByRole('button', { name: 'iPhone 13' })).toBeInTheDocument();
-    for (const value of ['10,000 ฿', '15,900 ฿', '3,000 ฿', '2,411.06 ฿', '× 12 งวด']) {
+    for (const value of ['10,000 ฿', '15,900 ฿', '3,000 ฿', '2,409 ฿', '× 12 งวด']) {
       expect(within(row).getByText(value)).toBeInTheDocument();
     }
     expect(within(row).queryByText('29,900 ฿')).not.toBeInTheDocument();
@@ -272,7 +272,7 @@ describe('Device comparison layout', () => {
         'ถึง 12/03/2570',
         '15,900 ฿',
         '3,000 ฿',
-        '2,411.06 ฿',
+        '2,409 ฿',
         '× 12 งวด',
       ])
         expect(content.getByText(text)).toBeInTheDocument();
@@ -545,7 +545,7 @@ describe('Stock workspace interactions', () => {
       'BESTCHOICE',
       '15,900 ฿',
       '3,000 ฿',
-      '2,411.06 ฿',
+      '2,409 ฿',
       '× 12 งวด',
     ]) {
       expect(card.getByText(value)).toBeInTheDocument();

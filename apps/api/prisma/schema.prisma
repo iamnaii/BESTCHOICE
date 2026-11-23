@@ -1476,6 +1476,8 @@ model Customer {
 }
 
 model Contract {
+  /// NULL preserves the legacy CPA schedule; set only on newly quoted sheet plans.
+  installmentRoundingPolicy String? @map("installment_rounding_policy")
   signedDocumentEvents SignedDocumentProductionEvent[]
 
   generatedDocumentIdentities GeneratedDocumentIdentity[]

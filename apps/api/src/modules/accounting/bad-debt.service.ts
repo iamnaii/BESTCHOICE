@@ -409,6 +409,7 @@ export class BadDebtService {
             // selection per contract below — TERMINATED must NOT provision
             // un-accrued installments (2A stops firing post-termination).
             status: true,
+            installmentRoundingPolicy: true,
             totalMonths: true,
             financedAmount: true,
             storeCommission: true,
@@ -1088,6 +1089,7 @@ export class BadDebtService {
         id: true,
         // C1 (final-review 2026-07-26) — branches DUE vs ACCRUED below.
         status: true,
+        installmentRoundingPolicy: true,
         totalMonths: true,
         financedAmount: true,
         storeCommission: true,

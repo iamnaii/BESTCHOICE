@@ -90,7 +90,7 @@ describe('ProductCreatePage — การ์ดราคาขาย (แบบ 
     expect(screen.getByLabelText('เงินสด')).toHaveValue('25,900');
     expect(screen.getByLabelText('ผ่อน BESTCHOICE')).toHaveValue('25,900');
     expect(screen.getByLabelText('ผ่อน GFIN ราคาขาย')).toHaveValue('25,900');
-    expect(await screen.findByText(paragraph('ดาวน์ 3,900 · ผ่อน 3,139 × 12 งวด'))).toBeInTheDocument();
+    expect(await screen.findByText(paragraph('ดาวน์ 3,900 · ผ่อน 3,137 × 12 งวด'))).toBeInTheDocument();
     expect(screen.getByText(paragraph('ดาวน์ 6,500 · ผ่อน 3,403 × 12 งวด'))).toBeInTheDocument();
     for (const t of ['กำไร 100', 'กำไร 2,300', 'กำไร 2,938']) expect(screen.getByText(t)).toBeInTheDocument();
     expect(screen.queryByText('+ เพิ่มราคา')).not.toBeInTheDocument();
@@ -120,8 +120,8 @@ describe('ProductCreatePage — การ์ดราคาขาย (แบบ 
     await user.type(bc, '27000');
     expect(await screen.findByText('ราคากลาง 25,900')).toBeInTheDocument();
     expect(screen.getByText('แก้ 1 ราคาจากตารางราคากลาง')).toBeInTheDocument();
-    // 27,000 × 15% = 4,050 → 4,100 · ยอดจัด 22,900 → (22,900 + 2,290 + 11,450) × 1.07 / 12 = 3,267.07 → 3,268
-    expect(screen.getByText(paragraph('ดาวน์ 4,100 · ผ่อน 3,268 × 12 งวด'))).toBeInTheDocument();
+    // 27,000 × 15% = 4,050 → 4,100 · ยอดจัด 22,900 × 0.1426 ปัดลง = 3,265
+    expect(screen.getByText(paragraph('ดาวน์ 4,100 · ผ่อน 3,265 × 12 งวด'))).toBeInTheDocument();
     // ราคา 2 = 4,100 + 22,900 × 1.1 = 29,290 − ทุน 25,800
     expect(screen.getByText('กำไร 3,490')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'ใช้ราคากลางทั้งหมด' }));
@@ -245,7 +245,7 @@ describe('ProductCreatePage — การ์ดราคาขาย (แบบ 
     await user.click(await screen.findByRole('button', { name: 'แท็บเล็ต' }));
     await user.selectOptions(screen.getByLabelText('ยี่ห้อ *'), 'Apple');
     await pickComboOption(user, 'รุ่น *', 'iPad Pro 11" (M4)', { search: 'iPad Pro 11' });
-    expect(await screen.findByText(paragraph('ดาวน์ 3,900 · ผ่อน 3,139 × 12 งวด'))).toBeInTheDocument();
+    expect(await screen.findByText(paragraph('ดาวน์ 3,900 · ผ่อน 3,137 × 12 งวด'))).toBeInTheDocument();
     expect(api.get).toHaveBeenCalledWith('/interest-configs/resolved?category=TABLET');
     expect(screen.queryByText(/ยังไม่มีตั้งค่าดอกเบี้ย/)).not.toBeInTheDocument();
   });

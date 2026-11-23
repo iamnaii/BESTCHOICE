@@ -8,11 +8,11 @@ const config = {
   allowedMonths: [6, 12],
 };
 describe('default stock quotes with model terms', () => {
-  it('preserves existing defaults when there are no terms', () => {
+  it('uses the sheet policy with default terms', () => {
     expect(computeDefaultBcInstallment(19900, config)).toEqual({
       months: 12,
       downAmount: 3000,
-      monthlyPayment: 2411.06,
+      monthlyPayment: 2409,
     });
   });
   it('uses an allowed template term and custom down without rounding it to the minimum', () => {

@@ -34,11 +34,11 @@ describe('formatBaht', () => {
 });
 
 describe('computeDefaultBcInstallment — golden 19,900 (ตรงกับ BcCalculatorCard)', () => {
-  it('คืน 12 งวด ดาวน์ 3,000 งวดละ 2,411.06', () => {
+  it('คืน 12 งวด ดาวน์ 3,000 งวดละ 2,409', () => {
     expect(computeDefaultBcInstallment(19900, config)).toEqual({
       months: 12,
       downAmount: 3000,
-      monthlyPayment: 2411.06,
+      monthlyPayment: 2409,
     });
   });
 

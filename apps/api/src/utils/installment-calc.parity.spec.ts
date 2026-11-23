@@ -51,7 +51,7 @@ describe.each(cases)('shared/API/ledger parity for price $price, rate $rate', (e
   const legacy = calculateInstallmentWithInterest(
     Number(example.price),
     Number(example.down),
-    quote.interestAmount.toNumber(),
+    new Decimal(example.price).minus(example.down).mul(example.rate).toDecimalPlaces(2).toNumber(),
     12,
     0.1,
     0.07,
@@ -66,11 +66,17 @@ describe.each(cases)('shared/API/ledger parity for price $price, rate $rate', (e
   );
   const amounts = payments.map((payment) => new Decimal(payment.amountDue).toDecimalPlaces(2));
 
-  it('uses the shared quote and settles exactly the same amounts as every ledger period', () => {
+  it('preserves legacy accounting; only new standard quotes adopt the sheet policy', () => {
     expect(calcBcInstallment).toBe(sharedCalc);
     expect(quote.isValid).toBe(true);
-    expect(quote.monthlyPayment.toFixed(2)).toBe(example.monthly);
-    expect(quote.totalWithVat.toFixed(2)).toBe(example.total);
+    if (example.rate === '0.5') {
+      const expected = example.price === '19900' ? '2412.00' : '8.00';
+      expect(quote.monthlyPayment.toFixed(2)).toBe(expected);
+      expect(quote.totalWithVat.eq(quote.monthlyPayment.mul(12))).toBe(true);
+    } else {
+      expect(quote.monthlyPayment.toFixed(2)).toBe(example.monthly);
+      expect(quote.totalWithVat.toFixed(2)).toBe(example.total);
+    }
     expect(new Decimal(legacy.monthlyPayment).toFixed(2)).toBe(example.monthly);
     expect(amounts.at(-1)?.toFixed(2)).toBe(example.last);
 
@@ -97,8 +103,8 @@ describe.each(cases)('shared/API/ledger parity for price $price, rate $rate', (e
       totalInterest = totalInterest.plus(ledger.interestPerInst.toString());
     }
     expect(total.toFixed(2)).toBe(example.total);
-    expect(totalVat.toFixed(2)).toBe(quote.vatAmount.toFixed(2));
-    expect(totalInterest.toFixed(2)).toBe(quote.interestAmount.toFixed(2));
+    expect(totalVat.toFixed(2)).toBe(new Decimal(legacy.vatAmount).toFixed(2));
+    expect(totalInterest.toFixed(2)).toBe(new Decimal(legacy.interestTotal).toFixed(2));
   });
 
   it('enforces the approved ceiling on the largest actual installment, including the residual', () => {

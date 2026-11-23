@@ -96,6 +96,7 @@ export class Vat60dayReversalTemplate {
           storeCommission: c.storeCommission != null ? c.storeCommission.toString() : null,
           interestTotal: c.interestTotal.toString(),
           vatAmount: c.vatAmount != null ? c.vatAmount.toString() : null,
+          installmentRoundingPolicy: c.installmentRoundingPolicy,
           totalMonths: c.totalMonths,
         }).vatPerInst;
         Sentry.captureMessage(

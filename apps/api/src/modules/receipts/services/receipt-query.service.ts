@@ -151,6 +151,7 @@ export class ReceiptQueryService {
             // Money fields for the per-installment VAT breakdown on the PDF
             // (computeInstallmentBreakdown — same rounding as the 2A ledger,
             // per CPA manual: Gross/งวด 1,416.66 + VAT/งวด 99.17 = 1,515.83).
+            installmentRoundingPolicy: true,
             totalMonths: true,
             financedAmount: true,
             storeCommission: true,
@@ -267,6 +268,7 @@ export class ReceiptQueryService {
         storeCommission: receipt.contract.storeCommission,
         interestTotal: receipt.contract.interestTotal,
         vatAmount: receipt.contract.vatAmount,
+        installmentRoundingPolicy: receipt.contract.installmentRoundingPolicy,
         totalMonths: receipt.contract.totalMonths,
       }),
       receipt.receiptType === 'CREDIT_NOTE' && receipt.voidedReceiptId

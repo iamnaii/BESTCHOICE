@@ -547,6 +547,7 @@ export class DefectExchangeService {
             vatAmount: oldContract.vatAmount,
             vatPct: oldContract.vatPct,
             monthlyPayment: oldContract.monthlyPayment,
+          installmentRoundingPolicy: oldContract.installmentRoundingPolicy,
             paymentDueDay: oldContract.paymentDueDay,
             interestConfigId: oldContract.interestConfigId,
             parentContractId: oldContract.id,

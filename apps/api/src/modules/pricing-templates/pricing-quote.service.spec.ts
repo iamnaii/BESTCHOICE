@@ -101,7 +101,7 @@ describe('PricingQuoteService.listQuotes', () => {
           category: 'PHONE_NEW',
           hasWarranty: null,
           cashPrice: 25900,
-          rate1: { downAmount: 3900, monthly: 3139, months: 12 },
+          rate1: { downAmount: 3900, monthly: 3137, months: 12 },
           rate2: { downAmount: 6500, monthly: 3403, months: 12 },
         },
       ],
@@ -163,7 +163,7 @@ describe('PricingQuoteService.listQuotes', () => {
         category: 'PHONE_USED',
         hasWarranty: null,
         cashPrice: 12500,
-        rate1: { downAmount: 1600, monthly: 1227, months: 12 },
+        rate1: { downAmount: 1600, monthly: 1226, months: 12 },
         rate2: { downAmount: 0, monthly: 1745, months: 12 },
       },
     ]);
@@ -225,7 +225,7 @@ describe('PricingQuoteService.quoteForModel', () => {
       category: 'PHONE_NEW',
       origin: 'THAI',
     });
-    expect(quote?.rate1).toMatchObject({ downAmount: 3900, monthlyDisplay: 3139, months: 12, allowedMonths: [10, 12] });
+    expect(quote?.rate1).toMatchObject({ downAmount: 3900, monthlyDisplay: 3137, months: 12, allowedMonths: [10, 12] });
     expect(quote?.rate2).toMatchObject({ available: true, downAmount: 6500, monthly: 3403 });
   });
 

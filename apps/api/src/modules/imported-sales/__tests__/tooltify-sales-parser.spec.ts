@@ -1,8 +1,17 @@
+import type { FileRef } from '../../../cli/tooltify-cutover/types';
+import { inspectFiles } from '../../../cli/tooltify-cutover/inspect';
+import { readXlsxTable } from '../xlsx-reader';
+import ExcelJS from 'exceljs';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import {
   deriveSaleChannel,
   normalizePayment,
   parseThaiDateTime,
   parseSalesLineItems,
+  parseSalesReport,
   ParsedSale,
 } from '../tooltify-sales-parser';
 
@@ -104,4 +113,302 @@ describe('parseSalesLineItems', () => {
     const rows = [['รายการขาย ( 1 )'], HEADER, ['', 'x', 'y'], ['']];
     expect(parseSalesLineItems(rows, { importBatch: 'f' })).toEqual([]);
   });
+});
+
+const file: FileRef = {
+  path: 'synthetic.xlsx',
+  sha256: 'a'.repeat(64),
+  kind: 'SALES',
+  storeKey: 'origin-A',
+  branchId: 'branch-A',
+  reportFrom: '2026-09-01',
+  reportTo: '2026-09-30',
+};
+const context = { file, sheet: 'Worksheet' };
+const gift = [
+  'TEST-GIFT',
+  'Synthetic gift',
+  'Accessories',
+  '',
+  'Synthetic finance',
+  'A-1',
+  'ขายแบบโอน',
+  'ราคา 3',
+  '70.25',
+  '0',
+  '0',
+  '-70.25',
+  '',
+  '2026-09-01 00:00:01',
+];
+const summary = [
+  'รูปแบบการขาย',
+  'คำสั่งซื้อ',
+  'รายการขาย',
+  'ต้นทุนรวม',
+  'ราคาตั้งขาย',
+  'ราคาขาย',
+  'กำไร',
+];
+const totals = ['ขายสินค้าทั้งหมด', '1', '1', '70.25', '0', '0', '-70.25'];
+const detail = [['รายการขาย ( 1 )'], HEADER, gift];
+
+describe('parseSalesReport', () => {
+  it('reads by headings and keeps zero gross sales, a negative profit and the Bangkok instant', () => {
+    const result = parseSalesReport(
+      [summary, totals, [], detail[0], [...HEADER].reverse(), [...gift].reverse()],
+      context,
+    );
+    expect(result.issues).toEqual([]);
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0]).toMatchObject({
+      source: { fileSha256: file.sha256, storeKey: file.storeKey, sheet: 'Worksheet', row: 6 },
+      sourceStoreKey: file.storeKey,
+      shopLabel: 'Synthetic finance',
+      salePrice: '0.00',
+      profit: '-70.25',
+      soldAt: new Date('2026-08-31T17:00:01Z'),
+    });
+  });
+
+  it.each([
+    [13, '2026-02-30 00:00:00', 'INVALID_SOURCE_DATE'],
+    [8, '', 'INVALID_SALE_MONEY'],
+    [9, '1,2', 'INVALID_SALE_MONEY'],
+    [10, 'bad', 'INVALID_SALE_MONEY'],
+    [11, '0.001', 'INVALID_SALE_MONEY'],
+  ] as const)('issues the physical row for invalid field %s (%s)', (column, value, code) => {
+    const bad = [...gift];
+    bad[column] = value;
+    const result = parseSalesReport([[], detail[0], HEADER, bad], context);
+    expect(result.rows).toEqual([]);
+    expect(result.issues).toContainEqual(
+      expect.objectContaining({ code, source: expect.objectContaining({ row: 4 }) }),
+    );
+  });
+
+  it('fails missing sections, ambiguous headers, and declared count discrepancies', () => {
+    expect(parseSalesReport([summary, totals], context).issues).not.toHaveLength(0);
+    expect(
+      parseSalesReport([detail[0], [...HEADER, 'กำไร'], gift], context).issues,
+    ).not.toHaveLength(0);
+    expect(parseSalesReport([['รายการขาย ( 0 )'], HEADER, gift], context).issues).not.toHaveLength(
+      0,
+    );
+  });
+
+  it('reports separate signed gross/detail deltas without changing the supplied money', () => {
+    const result = parseSalesReport(
+      [summary, ['ขายสินค้าทั้งหมด', '1', '1', '75', '0', '10.11', '-60'], [], ...detail],
+      context,
+    );
+    const issue = result.issues.find((i) => i.code === 'SALES_SUMMARY_MISMATCH');
+    expect(issue?.source?.row).toBe(2);
+    expect(issue?.message).toContain('ราคาขาย 10.11');
+    expect(issue?.message).toContain('ต้นทุนรวม 4.75');
+    expect(issue?.message).toContain('กำไร 10.25');
+    expect(result.gross).toMatchObject({
+      reported: { salePrice: '10.11', costTotal: '75.00', profit: '-60.00' },
+      detail: { salePrice: '0.00', costTotal: '70.25', profit: '-70.25' },
+      delta: { salePrice: '10.11', costTotal: '4.75', profit: '10.25' },
+    });
+    expect(result.rows[0].profit).toBe('-70.25');
+    expect(
+      parseSalesReport([summary, totals, [], ['รายการขาย ( 0 )'], HEADER], context).issues,
+    ).not.toHaveLength(0);
+  });
+
+  it('keeps adjustments separate from gross and flags event evidence for reconciliation', () => {
+    const result = parseSalesReport(
+      [
+        summary,
+        totals,
+        ['รายการจ่ายเครดิต', '-', '1', '-', '-', '10', '0'],
+        [],
+        ...detail,
+        [],
+        ['รายการคืนสินค้า ( 1 )'],
+        ['คำสั่งซื้อ', 'ยอดขาย'],
+        ['A-1', '-10'],
+      ],
+      context,
+    );
+    expect(result.gross.delta?.salePrice).toBe('0.00');
+    expect(result.adjustments).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: 'รายการจ่ายเครดิต',
+          source: expect.objectContaining({ row: 3 }),
+          reported: {
+            bills: null,
+            lines: 1,
+            costTotal: null,
+            listPrice: null,
+            salePrice: '10.00',
+            profit: '0.00',
+          },
+        }),
+        expect.objectContaining({
+          label: 'คืนสินค้า',
+          source: expect.objectContaining({ row: 9 }),
+          detailRows: [11],
+        }),
+      ]),
+    );
+    expect(result.issues.map((i) => i.code)).toContain('UNRECONCILED_SALE_EVENTS');
+  });
+
+  it('rejects a malformed identified summary instead of disregarding the reported total', () => {
+    expect(
+      parseSalesReport(
+        [summary.map((h) => (h === 'รายการขาย' ? '' : h)), totals, [], ...detail],
+        context,
+      ).issues,
+    ).toContainEqual(expect.objectContaining({ code: 'INVALID_SALES_SUMMARY' }));
+  });
+
+  it('requires origin and branch evidence and still reconciles the raw report', () => {
+    const result = parseSalesReport([summary, totals, [], ...detail], {
+      ...context,
+      file: { ...file, storeKey: 'UNRESOLVED', branchId: null },
+    });
+    expect(result.rows).toEqual([]);
+    expect(result.issues.map((i) => i.code)).toEqual([
+      'UNRESOLVED_SOURCE_STORE',
+      'UNRESOLVED_SALES_BRANCH',
+    ]);
+    expect(result.gross.detail?.lines).toBe(1);
+  });
+
+  it('uses the same private-safe worksheet identity as inspection through the Excel reader', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'synthetic-sales-'));
+    try {
+      const path = join(dir, 'fixture.xlsx');
+      const book = new ExcelJS.Workbook();
+      book.addWorksheet('Synthetic private name').addRows(detail);
+      await book.xlsx.writeFile(path);
+      const inspected = await inspectFiles([path]);
+      const table = await readXlsxTable(path);
+      const parsed = parseSalesReport(table.rows, {
+        file: { ...file, sha256: inspected.files[0].sha256 },
+        sheet: table.sheet,
+      });
+      expect(parsed.issues).toEqual([]);
+      expect(parsed.rows[0].source.sheet).toBe(inspected.files[0].sheet);
+      expect(JSON.stringify([inspected, parsed.rows[0].source])).not.toContain(
+        'Synthetic private name',
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('independent gross evidence', () => {
+  it('reports the available sale price delta beside a malformed detail profit', () => {
+    const bad = [...gift];
+    bad[10] = '100';
+    bad[11] = 'invalid';
+    const result = parseSalesReport(
+      [
+        summary,
+        ['ขายสินค้าทั้งหมด', '1', '1', '70.25', '0', '90', '19.75'],
+        [],
+        detail[0],
+        HEADER,
+        bad,
+      ],
+      context,
+    );
+    expect(result.rows).toEqual([]);
+    expect(result.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'INVALID_SALE_MONEY',
+          message: expect.stringContaining('กำไร'),
+          source: expect.objectContaining({ row: 6 }),
+        }),
+        expect.objectContaining({
+          code: 'SALES_SUMMARY_MISMATCH',
+          message: expect.stringContaining('ราคาขาย -10.00'),
+          source: expect.objectContaining({ row: 2 }),
+        }),
+      ]),
+    );
+    expect(result.gross.detail).toEqual({
+      bills: 1,
+      lines: 1,
+      costTotal: '70.25',
+      listPrice: '0.00',
+      salePrice: '100.00',
+      profit: null,
+    });
+    expect(result.gross.delta).toEqual({
+      bills: 0,
+      lines: 0,
+      costTotal: '0.00',
+      listPrice: '0.00',
+      salePrice: '-10.00',
+      profit: null,
+    });
+  });
+
+  it('keeps a verified physical item count and money when the bill identity is missing', () => {
+    const bad = [...gift];
+    bad[5] = '';
+    const result = parseSalesReport(
+      [summary, ['ขายสินค้าทั้งหมด', '1', '2', ...totals.slice(3)], [], detail[0], HEADER, bad],
+      context,
+    );
+    expect(result.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'MISSING_SOURCE_IDENTITY',
+          source: expect.objectContaining({ row: 6 }),
+        }),
+        expect.objectContaining({
+          code: 'SALES_SUMMARY_MISMATCH',
+          source: expect.objectContaining({ row: 2 }),
+        }),
+      ]),
+    );
+    expect(result.gross.detail).toMatchObject({
+      bills: null,
+      lines: 1,
+      costTotal: '70.25',
+      profit: '-70.25',
+    });
+    expect(result.gross.delta).toMatchObject({
+      bills: null,
+      lines: 1,
+      costTotal: '0.00',
+      profit: '0.00',
+    });
+  });
+
+  it('preserves valid reported fields when a different reported amount is malformed', () => {
+    const result = parseSalesReport(
+      [summary, ['ขายสินค้าทั้งหมด', '1', '1', '70.25', '0', '90', 'invalid'], [], ...detail],
+      context,
+    );
+    expect(result.issues.map((i) => i.code)).toEqual([
+      'INVALID_SALES_SUMMARY',
+      'SALES_SUMMARY_MISMATCH',
+    ]);
+    expect(result.gross.reported).toMatchObject({ salePrice: '90.00', profit: null });
+    expect(result.gross.delta).toMatchObject({ salePrice: '90.00', profit: null });
+  });
+});
+
+it('retains a reviewed historical barcode/category verbatim without treating it as a new stock identity', () => {
+  const row = [...gift]; row[0] = '0001234567890123'; row[1] = 'Synthetic historical phone'; row[2] = '-';
+  const table = [summary, totals, [], ['รายการขาย ( 1 )'], HEADER, row];
+  const proof = { action: 'RETAIN_LEGACY_SALE', fileSha256: file.sha256, sourceRows: [6],
+    expectedBarcode: row[0], expectedName: row[1], expectedCategory: row[2],
+    reason: 'Historical source identity is preserved, not corrected', evidenceRef: 'synthetic-original-bill' };
+  expect(parseSalesReport(table, context).rows).toEqual([]);
+  const parsed = parseSalesReport(table, { ...context, decisions: [proof] } as any);
+  expect(parsed.issues).toEqual([]);
+  expect(parsed.rows[0]).toMatchObject({ barcode: row[0], category: '-', legacyIdentityEvidence: proof });
+  expect(parseSalesReport(table, { ...context, decisions: [{ ...proof, expectedBarcode: 'different' }] } as any).rows).toEqual([]);
 });

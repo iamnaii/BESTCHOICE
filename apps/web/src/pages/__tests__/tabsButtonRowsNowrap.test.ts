@@ -65,7 +65,6 @@ describe('ChartOfAccountsPage scope tabs', () => {
 
 const buttons: Array<[string, string[]]> = [
   ['PricingTemplatesPage.tsx', ['ดาวน์โหลดแบบฟอร์ม', "'นำเข้า Excel'", '+ เพิ่มราคาตั้งต้น']],
-  ['ImportedSalesPage.tsx', ['ก่อนหน้า', 'ถัดไป']],
   ['NotificationsPage/index.tsx', ["'ส่งเตือนก่อนครบกำหนด'", "'ส่งทวงหนี้ค้างชำระ'"]],
   ['other-income/OtherIncomeViewPage.tsx', ['คัดลอก\n', 'แก้ไขและ ลงบัญชี']],
   ['other-income/components/TemplatePickerCombobox.tsx', ['ใช้แม่แบบ']],
@@ -100,10 +99,6 @@ describe('OtherIncomeViewPage sidebar draft edit button', () => {
 describe('button rows wrap whole buttons', () => {
   it('PricingTemplatesPage action row', () => {
     expect(divAfter(read('pages/PricingTemplatesPage.tsx'), 'action={')).toContain('flex-wrap');
-  });
-  it('ImportedSalesPage pager row', () => {
-    const src = read('pages/ImportedSalesPage.tsx');
-    expect(classBefore(src, 'ก่อนหน้า', '<div className=')).toContain('flex-wrap');
   });
   it('NotificationsPage quick actions row', () => {
     expect(divAfter(read('pages/NotificationsPage/index.tsx'), '{/* Quick Actions */}')).toContain('flex-wrap');

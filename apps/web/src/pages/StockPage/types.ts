@@ -1,4 +1,5 @@
 export interface StockProduct {
+  templateTerms?: import('@/pages/ProductDetailPage/utils/resolveQuotes').TemplateTermsJson | null;
   deviceOrigin?: 'THAI' | 'IMPORTED' | null;
   shopWarrantyDays?: number | null;
   effectiveShopWarrantyDays?: number | null;
@@ -66,6 +67,30 @@ export interface BreakdownItem {
 }
 
 export interface StockDashboard {
+  salesAnalytics?: {
+    asOf: string;
+    month: string;
+    startDate: string;
+    nativeIncluded: boolean;
+    importedIncluded: boolean;
+    unattributedCount: number;
+    current: {
+      count: number;
+      nativeCount: number;
+      importedCount: number;
+      giftCount: number;
+      unknownCount: number;
+      revenue: string;
+    };
+    previous: {
+      count: number;
+      nativeCount: number;
+      importedCount: number;
+      giftCount: number;
+      unknownCount: number;
+      revenue: string;
+    };
+  };
   stockAging: AgingBucket[];
   actionRequired: {
     inspection: number;
@@ -92,10 +117,10 @@ export interface StockDashboard {
   slowMovers: { name: string; days: number; costPrice?: number }[];
   /** null เมื่อ server ตัดต้นทุนออก (SALES) */
   marginOverview: {
-    totalCost: number;
+    totalCost: number | null;
     totalSell: number;
     totalMargin: number;
-    avgMarginPct: number;
+    avgMarginPct: number | null;
     avgMarginPerUnit: number;
     itemsWithPrice: number;
   } | null;

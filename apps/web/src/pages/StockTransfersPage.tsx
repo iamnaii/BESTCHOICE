@@ -1,4 +1,7 @@
 import { ChevronRight as InlineChevronRightIcon } from '@/lib/icons';
+import { Button } from '@/components/ui/button';
+import { isStockInventoryScope } from '@installment/shared';
+import { inventoryScopeLabels } from './StockPage/components/InventoryScopeFilter';
 import ScreenTable from '@/components/ui/ScreenTable';
 import { NativeSelect } from '@/components/ui/native-select';
 import { formLabelClass } from '@/components/ui/form-styles';
@@ -62,7 +65,15 @@ export default function StockTransfersPage() {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = (searchParams.get('view') as TabKey) || 'outgoing';
-  const [statusFilter, setStatusFilter] = useState('PENDING');
+  const statusFilter = searchParams.get('status') ?? 'PENDING';
+  const setStatusFilter = (value: string) => setSearchParams(previous => {
+    const next = new URLSearchParams(previous); next.set('status', value);
+    next.delete('inventoryScope'); next.delete('branchId'); return next;
+  });
+  const rawScope = searchParams.get('inventoryScope');
+  const pendingScope = activeTab === 'outgoing' && statusFilter === 'PENDING' && isStockInventoryScope(rawScope) ? rawScope : undefined;
+  const pendingBranch = pendingScope ? searchParams.get('branchId') ?? undefined : undefined;
+  const clearOverviewFilter = () => setSearchParams(previous => { const next = new URLSearchParams(previous); next.delete('inventoryScope'); next.delete('branchId'); return next; });
 
   // --- Branch receiving state ---
   const [selectedBranch, setSelectedBranch] = useState('');
@@ -81,14 +92,14 @@ export default function StockTransfersPage() {
   const [shippingNote, setShippingNote] = useState('');
   const [pendingShipBatch, setPendingShipBatch] = useState<StockTransfer[]>([]);
 
-  const goToTab = (key: TabKey) => setSearchParams({ view: key });
+  const goToTab = (key: TabKey) => setSearchParams(previous => { const next = new URLSearchParams(previous); next.set('view', key); ['inventoryScope', 'branchId', 'status'].forEach(k => next.delete(k)); return next; });
 
   // ============ OUTGOING TAB QUERIES ============
   const { data: transfers = [], isLoading: loadingTransfers, isError: transfersError, error: transfersErrorObj, refetch: transfersRefetch } = useQuery<StockTransfer[]>({
-    queryKey: ['stock-transfers', statusFilter],
+    queryKey: ['stock-transfers', statusFilter, pendingScope, pendingBranch],
     queryFn: async () => {
       if (statusFilter === 'PENDING') {
-        return (await api.get('/products/transfers/pending')).data;
+        return (await api.get('/products/transfers/pending', { params: { ...(pendingScope ? { inventoryScope: pendingScope } : {}), ...(pendingBranch ? { branchId: pendingBranch } : {}) } })).data;
       }
       if (statusFilter === 'IN_TRANSIT') {
         return (await api.get('/products/transfers/in-transit')).data;
@@ -124,7 +135,7 @@ export default function StockTransfersPage() {
   const { data: branches } = useQuery({
     queryKey: ['branches'],
     queryFn: () => api.get('/branches').then((r) => r.data),
-    enabled: activeTab === 'incoming' || activeTab === 'history',
+    enabled: activeTab === 'incoming' || activeTab === 'history' || !!pendingBranch,
   });
 
   const { data: pendingDeliveries, isLoading: loadingPending } = useQuery({
@@ -374,6 +385,7 @@ export default function StockTransfersPage() {
         </nav>
       </div>
 
+      {pendingScope && <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-border p-3 text-sm"><span>จากภาพรวม: {inventoryScopeLabels[pendingScope]} · {pendingBranch ? `ปลายทาง ${branches?.find((b: {id:string;name:string})=>b.id===pendingBranch)?.name ?? pendingBranch}` : 'ทุกสาขาที่มีสิทธิ์'}</span><Button variant="outline" onClick={clearOverviewFilter}>ล้างตัวกรองจากภาพรวม</Button></div>}
       {/* ============ TAB: โอนออก ============ */}
       {activeTab === 'outgoing' && (
         <div>

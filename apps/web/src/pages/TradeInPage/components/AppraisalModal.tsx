@@ -319,7 +319,7 @@ function InspectionForm({
               <PriceRow label="ราคารับซื้อเงินสด" value={money(quote.cashPrice ?? quote.price!)} />
               {item.flow === 'EXCHANGE' && (
                 <PriceRow
-                  label={`ราคาเทิร์นรวมโบนัส ${Number(quote.bonusPct ?? 0)}%`}
+                  label="ราคาเทิร์นรวมโบนัส"
                   value={money(quote.exchangePrice ?? quote.price!)}
                 />
               )}

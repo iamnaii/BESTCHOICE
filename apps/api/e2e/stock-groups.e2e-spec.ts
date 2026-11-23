@@ -487,4 +487,80 @@ describe('Stock accessory groups on isolated PostgreSQL', () => {
     const sorted = await read({ search: legacyName, sortBy: 'cashPrice' }).expect(200);
     expect(sorted.body.data.map((row: { id: string }) => row.id)).toEqual([unit.id, other.id]);
   });
+  it('sorts model-specific down payments before pagination and returns the same terms as detail', async () => {
+    actor = { role: 'OWNER', branchId: null };
+    const marker = `TEMPLATE-SORT-${randomUUID()}`;
+    const config = await db.interestConfig.create({
+      data: {
+        name: marker,
+        productCategories: ['PHONE_NEW'],
+        interestRate: '0.01',
+        minDownPaymentPct: '0.20',
+        minInstallmentMonths: 12,
+        maxInstallmentMonths: 12,
+        createdAt: new Date('1800-01-01'),
+        rates: { create: [{ months: 12, ratePct: '0.20' }] },
+      },
+    });
+    try {
+      const base = {
+        name: marker,
+        brand: marker,
+        category: 'PHONE_NEW' as const,
+        branchId: branchA,
+        costPrice: '100',
+        storage: '128GB',
+      };
+      const custom = await db.product.create({
+        data: { ...base, model: 'Custom down', installmentPrice: '10000', cashPrice: '10000' },
+      });
+      const standard = await db.product.create({
+        data: { ...base, model: 'Default down', installmentPrice: '20000', cashPrice: '20000' },
+      });
+      await db.pricingTemplate.create({
+        data: {
+          brand: marker,
+          model: 'Custom down',
+          category: 'PHONE_NEW',
+          storage: '128GB',
+          cashPrice: '10000',
+          installmentBestchoicePrice: '10000',
+          installmentFinancePrice: '10000',
+          rate1DownPayment: '7000',
+          rate1TermMonths: 12,
+          rate2TermMonths: 6,
+        },
+      });
+      const sorted = await read({
+        search: marker,
+        sortBy: 'downPayment',
+        sortDirection: 'asc',
+        limit: 1,
+      }).expect(200);
+      expect(sorted.body.data[0].id).toBe(standard.id);
+      const second = await read({
+        search: marker,
+        sortBy: 'downPayment',
+        sortDirection: 'asc',
+        limit: 1,
+        page: 2,
+      }).expect(200);
+      expect(second.body.data[0].id).toBe(custom.id);
+      const detail = await request(app.getHttpServer()).get(`/products/${custom.id}`).expect(200);
+      expect(second.body.data[0].templateTerms).toEqual(detail.body.templateTerms);
+      expect(second.body.data[0].templateTerms).toMatchObject({
+        rate1DownPayment: '7000',
+        rate2TermMonths: 6,
+      });
+      const unsorted = await read({ search: marker, groupAccessories: 'false' }).expect(200);
+      expect(
+        unsorted.body.data.find((p: { id: string }) => p.id === custom.id).templateTerms,
+      ).toEqual(detail.body.templateTerms);
+    } finally {
+      await db.interestConfig.update({
+        where: { id: config.id },
+        data: { isActive: false, deletedAt: new Date() },
+      });
+    }
+  });
 });

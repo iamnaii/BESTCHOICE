@@ -318,6 +318,7 @@ export class ReceiptIssuanceService {
         storeCommission: contract.storeCommission,
         interestTotal: contract.interestTotal,
         vatAmount: contract.vatAmount,
+        installmentRoundingPolicy: contract.installmentRoundingPolicy,
         totalMonths: contract.totalMonths,
       });
       if (balance.documentRemainingBalance != null) {

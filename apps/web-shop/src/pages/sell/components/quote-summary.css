@@ -1,0 +1,62 @@
+.sell-summary .summary-intake {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 18px;
+  background: var(--color-promo);
+  color: var(--color-promo-foreground);
+  border: 1px solid var(--color-promo-foreground);
+  border-left-width: 4px;
+  border-radius: 14px;
+}
+.sell-summary .summary-card {
+  border: 1px solid var(--color-sell-price-border);
+  border-radius: 20px;
+  overflow: hidden;
+}
+.sell-summary .summary-device {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 20px;
+  border-bottom: 1px solid var(--color-sell-price-border);
+}
+.sell-summary .summary-status {
+  display: inline-block;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 10px;
+  border-radius: 8px;
+}
+.sell-summary .summary-price {
+  padding: 20px;
+  background: var(--color-sell-price);
+  border-bottom: 1px solid var(--color-sell-price-border);
+}
+.sell-summary .summary-time {
+  padding: 20px;
+}
+.sell-summary .summary-conditions {
+  padding: 20px;
+  border-top: 1px solid var(--color-sell-price-border);
+}
+@media (min-width: 900px) {
+  .sell-summary .summary-columns {
+    display: grid;
+    grid-template-columns: minmax(0, 1.08fr) minmax(0, 1fr);
+  }
+  .sell-summary .summary-price {
+    border-bottom: 0;
+    border-right: 1px solid var(--color-sell-price-border);
+    padding: 26px;
+  }
+  .sell-summary .summary-time {
+    padding: 26px;
+  }
+  .sell-summary .summary-device,
+  .sell-summary .summary-conditions {
+    padding: 22px 26px;
+  }
+}

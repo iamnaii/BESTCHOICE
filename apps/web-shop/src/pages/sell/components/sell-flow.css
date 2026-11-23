@@ -1,0 +1,50 @@
+.sell-flow button:disabled {
+  opacity: 1;
+}
+
+/* A brief selection lock keeps the selected choice visible; form validation
+   and pending submission controls still have a readable disabled appearance. */
+.sell-flow button:disabled:not([data-sell-choice]) {
+  background-color: var(--color-border);
+  color: var(--color-foreground);
+}
+
+.sell-step-content {
+  animation: sell-step-enter 160ms ease-out;
+}
+
+@keyframes sell-step-enter {
+  from {
+    opacity: 0.7;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sell-step-content {
+    animation: none;
+  }
+}
+
+.sell-flow button[data-sell-choice][aria-pressed='true'],
+.sell-flow button[data-sell-choice][aria-checked='true'] {
+  box-shadow: inset 0 0 0 1px var(--color-primary);
+}
+
+/* Full family names stay readable in two columns on phones. */
+.sell-flow section[aria-label='กลุ่ม iPhone'] button {
+  padding-inline: 10px;
+  gap: 6px;
+  font-weight: 600;
+}
+
+@media (max-width: 359px) {
+  .sell-flow [aria-label='เลือกวิธีขาย'] button {
+    padding-inline: 10px;
+    gap: 6px;
+  }
+}

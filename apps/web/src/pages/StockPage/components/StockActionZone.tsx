@@ -5,8 +5,10 @@ import { formatDateShort } from '@/utils/formatters';
 
 export interface StockActionZoneProps {
   dashboard: StockDashboard | undefined;
+  warrantyReady?: boolean;
   warrantyExpiring: { id: string; name: string; brand: string; model: string; warrantyExpireDate: string }[];
-  onNavigateToList: (status?: string) => void;
+  onNavigateToList: (filters: { status?: string; aging?: 'over90' }) => void;
+  onNavigateToTransfers?: () => void;
 }
 
 interface ActionCard {
@@ -50,14 +52,15 @@ const TONE_STYLES = {
   },
 } as const;
 
-export function StockActionZone({ dashboard, warrantyExpiring, onNavigateToList }: StockActionZoneProps) {
+export function StockActionZone({ dashboard, warrantyReady = true, warrantyExpiring, onNavigateToList, onNavigateToTransfers }: StockActionZoneProps) {
   const navigate = useNavigate();
 
   if (!dashboard) return null;
 
   const a = dashboard.actionRequired;
-  const total = a.inspection + (a.photoPending || 0) + a.pendingTransfers + a.repossessed + a.agingOver90;
+  const total = (a.qcPending || 0) + a.inspection + (a.photoPending || 0) + a.pendingTransfers + a.repossessed + a.agingOver90;
 
+  if (total === 0 && !warrantyReady) return <p className="text-sm text-muted-foreground mb-6">ยังตรวจสอบงานด้านประกันไม่ได้</p>;
   if (total === 0 && warrantyExpiring.length === 0) {
     return (
       <div className="rounded-xl border border-border/60 bg-card p-4 mb-6 flex items-center gap-3">
@@ -66,7 +69,7 @@ export function StockActionZone({ dashboard, warrantyExpiring, onNavigateToList 
         </div>
         <div>
           <div className="text-sm font-semibold text-foreground">ไม่มีรายการต้องทำ</div>
-          <div className="text-xs text-muted-foreground">คลังสินค้าทั้งหมดอยู่ในสถานะปกติ</div>
+          <div className="text-xs text-muted-foreground">ไม่พบงานค้างในหมวดและสาขาที่เลือก</div>
         </div>
       </div>
     );
@@ -78,13 +81,15 @@ export function StockActionZone({ dashboard, warrantyExpiring, onNavigateToList 
     cards.push({
       key: 'aging',
       count: a.agingOver90,
-      label: 'ค้างสต็อค 90+ วัน',
+      label: 'ค้างสต๊อกเกิน 90 วัน',
       hint: 'ทุนจม — ต้องเร่งระบาย',
       icon: <Clock className="size-5" strokeWidth={1.5} />,
       tone: 'warning',
-      onClick: () => onNavigateToList('IN_STOCK'),
+      onClick: () => onNavigateToList({ status: 'IN_STOCK', aging: 'over90' }),
     });
   }
+
+  if (a.qcPending > 0) cards.push({ key: 'qc', count: a.qcPending, label: 'รอตรวจรับ / ตรวจสอบราคา', hint: 'แยกจากยอดพร้อมขาย', icon: <ShieldAlert className="size-5" />, tone: 'info', onClick: () => onNavigateToList({ status: 'QC_PENDING' }) });
 
   if (a.repossessed > 0) {
     cards.push({
@@ -94,7 +99,7 @@ export function StockActionZone({ dashboard, warrantyExpiring, onNavigateToList 
       hint: 'ส่งซ่อม → QC → กลับเข้าคลัง',
       icon: <ShieldAlert className="size-5" strokeWidth={1.5} />,
       tone: 'destructive',
-      onClick: () => onNavigateToList('REPOSSESSED'),
+      onClick: () => onNavigateToList({ status: 'REPOSSESSED' }),
     });
   }
 
@@ -106,7 +111,7 @@ export function StockActionZone({ dashboard, warrantyExpiring, onNavigateToList 
       hint: 'สาขาปลายทางต้องตรวจรับ',
       icon: <ArrowRightLeft className="size-5" strokeWidth={1.5} />,
       tone: 'primary',
-      onClick: () => navigate('/stock/transfers'),
+      onClick: onNavigateToTransfers ?? (() => navigate('/stock/transfers')),
     });
   }
 
@@ -118,7 +123,7 @@ export function StockActionZone({ dashboard, warrantyExpiring, onNavigateToList 
       hint: 'ตรวจสภาพก่อนเข้าคลัง',
       icon: <ShieldAlert className="size-5" strokeWidth={1.5} />,
       tone: 'warning',
-      onClick: () => onNavigateToList('INSPECTION'),
+      onClick: () => onNavigateToList({ status: 'INSPECTION' }),
     });
   }
 
@@ -130,7 +135,7 @@ export function StockActionZone({ dashboard, warrantyExpiring, onNavigateToList 
       hint: 'ถ่าย 6 มุม → พร้อมขาย',
       icon: <Camera className="size-5" strokeWidth={1.5} />,
       tone: 'info',
-      onClick: () => onNavigateToList('PHOTO_PENDING'),
+      onClick: () => onNavigateToList({ status: 'PHOTO_PENDING' }),
     });
   }
 
@@ -139,16 +144,16 @@ export function StockActionZone({ dashboard, warrantyExpiring, onNavigateToList 
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-[15px] font-semibold flex items-center gap-2">
           <AlertTriangle className="size-4 text-warning-strong" strokeWidth={1.75} />
-          ต้องทำเลย
+          งานที่ต้องทำ
           <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
-            ({total + warrantyExpiring.length})
+            ({total + warrantyExpiring.length} งาน)
           </span>
         </h2>
       </div>
 
       {/* Action cards grid */}
       {cards.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-3 mb-3">
           {cards.map((card) => {
             const t = TONE_STYLES[card.tone];
             return (

@@ -1,8 +1,12 @@
+import type { StockSalesActor } from './stock-sales-analytics.service';
+import { StockSalesAnalyticsService, stockAnalyticsWindow } from './stock-sales-analytics.service';
+import type { StockInventoryScope } from '@installment/shared';
+import { stockInventoryWhere } from '../stock-inventory-filter';
 import { domainAccessClient } from '../../employee-access/access-execution-context';
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { calculateDaysElapsed } from '../../../utils/date.util';
+import { bkkYearMonth, calculateDaysElapsed } from '../../../utils/date.util';
 
 @Injectable()
 export class StockOverviewService {
@@ -12,6 +16,7 @@ export class StockOverviewService {
   // === Stock Overview ===
 
   async getStock(filters: {
+    inventoryScope?: StockInventoryScope;
     search?: string;
     branchId?: string;
     status?: string;
@@ -20,7 +25,7 @@ export class StockOverviewService {
     page?: number;
     limit?: number;
   }) {
-    const where: Record<string, unknown> = { deletedAt: null };
+    const where: Record<string, unknown> = { deletedAt: null, AND: [stockInventoryWhere(filters.inventoryScope)] };
     if (filters.branchId) where.branchId = filters.branchId;
     if (filters.status) where.status = filters.status;
     if (filters.category) where.category = filters.category;
@@ -43,7 +48,7 @@ export class StockOverviewService {
         include: {
           branch: { select: { id: true, name: true } },
           supplier: { select: { id: true, name: true } },
-          prices: { where: { isDefault: true }, take: 1 },
+          prices: { where: { isDefault: true, deletedAt: null }, take: 1 },
         },
         orderBy: [{ branch: { name: 'asc' } }, { createdAt: 'desc' }],
         skip: (page - 1) * limit,
@@ -59,7 +64,7 @@ export class StockOverviewService {
       orderBy: { name: 'asc' },
     });
 
-    const summaryWhere: Record<string, unknown> = { deletedAt: null };
+    const summaryWhere: Record<string, unknown> = { deletedAt: null, AND: [stockInventoryWhere(filters.inventoryScope)] };
     if (filters.branchId) summaryWhere.branchId = filters.branchId;
     if (filters.category) summaryWhere.category = filters.category;
     if (filters.brand) summaryWhere.brand = filters.brand;
@@ -85,8 +90,8 @@ export class StockOverviewService {
 
   // === Stock Dashboard ===
 
-  async getStockDashboard(branchId?: string) {
-    const branchFilter: Record<string, unknown> = branchId ? { branchId } : {};
+  async getStockDashboard(branchId?: string, inventoryScope: StockInventoryScope = 'all', actor?: StockSalesActor) {
+    const branchFilter = { ...(branchId ? { branchId } : {}), AND: [stockInventoryWhere(inventoryScope)] };
     const baseWhere = { deletedAt: null, ...branchFilter };
     const now = new Date();
 
@@ -95,7 +100,6 @@ export class StockOverviewService {
       allProducts,
       pendingTransfers,
       newProducts,
-      soldProducts,
     ] = await Promise.all([
       // All active products (for aging, breakdowns, condition grade, margin)
       this.prisma.product.findMany({
@@ -104,29 +108,20 @@ export class StockOverviewService {
           id: true, status: true, category: true, brand: true, model: true,
           color: true, storage: true, costPrice: true,
           createdAt: true, stockInDate: true,
-          prices: { where: { isDefault: true }, take: 1, select: { amount: true } },
+          prices: { where: { isDefault: true, deletedAt: null }, take: 1, select: { amount: true } },
         },
       }),
       // Pending transfers count
       this.prisma.stockTransfer.count({
-        where: { status: 'PENDING', ...(branchId ? { toBranchId: branchId } : {}) },
+        where: { status: 'PENDING', deletedAt: null, product: { deletedAt: null, ...stockInventoryWhere(inventoryScope) }, ...(branchId ? { toBranchId: branchId } : {}) },
       }),
       // Products created in last 6 months (stock in — includes soft-deleted to track total received volume)
       this.prisma.product.findMany({
         where: {
-          createdAt: { gte: new Date(now.getFullYear(), now.getMonth() - 5, 1) },
+          createdAt: { gte: stockAnalyticsWindow(now).start },
           ...branchFilter,
         },
         select: { createdAt: true },
-      }),
-      // Sold products last 6 months (stock out)
-      this.prisma.product.findMany({
-        where: {
-          status: { in: ['SOLD_INSTALLMENT', 'SOLD_CASH', 'SOLD_RESELL'] },
-          updatedAt: { gte: new Date(now.getFullYear(), now.getMonth() - 5, 1) },
-          ...branchFilter,
-        },
-        select: { updatedAt: true, brand: true, model: true, costPrice: true },
       }),
     ]);
 
@@ -190,34 +185,15 @@ export class StockOverviewService {
     const byColor = groupBy(inStockProducts, 'color');
     const byStorage = groupBy(inStockProducts, 'storage');
 
-    // --- 5. Stock Movement (last 6 months) ---
-    const stockMovement: { month: string; in: number; out: number }[] = [];
-    for (let i = 5; i >= 0; i--) {
-      const start = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const end = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
-      const monthLabel = start.toLocaleDateString('th-TH', { year: '2-digit', month: 'short' });
-
-      const monthIn = newProducts.filter((p) => {
-        const d = new Date(p.createdAt);
-        return d >= start && d < end;
-      }).length;
-
-      const monthOut = soldProducts.filter((p) => {
-        const d = new Date(p.updatedAt);
-        return d >= start && d < end;
-      }).length;
-
-      stockMovement.push({ month: monthLabel, in: monthIn, out: monthOut });
-    }
-
-    // --- 6. Stock Turnover ---
-    const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const soldThisMonth = soldProducts.filter((p) => new Date(p.updatedAt) >= thisMonthStart).length;
-    const soldLastMonth = soldProducts.filter((p) => {
-      const d = new Date(p.updatedAt);
-      return d >= lastMonthStart && d < thisMonthStart;
-    }).length;
+    // Use actual native/imported sale occurrences for every sales metric.
+    const salesAnalytics = await new StockSalesAnalyticsService(this.basePrisma).read(branchId, inventoryScope, now, actor);
+    const stockMovement = salesAnalytics.monthly.map(month => ({
+      month: month.key,
+      in: newProducts.filter(p => bkkYearMonth(p.createdAt) === month.key).length,
+      out: month.count,
+    }));
+    const soldThisMonth = salesAnalytics.current.count;
+    const soldLastMonth = salesAnalytics.previous.count;
 
     // Average days in stock (from stockInDate or createdAt as fallback)
     const totalDays = inStockProducts.reduce((sum, p) => {
@@ -226,16 +202,7 @@ export class StockOverviewService {
     }, 0);
     const avgDaysInStock = inStockProducts.length > 0 ? Math.round(totalDays / inStockProducts.length) : 0;
 
-    // --- 8. Top Sellers (last 6 months, grouped by brand+model) ---
-    const sellerMap = new Map<string, number>();
-    for (const p of soldProducts) {
-      const key = `${p.brand} ${p.model}`;
-      sellerMap.set(key, (sellerMap.get(key) || 0) + 1);
-    }
-    const topSellers = Array.from(sellerMap.entries())
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 5);
+    const topSellers = salesAnalytics.topSellers;
 
     // --- 9. Slow Movers (IN_STOCK products with longest days) ---
     const slowMovers = inStockProducts
@@ -249,7 +216,7 @@ export class StockOverviewService {
 
     // --- 10. Margin Overview (IN_STOCK products with default selling price) ---
     const marginItems = inStockProducts
-      .filter((p) => p.prices.length > 0)
+      .filter((p) => p.prices.length > 0 && Number(p.prices[0].amount) > 0)
       .map((p) => {
         const cost = Number(p.costPrice);
         const sell = Number(p.prices[0].amount);
@@ -259,7 +226,7 @@ export class StockOverviewService {
     const totalCost = marginItems.reduce((s, m) => s + m.cost, 0);
     const totalSell = marginItems.reduce((s, m) => s + m.sell, 0);
     const totalMargin = marginItems.reduce((s, m) => s + m.margin, 0);
-    const avgMarginPct = totalCost > 0 ? Math.round((totalMargin / totalCost) * 100) : 0;
+    const avgMarginPct = totalCost > 0 ? Math.round((totalMargin / totalCost) * 100) : null;
 
     const marginOverview = {
       totalCost,
@@ -279,6 +246,7 @@ export class StockOverviewService {
       byColor,
       byStorage,
       stockMovement,
+      salesAnalytics,
       stockTurnover: {
         avgDaysInStock,
         soldThisMonth,
@@ -296,13 +264,14 @@ export class StockOverviewService {
   /**
    * Get products with warranty expiring soon
    */
-  async getWarrantyExpiring(daysAhead: number = 30, branchId?: string) {
+  async getWarrantyExpiring(daysAhead: number = 30, branchId?: string, inventoryScope: StockInventoryScope = 'all') {
     const now = new Date();
     const deadline = new Date();
     deadline.setDate(deadline.getDate() + daysAhead);
 
     const where: Record<string, unknown> = {
       deletedAt: null,
+      AND: [stockInventoryWhere(inventoryScope)],
       warrantyExpired: false,
       warrantyExpireDate: { gte: now, lte: deadline },
       status: { in: ['IN_STOCK', 'RESERVED'] },
@@ -313,7 +282,7 @@ export class StockOverviewService {
       where: where as Prisma.ProductWhereInput,
       include: {
         branch: { select: { id: true, name: true } },
-        prices: { where: { isDefault: true }, take: 1 },
+        prices: { where: { isDefault: true, deletedAt: null }, take: 1 },
       },
       orderBy: { warrantyExpireDate: 'asc' },
     });

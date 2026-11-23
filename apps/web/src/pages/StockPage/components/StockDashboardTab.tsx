@@ -25,6 +25,7 @@ import {
 const SLOW_MOVER_MIN_DAYS = 30;
 
 export interface StockDashboardTabProps {
+  unit?: string;
   dashboard: StockDashboard | undefined;
   isManager: boolean;
 }
@@ -66,7 +67,7 @@ const STATUS_BAR_COLOR: Record<string, string> = {
   REPOSSESSED: 'bg-destructive',
 };
 
-export function StockDashboardTab({ dashboard, isManager }: StockDashboardTabProps) {
+export function StockDashboardTab({ dashboard, isManager, unit = 'ชิ้น' }: StockDashboardTabProps) {
   if (!dashboard) {
     return (
       <div className="rounded-xl border border-border/60 p-8 text-center text-muted-foreground">
@@ -99,7 +100,7 @@ export function StockDashboardTab({ dashboard, isManager }: StockDashboardTabPro
                   <span className={`text-2xl font-bold tabular-nums ${bucket.count > 0 ? textColors[i] : ''}`}>
                     {bucket.count}
                   </span>
-                  <span className="text-[11px] text-muted-foreground">ชิ้น</span>
+                  <span className="text-[11px] text-muted-foreground">{unit}</span>
                 </div>
                 {bucket.value != null && (
                   <div className="text-[11px] text-muted-foreground mt-0.5 tabular-nums">
@@ -182,6 +183,7 @@ export function StockDashboardTab({ dashboard, isManager }: StockDashboardTabPro
         {/* Stock Movement chart */}
         <div className="rounded-xl border border-border/60 p-4 bg-card">
           <SectionTitle icon={<BarChart3 />} hint="6 mo">การเคลื่อนไหวสต็อค</SectionTitle>
+          <p className="mb-3 text-xs text-muted-foreground">ขาย / จ่าย: รวมประวัติ Tooltify ตามสิทธิ์ · รับเข้า: รายการที่สร้างใน BESTCHOICE รวมรอบนำเข้าคลัง</p>
           {(() => {
             const firstNonZero = dashboard.stockMovement.findIndex((m) => m.in > 0 || m.out > 0);
             const data = firstNonZero === -1 ? [] : dashboard.stockMovement.slice(firstNonZero);
@@ -323,7 +325,7 @@ export function StockDashboardTab({ dashboard, isManager }: StockDashboardTabPro
                   </span>
                   <div className="flex-1 min-w-0 text-[13px] font-medium truncate">{item.name}</div>
                   <span className="text-[12px] font-bold text-primary tabular-nums">
-                    {item.count} <span className="font-normal text-muted-foreground">ชิ้น</span>
+                    {item.count} <span className="font-normal text-muted-foreground">{unit}</span>
                   </span>
                 </div>
               ))}

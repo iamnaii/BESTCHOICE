@@ -1,68 +1,13 @@
-import { NumberInput } from '@/components/ui/NumberInput';
-import { useId as useUiFieldId, useEffect, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { toast } from 'sonner';
-import api, { getErrorMessage } from '@/lib/api';
-import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
+import { SELL_EXCHANGE_BONUS_POLICY } from '@installment/shared';
 
-/** โบนัสเทิร์น % — ราคาเทิร์นบนเว็บ = เงินสด × (1+โบนัส) มีผล quote ถัดไปทันที */
+/** Current fixed-bonus policy; legacy percentage configuration is retired. */
 export default function SellConfigBox() {
-  const uiFieldId = useUiFieldId();
-  const queryClient = useQueryClient();
-  const [value, setValue] = useState('');
-
-  const { data } = useQuery<{ exchangeBonusPct: number }>({
-    queryKey: ['sell-config'],
-    queryFn: () => api.get('/trade-ins/sell-config').then((r) => r.data),
-  });
-  useEffect(() => {
-    if (data) setValue(String(data.exchangeBonusPct));
-  }, [data]);
-
-  const save = useMutation({
-    mutationFn: (exchangeBonusPct: number) =>
-      api.put('/trade-ins/sell-config', { exchangeBonusPct }),
-    onSuccess: () => {
-      toast.success('บันทึกโบนัสเทิร์นแล้ว');
-      queryClient.invalidateQueries({ queryKey: ['sell-config'] });
-    },
-    onError: (err) => toast.error(getErrorMessage(err)),
-  });
-
-  const dirty = data !== undefined && value !== String(data.exchangeBonusPct);
-
+  const policy = SELL_EXCHANGE_BONUS_POLICY;
   return (
-    <div className="rounded-lg border border-border p-3 flex flex-wrap items-end gap-3">
-      <div>
-        <Label htmlFor={`${uiFieldId}-1`}>โบนัสเทิร์น (%)</Label>
-        <NumberInput id={`${uiFieldId}-1`}
-          className="mt-1 w-28"
-          min={0}
-          max={100}
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-        />
-      </div>
-      <p className="text-xs text-muted-foreground leading-snug flex-1 min-w-48">
-        ราคาเทิร์นบนเว็บ = ราคาเงินสด × (1 + โบนัส) — เครดิตใช้เป็นส่วนลดซื้อเครื่องในร้านเท่านั้น
-      </p>
-      {dirty && (
-        <Button
-          size="sm"
-          onClick={() => {
-            const n = Number(value);
-            if (!Number.isFinite(n) || n < 0 || n > 100) {
-              toast.error('โบนัสต้องอยู่ระหว่าง 0–100');
-              return;
-            }
-            save.mutate(n);
-          }}
-          disabled={save.isPending}
-        >
-          บันทึก
-        </Button>
-      )}
+    <div className="space-y-2 rounded-lg border border-border bg-muted/30 p-4 leading-snug">
+      <p className="font-medium">โบนัสเทิร์นตามราคาประเมินเงินสด</p>
+      <p className="text-sm">ไม่เกิน {policy.threshold.toLocaleString('th-TH')} บาท เพิ่ม {policy.lowerBonus.toLocaleString('th-TH')} บาท · เกิน {policy.threshold.toLocaleString('th-TH')} บาท เพิ่ม {policy.upperBonus.toLocaleString('th-TH')} บาท</p>
+      <p className="text-xs text-muted-foreground">ใช้ราคาหลังหักสภาพ · ราคา 0 บาทไม่มีโบนัส · เครดิตใช้ซื้อเครื่องในร้าน ไม่จ่ายเป็นเงินสด · รายการเดิมคงราคาที่บันทึกไว้</p>
     </div>
   );
 }

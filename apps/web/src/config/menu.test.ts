@@ -430,3 +430,7 @@ describe('เมนู /repossessions — ป้าย "รับเครื่
     }
   });
 });
+
+it.each(['OWNER','ACCOUNTANT','FINANCE_MANAGER'])('opens Tooltify history in SHOP even from FINANCE for %s', role => {
+  expect(resolveZoneForPath(role, '/imported-sales', 'fin')).toBe('shop');
+});

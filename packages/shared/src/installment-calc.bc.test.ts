@@ -38,28 +38,28 @@ describe('calcBcInstallment — canonical worked example (iPhone 14 Pro 128GB, 1
     expect(out.financedAmount.toFixed(2)).toBe('16900.00');
   });
 
-  it('interestAmount = 8,450.00', () => {
-    expect(out.interestAmount.toFixed(2)).toBe('8450.00');
+  it('interestAmount = 8,426.82', () => {
+    expect(out.interestAmount.toFixed(2)).toBe('8426.82');
   });
 
   it('commissionAmount = 1,690.00', () => {
     expect(out.commissionAmount.toFixed(2)).toBe('1690.00');
   });
 
-  it('subtotal = 27,040.00', () => {
-    expect(out.subtotal.toFixed(2)).toBe('27040.00');
+  it('subtotal = 27,016.82', () => {
+    expect(out.subtotal.toFixed(2)).toBe('27016.82');
   });
 
-  it('vatAmount = 1,892.80', () => {
-    expect(out.vatAmount.toFixed(2)).toBe('1892.80');
+  it('vatAmount = 1,891.18', () => {
+    expect(out.vatAmount.toFixed(2)).toBe('1891.18');
   });
 
-  it('totalWithVat = 28,932.80', () => {
-    expect(out.totalWithVat.toFixed(2)).toBe('28932.80');
+  it('totalWithVat = 28,908.00', () => {
+    expect(out.totalWithVat.toFixed(2)).toBe('28908.00');
   });
 
-  it('monthlyPayment = 2,411.06', () => {
-    expect(out.monthlyPayment.toFixed(2)).toBe('2411.06');
+  it('monthlyPayment = 2,409.00', () => {
+    expect(out.monthlyPayment.toFixed(2)).toBe('2409.00');
   });
 
   it('financeToShop = 18,590.00', () => {
@@ -153,7 +153,7 @@ describe('calcBcInstallment — edge cases', () => {
       config: DEFAULT_CONFIG,
     });
     expect(out.downAmount.toFixed(2)).toBe('2985.00');
-    expect(out.monthlyPayment.toFixed(2)).toBe('2413.20');
+    expect(out.monthlyPayment.toFixed(2)).toBe('2412.00');
   });
 
   it('ดาวน์ขั้นต่ำที่ปัดแล้วยังผ่านการตรวจ % ขั้นต่ำ', () => {
@@ -165,7 +165,7 @@ describe('calcBcInstallment — edge cases', () => {
     expect(out.isValid).toBe(true);
     expect(out.downAmount.toFixed(2)).toBe('3900.00');
     expect(out.financedAmount.toFixed(2)).toBe('22000.00');
-    expect(out.monthlyPayment.toFixed(2)).toBe('3138.66');
+    expect(out.monthlyPayment.toFixed(2)).toBe('3137.00');
   });
 
   it('ราคาต่ำมาก: ดาวน์ไม่ถูกปัดจนเท่าหรือเกินราคา', () => {

@@ -9,6 +9,7 @@ export interface ContractQuotePayment {
   vatAmount: string;
 }
 export interface ContractQuote {
+  installmentRoundingPolicy?: 'SHEET_WHOLE_BAHT' | null;
   fingerprint: string;
   sellingPrice: string;
   downPayment: string;

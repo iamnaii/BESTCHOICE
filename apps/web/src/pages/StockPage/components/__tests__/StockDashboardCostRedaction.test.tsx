@@ -49,3 +49,10 @@ describe('ภาพรวมคลัง — SALES ที่ server ตัดต
     expect(screen.queryByText(/฿/)).toBeNull();
   });
 });
+
+it('renders partially projected margin without exposing or formatting null cost',()=>{
+ const partial={...redacted,marginOverview:{totalCost:null,totalSell:30000,totalMargin:5000,avgMarginPct:20,avgMarginPerUnit:5000,itemsWithPrice:1}};
+ render(<StockHeroKpi totalInStock={3} totalValue={null} dashboard={partial} isManager />);
+ expect(screen.getByText(/ราคาขาย 30,000/)).toBeInTheDocument();
+ expect(screen.queryByText(/ทุน /)).toBeNull();
+});

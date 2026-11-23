@@ -1,4 +1,5 @@
 import { ArrowUpRight, ChevronRight, Pencil } from '@/lib/icons';
+import type { StockInventoryScope } from '@installment/shared';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import type { Column } from '@/components/ui/DataTable';
@@ -8,15 +9,15 @@ import type { StockView } from '../hooks/useStockProducts';
 import type { useStockInstallments } from '../hooks/useStockInstallments';
 import {
   StockAccessoryType,
+  StockAccessoryMargin,
   StockBatteryHealth,
-  StockDownPayment,
+  StockImei,
+  StockInstallmentPlan,
   StockManufacturerWarranty,
-  StockMonthlyPayment,
   StockPriceAmount,
   StockProductBranch,
   StockProductCategory,
   StockProductIdentity,
-  StockProductSpecifications,
   StockProductStatus,
   StockQuantity,
   StockReceivedDate,
@@ -24,37 +25,15 @@ import {
   getStockProductCode,
 } from './StockProductCells';
 
-/**
- * คอลัมน์ของหน้ารายการสินค้า — ตารางคอม (DataTable) กับการ์ดมือถือใช้ชุดเดียวกัน
- *
- * เจ้าของ 2026-09-11: "จัดตารางให้พอดีหน้าคอม ขี้เกียจเลื่อนไปเลื่อนมา" แล้วย้ำว่า
- * "ต้องการให้ข้อมูลครบเหมือนเดิม แต่ให้พอดีหน้า" ⇒ **คอลัมน์ทุกคอลัมน์คงไว้ครบ ไม่ยุบ ไม่ซ่อน**
- * ที่ทำคือบีบความกว้างต่อคอลัมน์ + ตาราง density `dense` (padding 16px แทน 24px) ให้ผลรวมของ
- * ความกว้างขั้นต่ำคำนวณจากคอลัมน์ที่แสดงจริง รวมพื้นที่ของปุ่มจัดการ
- * หัวคอลัมน์และข้อความยาวยอมให้ขึ้นบรรทัดใหม่ในคอลัมน์แคบแทนการเลื่อนแนวนอน
- *
- * `desktopHidden` / `mobileHidden` เผื่อไว้สำหรับคอลัมน์ที่อยากโชว์แค่ฝั่งเดียว (ตอนนี้ไม่มีคอลัมน์ใช้)
- */
 export type StockColumn = Column<StockProduct> & {
   desktopHidden?: boolean;
   mobileHidden?: boolean;
 };
 
-/** คอลัมน์ชื่อไม่กำหนดความกว้าง (ยืดเต็มที่เหลือ) แต่ต้องไม่แคบกว่านี้ — IMEI 15 หลัก + ปุ่มคัดลอก */
-export const STOCK_NAME_COLUMN_MIN_WIDTH = 140;
-/** ความกว้างขั้นต่ำของตารางคอม = ผลรวมคอลัมน์กว้างคงที่ + คอลัมน์ชื่อ */
-export function stockTableMinWidth(columns: StockColumn[]): number {
-  return columns
-    .filter((column) => !column.desktopHidden)
-    .reduce(
-      (sum, column) => sum + (column.width ? parseInt(column.width, 10) : STOCK_NAME_COLUMN_MIN_WIDTH),
-      0,
-    );
-}
-
 export interface StockColumnsParams {
   isManager: boolean;
   view: StockView;
+  inventoryScope?: StockInventoryScope;
   filterCategory: string;
   listProducts: StockProduct[];
   selectableProducts: StockProduct[];
@@ -65,11 +44,14 @@ export interface StockColumnsParams {
   openPriceEdit: (product: StockProduct) => void;
   setAccessoryGroupId: (id: string) => void;
   installments: ReturnType<typeof useStockInstallments>['installments'];
+  gfinInstallments?: ReturnType<typeof useStockInstallments>['gfinInstallments'];
 }
 
+/** Widths are relative weights, so the table fits the actual workspace, not a fixed viewport. */
 export function buildStockColumns({
   isManager,
   view,
+  inventoryScope = 'all',
   filterCategory,
   listProducts,
   selectableProducts,
@@ -80,346 +62,353 @@ export function buildStockColumns({
   openPriceEdit,
   setAccessoryGroupId,
   installments,
+  gfinInstallments,
 }: StockColumnsParams): StockColumn[] {
-  const isUsedPhoneView = filterCategory === 'PHONE_USED';
-  const isTabletView = filterCategory === 'TABLET';
-  const isAccessoryView = filterCategory === 'ACCESSORY';
-  const isDeviceView = filterCategory === 'PHONE_NEW' || isUsedPhoneView || isTabletView;
-  const isAllCategories = filterCategory === '';
-
-  return [
-    ...(isManager
-      ? [
-          {
-            key: 'select',
-            label: (
-              <Checkbox
-                aria-label="เลือกสินค้าหน้านี้"
-                disabled={selectableProducts.length === 0}
-                checked={
-                  selectableProducts.length > 0 &&
-                  selectableProducts.every((product) => selectedIds.has(product.id))
-                    ? true
-                    : selectedIds.size > 0
-                      ? 'indeterminate'
-                      : false
-                }
-                onCheckedChange={() => toggleSelectAll(listProducts)}
-                className="cursor-pointer"
-              />
-            ) as unknown as string,
-            hideable: false,
-            sortable: false,
-            width: '36px',
-            render: (product: StockProduct) =>
-              product.stockGroup ? null : (
-                <Checkbox
-                  aria-label={`เลือก ${product.model || product.name} ${product.imeiSerial || product.id}`}
-                  checked={selectedIds.has(product.id)}
-                  onCheckedChange={() => toggleSelect(product.id)}
-                  className="cursor-pointer"
-                />
-              ),
-          } satisfies StockColumn,
-        ]
-      : []),
-    ...(!isDeviceView
-      ? [
-          {
-            key: isAccessoryView ? 'productCode' : 'category',
-            label: isAccessoryView ? 'รหัสสินค้า' : 'ประเภท',
-            sortable: true,
-            hideable: false,
-            width: isAccessoryView ? '96px' : '88px',
-            render: (product: StockProduct) =>
-              isAccessoryView ? (
-                <span className="font-mono text-xs break-all">{getStockProductCode(product) || '—'}</span>
-              ) : (
-                <StockProductCategory product={product} />
-              ),
-          } satisfies StockColumn,
-        ]
-      : []),
+  const accessory = inventoryScope === 'accessories' || filterCategory === 'ACCESSORY';
+  const mixed = inventoryScope === 'all' && !filterCategory;
+  const columns: StockColumn[] = [];
+  const add = (column: StockColumn, weight: number) =>
+    columns.push({ ...column, width: `${weight}%` });
+  if (isManager)
+    add(
+      {
+        key: 'select',
+        className: 'stock-select-cell',
+        headerClassName: 'stock-select-cell',
+        label: (
+          <Checkbox
+            aria-label="เลือกสินค้าหน้านี้"
+            disabled={!selectableProducts.length}
+            checked={
+              selectableProducts.length > 0 &&
+              selectableProducts.every((p) => selectedIds.has(p.id))
+                ? true
+                : selectableProducts.some((p) => selectedIds.has(p.id))
+                  ? 'indeterminate'
+                  : false
+            }
+            onCheckedChange={() => toggleSelectAll(listProducts)}
+          />
+        ) as unknown as string,
+        hideable: false,
+        render: (p) =>
+          p.stockGroup ? null : (
+            <Checkbox
+              aria-label={`เลือก ${p.model || p.name} ${p.imeiSerial || p.id}`}
+              checked={selectedIds.has(p.id)}
+              onCheckedChange={() => toggleSelect(p.id)}
+            />
+          ),
+      },
+      3,
+    );
+  add(
     {
       key: 'name',
-      label: isDeviceView ? 'รุ่น' : 'ชื่อสินค้า/รุ่น',
+      className: 'stock-name-cell',
+      headerClassName: 'stock-name-cell',
+      label: accessory ? 'สินค้า / รุ่น' : 'รุ่นสินค้า',
       sortable: true,
       hideable: false,
-      render: (product) => (
-        <StockProductIdentity
-          product={product}
-          onOpen={() =>
-            product.stockGroup
-              ? setAccessoryGroupId(product.stockGroup!.key)
-              : navigateToProduct(product.id)
-          }
-          showProductCode={!isAccessoryView}
-        />
+      render: (p) => (
+        <div className="space-y-1.5">
+          <StockProductIdentity
+            product={p}
+            showImei={false}
+            showProductCode={mixed}
+            onOpen={() =>
+              p.stockGroup ? setAccessoryGroupId(p.stockGroup.key) : navigateToProduct(p.id)
+            }
+          />
+          {mixed && p.category === 'ACCESSORY' && <StockProductCategory product={p} />}
+        </div>
       ),
     },
-    ...(!isDeviceView && !isAccessoryView
-      ? [
-          {
-            key: 'specifications',
-            label: 'สเปกย่อ',
-            sortable: true,
-            hideable: false,
-            width: '100px',
-            render: (product: StockProduct) => <StockProductSpecifications product={product} />,
-          } satisfies StockColumn,
-        ]
-      : []),
-    ...(isAccessoryView
-      ? [
-          {
-            key: 'accessoryType',
-            label: 'ประเภท',
-            sortable: true,
-            hideable: false,
-            width: '84px',
-            render: (product: StockProduct) => <StockAccessoryType product={product} />,
-          } satisfies StockColumn,
-        ]
-      : []),
-    ...(isDeviceView || isAccessoryView
-      ? [
-          ...(!isAccessoryView
-            ? [
-                {
-                  key: 'storage',
-                  label: 'ความจุ',
-                  sortable: true,
-                  hideable: false,
-                  width: '60px',
-                  render: (product: StockProduct) => product.storage || '—',
-                } satisfies StockColumn,
-              ]
-            : []),
-          {
-            key: 'color',
-            label: 'สี',
-            sortable: true,
-            hideable: false,
-            width: isAccessoryView ? '64px' : '60px',
-            render: (product: StockProduct) => product.color || '—',
-          } satisfies StockColumn,
-        ]
-      : []),
-    ...(isTabletView
-      ? [
-          {
-            key: 'connectivity',
-            label: 'การเชื่อมต่อ',
-            sortable: true,
-            hideable: false,
-            width: '100px',
-            render: (product: StockProduct) => <StockTabletConnectivity product={product} />,
-          } satisfies StockColumn,
-        ]
-      : []),
-    ...(isUsedPhoneView
-      ? [
-          {
-            key: 'batteryHealth',
-            label: '%แบตเตอรี่',
-            sortable: true,
-            hideable: false,
-            width: '68px',
-            render: (product: StockProduct) => <StockBatteryHealth product={product} />,
-          } satisfies StockColumn,
-          {
-            key: 'hasBox',
-            label: 'มีกล่อง',
-            sortable: true,
-            hideable: false,
-            width: '56px',
-            render: (product: StockProduct) =>
-              product.hasBox == null ? 'ยังไม่ระบุ' : product.hasBox ? 'มี' : 'ไม่มี',
-          } satisfies StockColumn,
-          {
-            key: 'warrantyExpireDate',
-            label: 'ประกันศูนย์',
-            sortable: true,
-            hideable: false,
-            width: '92px',
-            render: (product: StockProduct) => <StockManufacturerWarranty product={product} />,
-          } satisfies StockColumn,
-        ]
-      : []),
-    ...(isManager && !isDeviceView
-      ? [
-          {
-            key: 'costPrice',
-            label: 'ราคาทุน',
-            sortable: true,
-            hideable: true,
-            align: 'right' as const,
-            width: '84px',
-            render: (product: StockProduct) => (
-              <StockPriceAmount
-                value={
-                  product.costPrice != null && product.costPrice !== ''
-                    ? Number(product.costPrice)
-                    : null
-                }
-                maxValue={
-                  product.stockGroup?.costPriceMax != null
-                    ? Number(product.stockGroup.costPriceMax)
-                    : null
-                }
-                muted
-              />
-            ),
-          } satisfies StockColumn,
-        ]
-      : []),
+    22,
+  );
+  if (accessory) {
+    add(
+      {
+        key: 'productCode',
+        label: 'SKU / รหัสสินค้า',
+        sortable: true,
+        hideable: false,
+        render: (p) => (
+          <span className="font-mono text-xs break-all">
+            {getStockProductCode(p) || 'ยังไม่ระบุ'}
+          </span>
+        ),
+      },
+      12,
+    );
+    add(
+      {
+        key: 'accessoryType',
+        label: 'ประเภท',
+        sortable: true,
+        hideable: true,
+        render: (p) => <StockAccessoryType product={p} />,
+      },
+      11,
+    );
+  } else {
+    add(
+      {
+        key: 'storage',
+        label: 'ความจุ',
+        sortable: true,
+        hideable: false,
+        render: (p) => (
+          <div className="space-y-1">
+            <span className="tabular-nums">{p.storage || '—'}</span>
+            {p.category === 'TABLET' && (
+              <div className="text-xs text-muted-foreground">
+                <StockTabletConnectivity product={p} />
+              </div>
+            )}
+          </div>
+        ),
+      },
+      6,
+    );
+  }
+  add(
+    { key: 'color', label: 'สี', sortable: true, hideable: false, render: (p) => p.color || '—' },
+    8,
+  );
+  if (!accessory) {
+    add(
+      {
+        key: 'imeiSerial',
+        label: 'IMEI / Serial',
+        sortable: false,
+        hideable: false,
+        render: (p) => <StockImei product={p} />,
+        className: 'stock-imei-cell',
+      },
+      18,
+    );
+    add(
+      {
+        key: 'batteryHealth',
+        label: 'แบต %',
+        sortable: true,
+        hideable: true,
+        render: (p) => (p.category === 'ACCESSORY' ? '—' : <StockBatteryHealth product={p} />),
+      },
+      5,
+    );
+    add(
+      {
+        key: 'warrantyExpireDate',
+        label: 'ประกันศูนย์',
+        sortable: true,
+        hideable: true,
+        render: (p) =>
+          p.category === 'ACCESSORY' ? '—' : <StockManufacturerWarranty product={p} />,
+      },
+      8,
+    );
+    add(
+      {
+        key: 'hasBox',
+        label: 'กล่อง',
+        sortable: true,
+        hideable: true,
+        render: (p) =>
+          p.category === 'ACCESSORY' ? '—' : p.hasBox == null ? '—' : p.hasBox ? 'มี' : 'ไม่มี',
+      },
+      4,
+    );
+  }
+  if (isManager)
+    add(
+      {
+        key: 'costPrice',
+        label: 'ราคาทุน',
+        sortable: true,
+        hideable: true,
+        defaultHidden: !accessory,
+        align: 'right',
+        render: (p) => (
+          <StockPriceAmount
+            value={p.costPrice != null && p.costPrice !== '' ? Number(p.costPrice) : null}
+            maxValue={p.stockGroup?.costPriceMax != null ? Number(p.stockGroup.costPriceMax) : null}
+            muted
+          />
+        ),
+      },
+      10,
+    );
+  add(
     {
       key: 'cashPrice',
-      label: isAccessoryView ? 'ราคาขาย' : 'ราคาเต็มจำนวน',
+      label: accessory ? 'ราคาขาย' : 'ราคาเงินสด',
       sortable: true,
       hideable: false,
       align: 'right',
-      width: '120px',
-      render: (product) => (
+      className: 'stock-cash-cell',
+      headerClassName: 'bg-muted/50',
+      render: (p) => (
         <div className="space-y-1">
           <StockPriceAmount
             value={
-              product.stockGroup
-                ? normalizePositive(product.cashPrice)
-                : normalizePositive(getPositiveDisplayPrices(product).cash)
+              p.stockGroup
+                ? normalizePositive(p.cashPrice)
+                : normalizePositive(getPositiveDisplayPrices(p).cash)
             }
-            maxValue={normalizePositive(product.stockGroup?.cashPriceMax)}
+            maxValue={normalizePositive(p.stockGroup?.cashPriceMax)}
           />
-          {!!product.stockGroup?.cashPriceMissingCount && (
-            <div className="text-xs text-muted-foreground leading-snug">
-              ยังไม่ตั้ง {product.stockGroup.cashPriceMissingCount} ชิ้น
+          {!!p.stockGroup?.cashPriceMissingCount && (
+            <div className="text-xs text-muted-foreground">
+              ยังไม่ตั้ง {p.stockGroup.cashPriceMissingCount} ชิ้น
             </div>
           )}
         </div>
       ),
     },
-    ...(!isAccessoryView
-      ? [
-          {
-            key: 'downPayment',
-            label: 'ดาวน์',
-            sortable: true,
-            hideable: false,
-            align: 'right' as const,
-            width: '72px',
-            render: (product: StockProduct) => (
-              <StockDownPayment plan={installments.get(product.id)} />
-            ),
-          } satisfies StockColumn,
-          {
-            key: 'monthlyPayment',
-            label: 'ยอดผ่อนต่อเดือน',
-            sortable: true,
-            hideable: false,
-            align: 'right' as const,
-            width: '128px',
-            render: (product: StockProduct) => (
-              <StockMonthlyPayment plan={installments.get(product.id)} />
-            ),
-          } satisfies StockColumn,
-        ]
-      : []),
-    // เจ้าของขอ 2026-09-11 ให้แท็บ "ทั้งหมด" มีวันที่รับเข้าด้วย — แถวกลุ่มอุปกรณ์เว้นว่าง
-    // (วันที่ของกลุ่มไม่มีความหมายเดียว ส่วนแท็บอุปกรณ์ล้วนยังไม่แสดงคอลัมน์นี้เหมือนเดิม)
-    ...(isDeviceView || isAllCategories
-      ? [
-          {
-            key: 'stockInDate',
-            label: 'วันที่รับเข้า',
-            sortable: true,
-            hideable: false,
-            width: '96px',
-            render: (product: StockProduct) =>
-              product.stockGroup ? (
-                <span className="text-muted-foreground">—</span>
-              ) : (
-                <StockReceivedDate product={product} />
-              ),
-          } satisfies StockColumn,
-        ]
-      : []),
-    ...(!isDeviceView
-      ? [
-          {
-            key: 'quantity',
-            label: 'คงเหลือ',
-            sortable: true,
-            hideable: false,
-            align: 'right' as const,
-            width: '80px',
-            render: (product: StockProduct) => <StockQuantity product={product} />,
-          } satisfies StockColumn,
-        ]
-      : []),
-    // มุมมอง "พร้อมขาย" ทุกแถวเป็นสถานะเดียวกัน — ซ่อนคอลัมน์ให้ตารางแคบลง (mockup 54e6c624)
-    ...(view === 'all'
-      ? [
-          {
-            key: 'status',
-            label: 'สถานะ',
-            sortable: true,
-            hideable: false,
-            width: '84px',
-            render: (product: StockProduct) => <StockProductStatus product={product} />,
-          } satisfies StockColumn,
-        ]
-      : []),
+    accessory ? 11 : 9,
+  );
+  if (accessory && isManager)
+    add(
+      {
+        key: 'margin',
+        label: 'กำไร / ชิ้น',
+        hideable: true,
+        align: 'right',
+        render: (p) => <StockAccessoryMargin product={p} />,
+      },
+      11,
+    );
+  if (!accessory) {
+    add(
+      {
+        key: 'downPayment',
+        label: 'BESTCHOICE',
+        sortable: true,
+        hideable: false,
+        align: 'right',
+        className: 'stock-bc-cell',
+        headerClassName: 'bg-primary/10 text-primary',
+        render: (p) =>
+          p.category === 'ACCESSORY' ? '—' : <StockInstallmentPlan plan={installments.get(p.id)} />,
+      },
+      14,
+    );
+    add(
+      {
+        key: 'gfin',
+        label: 'GFIN',
+        hideable: false,
+        align: 'right',
+        className: 'stock-gfin-cell',
+        headerClassName: 'bg-info/10 text-foreground',
+        render: (p) =>
+          p.category === 'ACCESSORY' ? (
+            '—'
+          ) : (
+            <StockInstallmentPlan plan={gfinInstallments?.get(p.id)} />
+          ),
+      },
+      14,
+    );
+    add(
+      {
+        key: 'stockInDate',
+        label: 'วันที่รับเข้า',
+        sortable: true,
+        hideable: true,
+        defaultHidden: true,
+        render: (p) => (p.stockGroup ? '—' : <StockReceivedDate product={p} />),
+      },
+      10,
+    );
+  }
+  if (accessory || mixed)
+    add(
+      {
+        key: 'quantity',
+        label: 'พร้อมขาย',
+        sortable: true,
+        hideable: false,
+        align: 'right',
+        render: (p) => <StockQuantity product={p} />,
+      },
+      accessory ? 9 : 7,
+    );
+  if (view === 'all')
+    add(
+      {
+        key: 'status',
+        label: 'สถานะ',
+        sortable: true,
+        hideable: true,
+        render: (p) => <StockProductStatus product={p} />,
+      },
+      9,
+    );
+  add(
     {
       key: 'branch',
       label: 'สาขา',
       sortable: true,
-      hideable: false,
-      width: '80px',
-      render: (product) => <StockProductBranch product={product} />,
+      hideable: true,
+      defaultHidden: !accessory,
+      render: (p) => <StockProductBranch product={p} />,
     },
+    9,
+  );
+  add(
     {
       key: 'actions',
       label: '',
-      stickyRight: true,
-      sortable: false,
+      className: 'stock-actions-cell',
+      headerClassName: 'stock-actions-cell',
       hideable: false,
-      width: '112px',
-      render: (product) =>
-        product.stockGroup ? (
+      render: (p) =>
+        p.stockGroup ? (
           <Button
             variant="ghost"
-            className="h-11 w-full justify-between gap-1 rounded-md px-1 text-xs font-medium text-primary hover:bg-primary/10 lg:h-9"
-            onClick={() => setAccessoryGroupId(product.stockGroup!.key)}
+            className="min-h-11 h-auto w-full flex-wrap px-1 text-xs text-primary"
+            onClick={() => setAccessoryGroupId(p.stockGroup!.key)}
           >
-            ดู {product.stockGroup.unitCount} ชิ้น
-            <ChevronRight aria-hidden="true" className="size-4" />
+            ดู {p.stockGroup.unitCount} ชิ้น
+            <ChevronRight aria-hidden className="size-4" />
           </Button>
         ) : (
-          <div className="flex flex-wrap items-center justify-end gap-2">
+          <div className="flex items-center justify-end gap-1 lg:flex-col lg:justify-center">
             {isManager && (
               <Button
                 variant="ghost"
                 mode="icon"
-                className="size-11 lg:size-9"
+                className="size-11 lg:size-8"
                 aria-label="จัดการราคา"
                 title="จัดการราคา"
-                onClick={() => openPriceEdit(product)}
+                onClick={() => openPriceEdit(p)}
               >
-                <Pencil aria-hidden="true" className="size-4" />
+                <Pencil aria-hidden className="size-4" />
               </Button>
             )}
             <Button
               variant="ghost"
-              className="h-11 px-3 lg:size-9 lg:px-0"
+              mode="icon"
+              className="size-11 lg:size-8"
               aria-label="ดูรายละเอียด"
               title="ดูรายละเอียดสินค้า"
-              onClick={() => navigateToProduct(product.id)}
+              onClick={() => navigateToProduct(p.id)}
             >
-              <span className="lg:hidden">รายละเอียด</span>
-              <ArrowUpRight aria-hidden="true" className="size-4" />
+              <ArrowUpRight aria-hidden className="size-4" />
             </Button>
           </div>
         ),
     },
-  ];
+    4,
+  );
+  // Percentages include optional columns: CSS table layout redistributes unused space when hidden.
+  const total = columns.reduce((sum, col) => sum + parseFloat(col.width!), 0);
+  return columns.map((col) => ({
+    ...col,
+    width: `${(parseFloat(col.width!) / total) * 100}%`,
+    headerWrap: true,
+  }));
 }

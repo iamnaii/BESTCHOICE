@@ -1,3 +1,4 @@
+import { useStockInventoryScope } from './useStockInventoryScope';
 import { STOCK_SORT_KEYS } from '@installment/shared';
 import type { TableSort } from '@/components/ui/DataTable';
 import { useState, useEffect, useCallback } from 'react';
@@ -14,7 +15,8 @@ import type { StockProduct } from '../types';
 
 /**
  * มุมมองของหน้ารายการสินค้า (คำขอเจ้าของ 2026-09-11 — แบ่ง "สินค้าทั้งหมด" กับ "สินค้าในสต๊อกพร้อมขาย"):
- * `ready` = ค่าเริ่มต้น เห็นเฉพาะ IN_STOCK (ตัวกรองสถานะถูกซ่อน) · `all` = ทุกสถานะ + ตัวกรองสถานะเดิม
+ * `ready` = ค่าเริ่มต้น เห็นเฉพาะ IN_STOCK · `all` = ทุกสถานะหรือสถานะอื่นที่เลือก
+ * UI ใช้ select สถานะเดียว; คง view ใน URL เพื่อรองรับลิงก์เดิม
  * เก็บใน URL `?view=all` ให้แชร์ลิงก์/กดกลับแล้วได้มุมมองเดิม
  */
 export type StockView = 'ready' | 'all';
@@ -30,6 +32,16 @@ export function useStockProducts() {
   const [searchParams, updateParams] = useLatestSearchParams();
   const isManager = user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER';
 
+  const { inventoryScope, setInventoryScope } = useStockInventoryScope('all', [
+    searchParams,
+    updateParams,
+  ]);
+  const aging = searchParams.get('aging') === 'over90' ? 'over90' : undefined;
+  const clearAging = () =>
+    updateParams((next) => {
+      next.delete('aging');
+      next.delete('page');
+    });
   const filterBranch = searchParams.get('branchId') ?? '';
   const view: StockView = searchParams.get('view') === 'all' ? 'all' : 'ready';
   // ตัวกรองสถานะมีผลเฉพาะมุมมอง "ทั้งหมด" — ในมุมมองพร้อมขาย สถานะถูกล็อกเป็น IN_STOCK
@@ -80,7 +92,10 @@ export function useStockProducts() {
     },
     [updateParams],
   );
-  const filterDeviceOrigin = searchParams.get('deviceOrigin') ?? '';
+  const filterDeviceOrigin =
+    inventoryScope === 'accessories' || filterCategory === 'ACCESSORY'
+      ? ''
+      : (searchParams.get('deviceOrigin') ?? '');
   const setFilterDeviceOrigin = (value: string) => {
     updateParams((next) => {
       if (value) next.set('deviceOrigin', value);
@@ -104,7 +119,9 @@ export function useStockProducts() {
   const setFilterStatus = useCallback(
     (v: string) => {
       updateParams((next) => {
-        if (v) next.set('status', v);
+        // One visible status control; keep existing ready/all URLs compatible.
+        next.set('view', v === 'IN_STOCK' ? 'ready' : 'all');
+        if (v && v !== 'IN_STOCK') next.set('status', v);
         else next.delete('status');
         next.delete('page');
       });
@@ -118,6 +135,7 @@ export function useStockProducts() {
         next.delete('accessoryGroupId');
         next.delete('sortBy');
         next.delete('sortDirection');
+        if (v === 'ACCESSORY') next.delete('deviceOrigin');
         if (v) next.set('category', v);
         else next.delete('category');
         next.delete('page');
@@ -132,7 +150,9 @@ export function useStockProducts() {
   const clearFilters = useCallback(() => {
     setSearch('');
     updateParams((next) => {
+      next.set('view', 'all');
       [
+        'aging',
         'q',
         'status',
         'category',
@@ -175,6 +195,8 @@ export function useStockProducts() {
     setSelectedIds(new Set());
   }, [
     view,
+    inventoryScope,
+    aging,
     filterBranch,
     filterStatus,
     filterCategory,
@@ -219,12 +241,16 @@ export function useStockProducts() {
     total: number;
     page: number;
     totalPages: number;
+    totalUnits?: number;
+    unitCounts?: StockViewCounts;
     /** ตัวเลขบนสวิตช์ พร้อมขาย | ทั้งหมด — API นับจากตัวกรองเดียวกันโดยไม่รวมสถานะ */
     viewCounts?: StockViewCounts;
   }>({
     queryKey: [
       'stock-list',
       view,
+      inventoryScope,
+      aging,
       sort?.key,
       sort?.direction,
       debouncedSearch,
@@ -236,7 +262,8 @@ export function useStockProducts() {
       accessoryGroupId,
     ],
     queryFn: async () => {
-      const params: Record<string, string> = {};
+      const params: Record<string, string> = { inventoryScope };
+      if (aging) params.aging = aging;
       if (debouncedSearch) params.search = debouncedSearch;
       if (view === 'ready') params.status = 'IN_STOCK';
       else if (filterStatus) params.status = filterStatus;
@@ -439,7 +466,8 @@ export function useStockProducts() {
     setFilterBranch,
     filterStatus,
     setFilterStatus,
-    filterDeviceOrigin, setFilterDeviceOrigin,
+    filterDeviceOrigin,
+    setFilterDeviceOrigin,
     filterCategory,
     setFilterCategory,
     accessoryGroupId,
@@ -455,7 +483,11 @@ export function useStockProducts() {
     listResult: listQuery.data,
     view,
     setView,
-    viewCounts: listQuery.data?.viewCounts,
+    viewCounts: listQuery.data?.unitCounts ?? listQuery.data?.viewCounts,
+    inventoryScope,
+    setInventoryScope,
+    aging,
+    clearAging,
     listLoading: listQuery.isLoading,
     listError: listQuery.isError,
     listErrorObj: listQuery.error,

@@ -1,3 +1,4 @@
+import { StockScopeQueryDto } from './dto/stock-scope-query.dto';
 import { currentDomainAccess } from '../employee-access/access-execution-context';
 import {
   Controller,
@@ -74,7 +75,7 @@ export class ProductsController {
     @Query('deviceOrigin') deviceOrigin?: string,
     @Query('compatibleWithProductId') compatibleWithProductId?: string,
   ) {
-    const stockView = pagination.groupAccessories === 'true' || !!pagination.accessoryGroupId || !!pagination.sortBy;
+    const stockView = !!pagination.inventoryScope || !!pagination.aging || pagination.groupAccessories === 'true' || !!pagination.accessoryGroupId || !!pagination.sortBy;
     if (!currentDomainAccess() && (stockView || compatibleWithProductId) && !hasCrossBranchAccess(user)) {
       if (!user.branchId) throw new ForbiddenException('บัญชีนี้ยังไม่มีสาขาที่รับผิดชอบ');
       branchId = user.branchId;
@@ -83,6 +84,8 @@ export class ProductsController {
       throw new ForbiddenException('ไม่มีสิทธิ์เรียงข้อมูลราคาทุน');
     }
     const result = await this.productsService.findAll({
+      inventoryScope: pagination.inventoryScope,
+      aging: pagination.aging,
       sortBy: pagination.sortBy,
       sortDirection: pagination.sortDirection,
       groupAccessories: pagination.groupAccessories === 'true',
@@ -106,7 +109,7 @@ export class ProductsController {
   @Get('stock')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   async getStock(
-    @Query() pagination: PaginationDto,
+    @Query() pagination: StockListPaginationDto,
     @CurrentUser() user: { role: string },
     @Query('search') search?: string,
     @Query('branchId') branchId?: string,
@@ -116,6 +119,7 @@ export class ProductsController {
   ) {
     const result = await this.productsStockService.getStock({
       search, branchId, status, category, brand,
+      inventoryScope: pagination.inventoryScope,
       page: pagination.page,
       limit: pagination.limit,
     });
@@ -130,10 +134,11 @@ export class ProductsController {
   @Get('stock/dashboard')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   async getStockDashboard(
-    @CurrentUser() user: { role: string },
+    @CurrentUser() user: { role: string; id?: string; branchId?: string | null; access?: {managed:boolean} },
     @Query('branchId') branchId?: string,
+    @Query() scope: StockScopeQueryDto = {},
   ) {
-    const result = await this.productsStockService.getStockDashboard(branchId);
+    const result = await this.productsStockService.getStockDashboard(branchId, scope.inventoryScope, user);
     if (canSeeCost(user.role)) return result;
     return redactStockDashboard(result);
   }
@@ -162,10 +167,12 @@ export class ProductsController {
   getWarrantyExpiring(
     @Query('days') days?: string,
     @Query('branchId') branchId?: string,
+    @Query() scope: StockScopeQueryDto = {},
   ) {
     return this.productsStockService.getWarrantyExpiring(
       days ? parseInt(days) : 30,
       branchId,
+      scope.inventoryScope,
     );
   }
 
@@ -179,8 +186,8 @@ export class ProductsController {
 
   @Get('transfers/pending')
   @Roles('OWNER', 'BRANCH_MANAGER')
-  getPendingTransfers(@Query('branchId') branchId?: string) {
-    return this.productsStockService.getPendingTransfers(branchId);
+  getPendingTransfers(@Query('branchId') branchId?: string, @Query() scope: StockScopeQueryDto = {}) {
+    return this.productsStockService.getPendingTransfers(branchId, scope.inventoryScope);
   }
 
   @Get('transfers/in-transit')

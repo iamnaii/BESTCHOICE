@@ -74,10 +74,10 @@ describe('SHOP grouping preserves grants and company navigation', () => {
   );
 
   it.each(['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'])(
-    '%s historical report stays in the selected company',
+    '%s historical report follows SHOP ownership from either work zone',
     (role) => {
       expect(resolveZoneForPath(role, '/imported-sales', 'shop')).toBe('shop');
-      expect(resolveZoneForPath(role, '/imported-sales', 'fin')).toBe('fin');
+      expect(resolveZoneForPath(role, '/imported-sales', 'fin')).toBe('shop');
     },
   );
 

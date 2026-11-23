@@ -300,6 +300,7 @@ export class ReceiptVoidReversalTemplate {
       interestTotal: { toString(): string };
       vatAmount: { toString(): string } | null;
       totalMonths: number;
+      installmentRoundingPolicy?: string | null;
     };
     installmentScheduleId: string;
     installmentNo: number;

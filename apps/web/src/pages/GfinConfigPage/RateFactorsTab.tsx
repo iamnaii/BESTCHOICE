@@ -3,6 +3,7 @@ import { useId as useUiFieldId, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api from '@/lib/api';
+import { GFIN_QUERY_KEYS } from '@/pages/ProductDetailPage/hooks/gfinQueryKeys';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -41,7 +42,7 @@ export function RateFactorsTab() {
   const qc = useQueryClient();
 
   const { data, isLoading, error } = useQuery<RateFactor[]>({
-    queryKey: ['gfin-rate-factors'],
+    queryKey: GFIN_QUERY_KEYS.factors,
     queryFn: async () => {
       const { data: rows } = await api.get<RateFactor[]>('/gfin-config/rate-factors');
       return rows;
@@ -52,7 +53,7 @@ export function RateFactorsTab() {
     mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
       api.patch(`/gfin-config/rate-factors/${id}`, { isActive }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['gfin-rate-factors'] });
+      qc.invalidateQueries({ queryKey: GFIN_QUERY_KEYS.factors });
       toast.success('บันทึกแล้ว');
     },
     onError: () => toast.error('บันทึกไม่สำเร็จ'),
@@ -61,7 +62,7 @@ export function RateFactorsTab() {
   const deleteRow = useMutation({
     mutationFn: (id: string) => api.delete(`/gfin-config/rate-factors/${id}`),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['gfin-rate-factors'] });
+      qc.invalidateQueries({ queryKey: GFIN_QUERY_KEYS.factors });
       toast.success('ลบแล้ว');
     },
     onError: () => toast.error('ลบไม่สำเร็จ'),
@@ -165,7 +166,7 @@ export function RateFactorsTab() {
             setCreating(false);
           }}
           onSaved={() => {
-            qc.invalidateQueries({ queryKey: ['gfin-rate-factors'] });
+            qc.invalidateQueries({ queryKey: GFIN_QUERY_KEYS.factors });
             setEditing(null);
             setCreating(false);
           }}

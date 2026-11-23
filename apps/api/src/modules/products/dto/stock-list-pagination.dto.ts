@@ -1,8 +1,17 @@
 import { STOCK_SORT_KEYS, type StockSortKey, type StockSortDirection } from '@installment/shared';
 import { IsIn, IsOptional, Matches } from 'class-validator';
 import { PaginationDto } from '../../../common/dto/pagination.dto';
+import { STOCK_INVENTORY_SCOPES, type StockInventoryScope } from '@installment/shared';
 
 export class StockListPaginationDto extends PaginationDto {
+  @IsOptional()
+  @IsIn(STOCK_INVENTORY_SCOPES, { message: 'หมวดสินค้าที่แสดงไม่ถูกต้อง' })
+  inventoryScope?: StockInventoryScope;
+
+  @IsOptional()
+  @IsIn(['over90'], { message: 'ช่วงอายุสต๊อกไม่ถูกต้อง' })
+  aging?: 'over90';
+
   @IsOptional()
   @IsIn(STOCK_SORT_KEYS, { message: 'คอลัมน์ที่ใช้เรียงข้อมูลไม่ถูกต้อง' })
   sortBy?: StockSortKey;

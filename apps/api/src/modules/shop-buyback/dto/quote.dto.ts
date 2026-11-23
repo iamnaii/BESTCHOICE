@@ -9,6 +9,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  MaxLength,
   Matches,
   ValidateNested,
 } from 'class-validator';
@@ -46,6 +47,11 @@ export class BuybackQuoteDto {
 }
 
 export class SubmitBuybackDto extends BuybackQuoteDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(2048)
+  quoteToken?: string;
+
   @IsString()
   @IsNotEmpty({ message: 'กรุณาระบุชื่อผู้ขาย' })
   sellerName!: string;

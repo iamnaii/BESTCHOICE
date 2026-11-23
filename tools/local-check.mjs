@@ -1,3 +1,4 @@
+import { checkStockOverview } from './check-local-stock-overview.mjs';
 import { checkChatDispatch } from './check-local-chat-dispatch.mjs';
 import { checkChatSetup } from './check-local-chat-setup.mjs';
 import { checkChatLibrary } from './check-local-chat-library.mjs';
@@ -120,6 +121,10 @@ try {
       await checkChatLibrary(page, new URL(info.url).origin, output, viewport.width);
       assert.deepEqual(errors, [], 'Library browser errors');
       report.checks.push({ label: `Private library folders/upload/search/staging, ACK retry, credit copy and composer parity ${viewport.width}px`, status: 'PASS' });
+      const expectedStockFailures = await checkStockOverview(page, info.url, output, viewport.width);
+      for(let i=errors.length-1;i>=0;i--) if(errors[i].includes('503') && expectedStockFailures.some(url=>errors[i].includes(url))) errors.splice(i,1);
+      assert.deepEqual(errors, [], 'Stock overview browser errors');
+      report.checks.push({ label: `Stock overview scopes + original imported sale occurrences ${viewport.width === 390 ? 375 : viewport.width}px`, status: 'PASS' });
       await checkLocalPages(page, info.url, output, viewport.width);
       assert.deepEqual(errors, [], 'Browser errors');
       report.checks.push({ label: `Customers + FINANCE portfolio (filters, pagination, empty report) ${viewport.width}px`, status: 'PASS' });

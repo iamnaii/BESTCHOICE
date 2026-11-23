@@ -12,7 +12,7 @@ export default function SellLandingPage() {
       <Container narrow className="py-10 md:py-16 leading-snug">
         <div className="mx-auto max-w-xl space-y-6">
           <p className="font-semibold text-secondary-foreground">เบสท์ช้อยส์ · ลพบุรี</p>
-          <h1 className="text-3xl font-bold leading-snug md:text-4xl">ขายหรือเทิร์นไอโฟน</h1>
+          <h1 className="text-3xl font-bold leading-snug md:text-4xl">ขายหรือเทิร์น iPhone</h1>
           <p className="text-lg">เลือกเครื่อง ตอบสภาพ แล้วดูราคาประเมินได้เลย</p>
           <p>
             ไม่ต้องสมัครสมาชิก ไม่ต้องถ่ายรูปเครื่อง

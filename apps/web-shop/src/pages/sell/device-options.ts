@@ -13,12 +13,25 @@ export function groupModels(models: BuybackCatalog['models']): SeriesGroup[] {
     if (!groups.has(id))
       groups.set(id, {
         id,
-        label: id === 'air' ? 'แอร์' : id === 'se' ? 'เอสอี' : id === 'other' ? 'อื่น ๆ' : id,
+        label:
+          id === 'air'
+            ? 'iPhone Air'
+            : id === 'se'
+              ? 'iPhone SE'
+              : id === 'other'
+                ? 'รุ่นอื่น ๆ'
+                : `iPhone ${id}`,
         models: [],
       });
     groups.get(id)!.models.push(item);
   }
-  return [...groups.values()];
+  return [...groups.values()].sort((a, b) => {
+    const first = Number(a.id);
+    const second = Number(b.id);
+    // Numbered generations ascend; named families follow in catalog order.
+    if (Number.isFinite(first) && Number.isFinite(second)) return first - second;
+    return Number.isFinite(first) ? -1 : Number.isFinite(second) ? 1 : 0;
+  });
 }
 export function resolveDevice(
   models: BuybackCatalog['models'],
@@ -32,15 +45,8 @@ export function resolveDevice(
     : { model: found.model, storage: '', step: 'storage' };
 }
 export function modelLabel(model: string): string {
-  return model
-    .replace(/^iPhone\b/i, 'ไอโฟน')
-    .replace(/Pro Max/gi, 'โปรแม็กซ์')
-    .replace(/Pro/gi, 'โปร')
-    .replace(/Plus/gi, 'พลัส')
-    .replace(/mini/gi, 'มินิ')
-    .replace(/Air/gi, 'แอร์')
-    .replace(/SE/g, 'เอสอี');
+  return model.replace(/^iPhone\b/i, 'iPhone');
 }
 export function storageLabel(storage: string): string {
-  return storage.replace(/\s*GB$/i, ' กิกะไบต์').replace(/\s*TB$/i, ' เทระไบต์');
+  return storage.replace(/\s*(GB|TB)$/i, (_, unit: string) => ` ${unit.toUpperCase()}`);
 }

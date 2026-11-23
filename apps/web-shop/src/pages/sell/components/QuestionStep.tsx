@@ -31,16 +31,31 @@ export default function QuestionStep({
 }) {
   const multi = question.selectType === 'MULTI';
   const body = question.key === 'body-condition';
+  const warranty = question.key === 'warranty';
   const warrantyGap =
     question.key === 'warranty' &&
     question.choices.some((c) => c.label === 'ประกันเหลือมากกว่า 4 เดือน') &&
     question.choices.some((c) => c.label === 'ประกันเหลือน้อยกว่า 4 เดือน');
   return (
     <div className="space-y-4">
-      {question.helpText && <p className="text-sm break-words">{question.helpText}</p>}
-      {warrantyGap && <p className="text-sm">ถ้าเหลือประกันพอดี 4 เดือน ให้สอบถามร้านก่อนเลือก</p>}
+      {warranty ? (
+        <details className="rounded-xl border border-border px-4">
+          <summary className="min-h-11 cursor-pointer py-3 font-semibold text-secondary-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
+            ดูวิธีเช็กประกัน
+          </summary>
+          <section aria-label="วิธีเช็กประกัน" className="space-y-3 pb-4 pt-2">
+            {question.helpText && <p className="text-sm break-words">{question.helpText}</p>}
+            {warrantyGap && (
+              <p className="text-sm">ถ้าเหลือประกันพอดี 4 เดือน ให้สอบถามร้านก่อนเลือก</p>
+            )}
+            {!multi && <p className="text-sm">แตะคำตอบแล้วไปต่อได้เลย · ย้อนกลับมาแก้ได้</p>}
+          </section>
+        </details>
+      ) : (
+        question.helpText && <p className="text-sm break-words">{question.helpText}</p>
+      )}
       {body && <p className="text-sm">ภาพเป็นตัวอย่างคร่าว ๆ ให้เลือกตามข้อความ</p>}
-      {!multi && <p className="text-sm">แตะคำตอบแล้วไปต่อได้เลย · ย้อนกลับมาแก้ได้</p>}
+      {!multi && !warranty && <p className="text-sm">แตะคำตอบแล้วไปต่อได้เลย · ย้อนกลับมาแก้ได้</p>}
       {multi && (
         <div className="grid gap-2">
           <ChoiceButton

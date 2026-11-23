@@ -1,3 +1,5 @@
+import type { StockInventoryScope } from '@installment/shared';
+import { stockInventorySql, stockOver90Sql } from './stock-inventory-filter';
 import { currentProductScopeSql } from '../employee-access/access-execution-context';
 import { resolveShopWarrantyDays, SHOP_WARRANTY_DAYS_CONFIG_KEY } from '../warranty/shop-warranty-policy';
 import { readStringFlag } from '../../utils/config.util';
@@ -11,6 +13,8 @@ import type { productInclude } from './products.service';
 import { CASH_LABEL } from '../../utils/product-price-sync.util';
 
 export interface StockListFilters {
+  inventoryScope?: StockInventoryScope;
+  aging?: 'over90';
   deviceOrigin?: string;
   search?: string;
   branchId?: string;
@@ -93,7 +97,8 @@ export async function findStockGroups(
 ) {
   const page = Math.max(1, filters.page || 1);
   const limit = Math.min(100, Math.max(1, filters.limit || 50));
-  const clauses: Prisma.Sql[] = [Prisma.sql`p.deleted_at IS NULL`, currentProductScopeSql()];
+  const clauses: Prisma.Sql[] = [Prisma.sql`p.deleted_at IS NULL`, currentProductScopeSql(), stockInventorySql(filters.inventoryScope)];
+  if (filters.aging === 'over90') clauses.push(stockOver90Sql(new Date()));
   if (filters.deviceOrigin) {
     if (!['THAI', 'IMPORTED', 'UNKNOWN'].includes(filters.deviceOrigin)) throw new BadRequestException('Invalid device origin');
     clauses.push(filters.deviceOrigin === 'UNKNOWN' ? Prisma.sql`p.device_origin IS NULL` : Prisma.sql`p.device_origin::text = ${filters.deviceOrigin}`);
@@ -143,19 +148,21 @@ export async function findStockGroups(
   const filtered = statusClause ? filteredFrom([...clauses, statusClause]) : filteredBase;
   return prisma.$transaction(
     async (tx) => {
-      const [{ total }] = await tx.$queryRaw<Array<{ total: number }>>(Prisma.sql`
-      SELECT COUNT(DISTINCT group_key)::int AS total FROM (${filtered}) filtered
+      const [{ total, totalUnits }] = await tx.$queryRaw<Array<{ total: number; totalUnits: number }>>(Prisma.sql`
+      SELECT COUNT(DISTINCT group_key)::int AS total, COUNT(*)::int AS "totalUnits" FROM (${filtered}) filtered
     `);
       // ตัวเลขบนสวิตช์ พร้อมขาย | ทั้งหมด — ฐานเดียวกับรายการ (หมวด/สาขา/คำค้น) แต่ไม่รวมตัวกรองสถานะ
       // กลุ่มอุปกรณ์นับเป็น "พร้อมขาย" เมื่อมีชิ้น IN_STOCK อย่างน้อยหนึ่งชิ้น (ตรงกับคอลัมน์คงเหลือ)
-      const [{ readyTotal, allTotal }] = await tx.$queryRaw<
-        Array<{ readyTotal: number; allTotal: number }>
+      const [{ readyTotal, allTotal, readyUnits, allUnits }] = await tx.$queryRaw<
+        Array<{ readyTotal: number; allTotal: number; readyUnits: number; allUnits: number }>
       >(Prisma.sql`
       SELECT COUNT(DISTINCT group_key) FILTER (WHERE status::text = 'IN_STOCK')::int AS "readyTotal",
-        COUNT(DISTINCT group_key)::int AS "allTotal"
+        COUNT(DISTINCT group_key)::int AS "allTotal",
+        COUNT(*) FILTER (WHERE status::text = 'IN_STOCK')::int AS "readyUnits", COUNT(*)::int AS "allUnits"
       FROM (${filteredBase}) filtered
     `);
       const viewCounts = { ready: readyTotal, all: allTotal };
+      const unitCounts = { ready: readyUnits, all: allUnits };
       const sortedKeys = filters.sortBy
         ? await sortedStockPageKeys(
             tx,
@@ -167,7 +174,7 @@ export async function findStockGroups(
             limit,
           )
         : null;
-      if (sortedKeys?.length === 0) return { ...paginatedResponse([], total, page, limit), viewCounts };
+      if (sortedKeys?.length === 0) return { ...paginatedResponse([], total, page, limit), viewCounts, totalUnits, unitCounts };
       const groups = await tx.$queryRaw<GroupRow[]>(Prisma.sql`
       WITH filtered AS (${filtered}), page_groups AS (
         SELECT group_key, MAX(created_at) AS latest FROM filtered
@@ -234,7 +241,7 @@ export async function findStockGroups(
           },
         ];
       });
-      return { ...paginatedResponse(data, total, page, limit), viewCounts };
+      return { ...paginatedResponse(data, total, page, limit), viewCounts, totalUnits, unitCounts };
     },
     { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
   );

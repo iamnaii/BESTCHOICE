@@ -17,6 +17,7 @@ import {
   Stepper,
 } from '@/components';
 import type { Buyback, BuybackStatus } from '@/types/buyback';
+import SellContactLinks from './components/SellContactLinks';
 
 const STATUS_LABEL: Record<BuybackStatus, string> = {
   PENDING_APPRAISAL: 'รอทีมงานประเมินราคา',
@@ -157,7 +158,7 @@ export default function SellStatusPage() {
                       data.quoteBreakdown.cashPrice &&
                       data.quoteBreakdown.exchangePrice && (
                         <div className="flex justify-between font-medium">
-                          <span>โบนัสเทิร์น +{Number(data.quoteBreakdown.bonusPct ?? 0)}%</span>
+                          <span>โบนัสเทิร์น</span>
                           <span>
                             +฿
                             {(
@@ -257,6 +258,15 @@ export default function SellStatusPage() {
           )}
 
           <p className="text-xs text-muted-foreground leading-snug">{copy.sell.followUp}</p>
+          <SellContactLinks
+            context={{
+              model: data.deviceModel,
+              storage: data.deviceStorage ?? undefined,
+              flow,
+              amount: isInstantQuote ? estimated : undefined,
+              reference: data.id.slice(0, 8),
+            }}
+          />
         </Stack>
       </Container>
     </ShopLayout>

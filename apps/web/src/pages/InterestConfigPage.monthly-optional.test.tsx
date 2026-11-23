@@ -85,7 +85,7 @@ describe('InterestConfigPage — ดอกเบี้ยต่อเดือ�
     await editConfig();
     fireEvent.change(screen.getByLabelText('ดอกเบี้ยต่อเดือน (%)'), { target: { value: '0' } });
     // การ์ด 1 ที่ + ตัวอย่างในฟอร์ม 1 ที่
-    expect(screen.getAllByText('1,555.06 ฿').length).toBeGreaterThan(1);
+    expect(screen.getAllByText('1,554.00 ฿').length).toBeGreaterThan(1);
   });
 
   it('ไม่มีตาราง + ดอกเบี้ยต่อเดือน 0 → ข้อความ และไม่บันทึก', async () => {

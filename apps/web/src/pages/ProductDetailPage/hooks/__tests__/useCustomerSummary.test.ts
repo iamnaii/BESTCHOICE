@@ -11,7 +11,7 @@ import { PRODUCT_READINESS_QUERY_KEY } from '../useProductReadiness';
 import { resolveQuotes } from '../../utils/resolveQuotes';
 import { formatBaht } from '../../utils/buildCustomerSummary';
 
-// golden config เดียวกับ buildCustomerSummary.test.ts (installmentPrice 19900 → 12 งวด/3,000/2,411.06)
+// golden config เดียวกับ buildCustomerSummary.test.ts (installmentPrice 19900 → 12 งวด/3,000/2,409)
 const bcConfig = {
   minDownPct: 0.15,
   commissionPct: 0.1,
@@ -83,8 +83,8 @@ describe('useCustomerSummary', () => {
     await waitFor(() => expect(result.current.summaryText).toContain('เรทที่ 1'));
     expect(result.current.summaryText).toContain('ราคาเงินสด 15,900 บาท');
     expect(result.current.summaryText).toContain(
-      // ค่างวดเรท 1 ที่แสดงปัดขึ้นบาทเต็ม (2,411.06 → 2,412) เหมือนหน้าราคาและบอท — สัญญายังเก็บสตางค์
-      'เรทที่ 1 ดาวน์ 3,000 บาท ผ่อนเดือนละ 2,412 บาท 12 งวด',
+      // ราคาเสนอขายและสัญญาใหม่ใช้ค่างวดตามชีตตรงกัน
+      'เรทที่ 1 ดาวน์ 3,000 บาท ผ่อนเดือนละ 2,409 บาท 12 งวด',
     );
   });
 
@@ -234,7 +234,7 @@ describe('useCustomerSummary', () => {
     const { result } = renderHook(() => useCustomerSummary(product), { wrapper: makeWrapper(client) });
 
     await waitFor(() =>
-      expect(result.current.summaryText).toContain('เรทที่ 1 ดาวน์ 3,000 บาท ผ่อนเดือนละ 2,412 บาท 12 งวด'),
+      expect(result.current.summaryText).toContain('เรทที่ 1 ดาวน์ 3,000 บาท ผ่อนเดือนละ 2,409 บาท 12 งวด'),
     );
     expect(get).toHaveBeenCalledWith('/interest-configs/resolved?category=TABLET');
   });

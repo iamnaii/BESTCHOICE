@@ -203,6 +203,7 @@ export class ContractPaymentService {
       storeCommission: Prisma.Decimal | null;
       interestTotal: Prisma.Decimal;
       vatAmount: Prisma.Decimal | null;
+      installmentRoundingPolicy?: string | null;
       totalMonths: number;
     },
     payments: Array<{
@@ -224,6 +225,7 @@ export class ContractPaymentService {
         contract.storeCommission != null ? contract.storeCommission.toString() : null,
       interestTotal: contract.interestTotal.toString(),
       vatAmount: contract.vatAmount != null ? contract.vatAmount.toString() : null,
+      installmentRoundingPolicy: contract.installmentRoundingPolicy,
       totalMonths: contract.totalMonths,
     });
     const installmentTotal = installmentExclVat.plus(vatPerInst);
@@ -297,6 +299,7 @@ export class ContractPaymentService {
         contractNumber: true,
         deletedAt: true,
         status: true,
+        installmentRoundingPolicy: true,
         totalMonths: true,
         monthlyPayment: true,
         creditBalance: true,

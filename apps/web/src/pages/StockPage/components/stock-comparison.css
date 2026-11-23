@@ -1,0 +1,99 @@
+/* Scoped to stock: keep other shared DataTable screens unchanged. */
+.stock-comparison table {
+  width: 100%;
+  /* Respect content minima instead of crushing names and Thai header words. */
+  table-layout: auto;
+}
+.stock-comparison th,
+.stock-comparison td {
+  padding-inline: 6px;
+  overflow-wrap: normal;
+}
+.stock-comparison td {
+  padding-block: 16px;
+}
+.stock-comparison time {
+  white-space: nowrap;
+}
+.stock-comparison th button {
+  white-space: nowrap;
+  text-align: inherit;
+  flex-wrap: nowrap;
+  gap: 3px;
+}
+.stock-comparison th button span {
+  white-space: nowrap;
+  overflow: visible;
+}
+.stock-comparison .stock-imei span {
+  font-family: inherit;
+  font-size: 12px;
+  letter-spacing: -0.025em;
+  /* Fifteen-digit IMEIs fit; unusually long serials must not steal price columns. */
+  width: max-content;
+  max-width: 16ch;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+.stock-comparison .stock-imei-cell {
+  min-width: 150px;
+}
+.stock-comparison .stock-device-name {
+  white-space: nowrap;
+}
+.stock-comparison .stock-cash-cell {
+  white-space: nowrap;
+}
+.stock-comparison .stock-bc-cell {
+  min-width: 140px;
+  background: hsl(var(--primary) / 0.035);
+}
+.stock-comparison .stock-gfin-cell {
+  min-width: 140px;
+  background: hsl(var(--info) / 0.035);
+}
+.stock-comparison .stock-gfin-cell .text-primary {
+  color: hsl(var(--foreground));
+}
+.stock-comparison .stock-cash-cell {
+  background: hsl(var(--muted) / 0.2);
+}
+.stock-comparison .stock-payment {
+  min-width: 0;
+}
+.stock-comparison .stock-payment span {
+  max-width: 100%;
+}
+.stock-comparison .stock-payment strong {
+  font-size: 15px;
+}
+@media (max-width: 1279px) {
+  .stock-comparison th,
+  .stock-comparison td {
+    padding-inline: 4px;
+  }
+  .stock-comparison .stock-imei span {
+    font-size: 12px;
+  }
+}
+
+.stock-comparison.stock-compact td {
+  padding-block: 8px;
+}
+
+/* Keep selection away from the card edge and the model name. */
+.stock-comparison .stock-select-cell {
+  min-width: 52px;
+  padding-inline: 16px;
+  text-align: center;
+}
+.stock-comparison .stock-name-cell {
+  padding-inline: 8px 16px;
+}
+.stock-comparison .stock-name-cell:first-child {
+  padding-inline-start: 20px;
+}
+.stock-comparison .stock-actions-cell {
+  padding-inline: 0;
+  text-align: center;
+}

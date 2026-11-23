@@ -74,8 +74,8 @@ describe('previewBcConfig', () => {
     const out = calcBcInstallment({ installmentPrice: new Decimal(12900), months: 12, config });
     expect(out.errors).toEqual([]);
     expect(out.downAmount.toString()).toBe('2000');
-    expect(out.interestAmount.toString()).toBe('5450');
-    expect(out.monthlyPayment.toFixed(2)).toBe('1555.06');
+    expect(out.interestAmount.toString()).toBe('5438.04');
+    expect(out.monthlyPayment.toFixed(2)).toBe('1554.00');
   });
 
   it('ไม่มีตาราง → ต่อเดือน × งวด สำหรับงวดตัวอย่าง', () => {

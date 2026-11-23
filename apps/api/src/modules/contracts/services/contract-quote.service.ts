@@ -1,4 +1,4 @@
-import { canAccess } from '@installment/shared';
+import { bcSheetAmounts, canAccess } from '@installment/shared';
 import { tradeInSource } from '../../employee-access/access-trade-in-scope';
 import { NamedContractQuote, prepareContractPromotion } from '../../promotions/contract-promotion-terms';
 import { currentDomainAccess, domainAccessClient } from '../../employee-access/access-execution-context';
@@ -26,7 +26,8 @@ const money = (value: Prisma.Decimal | number | string) => new Prisma.Decimal(va
 export class ContractQuoteService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async resolve(dto: ContractQuoteDto, actor: ContractQuoteActor, tx: Prisma.TransactionClient = this.prisma): Promise<NamedContractQuote> {
+  async resolve(dto: ContractQuoteDto, actor: ContractQuoteActor, tx: Prisma.TransactionClient = this.prisma,
+    options: { sheetPricing?: boolean } = {}): Promise<NamedContractQuote> {
     if (currentDomainAccess() && currentDomainAccess()!.snapshot.userId !== actor.id) throw new ForbiddenException('ผู้ดำเนินการไม่ตรงกับสิทธิ์ปัจจุบัน');
     if (currentDomainAccess()) tx = domainAccessClient(this.prisma);
     const namedPromotion = await prepareContractPromotion(dto, actor.id, tx);
@@ -86,20 +87,31 @@ export class ContractQuoteService {
     const rate = namedPromotion ? new Prisma.Decimal(namedPromotion.monthlyRate).mul(dto.totalMonths) : config ? await getRateForMonths(tx, config.id, dto.totalMonths)
       : new Prisma.Decimal(params.interestRate).mul(dto.totalMonths);
     const interestTotal = roundBaht(roundBaht(sellingPrice.minus(downPayment).toNumber()) * Number(rate));
-    const calc = calculateInstallmentWithInterest(sellingPrice.toNumber(), downPayment.toNumber(), interestTotal,
+    const legacyCalc = calculateInstallmentWithInterest(sellingPrice.toNumber(), downPayment.toNumber(), interestTotal,
       dto.totalMonths, params.storeCommissionPct, vat.vatPct);
+    // Only new standard sheet plans use whole-baht amounts. Named promotions
+    // retain their agreed formula; existing contracts are never recalculated.
+    const sheet = namedPromotion || options.sheetPricing === false ? null : bcSheetAmounts({ principal: legacyCalc.principal,
+      ratePct: rate.toString(), commissionPct: params.storeCommissionPct, vatPct: vat.vatPct, months: dto.totalMonths });
+    const calc = sheet ? { principal: legacyCalc.principal, interestTotal: sheet.interestAmount.toNumber(),
+      storeCommission: sheet.commissionAmount.toNumber(), vatAmount: sheet.vatAmount.toNumber(),
+      financedAmount: sheet.totalWithVat.toNumber(), monthlyPayment: sheet.monthlyPayment.toNumber() } : legacyCalc;
+    const chargedRate = sheet ? new Prisma.Decimal(sheet.interestPct.toString()) : new Prisma.Decimal(rate);
+    const installmentRoundingPolicy = sheet ? 'SHEET_WHOLE_BAHT' as const : null;
     const schedule = generatePaymentSchedule('', dto.totalMonths, calc.financedAmount, calc.monthlyPayment, dto.paymentDueDay,
-      { principal: calc.principal, interestTotal: calc.interestTotal, storeCommission: calc.storeCommission, vatAmount: calc.vatAmount }, new Date())
+      { principal: calc.principal, interestTotal: calc.interestTotal, storeCommission: calc.storeCommission, vatAmount: calc.vatAmount,
+        installmentRoundingPolicy }, new Date())
       .map(row => ({ installmentNo: row.installmentNo, dueDate: row.dueDate.toISOString(), amountDue: money(row.amountDue),
         monthlyPrincipal: money(row.monthlyPrincipal ?? 0), monthlyInterest: money(row.monthlyInterest ?? 0),
         monthlyCommission: money(row.monthlyCommission ?? 0), vatAmount: money(row.vatAmount ?? 0) }));
     const amounts = {
+      installmentRoundingPolicy,
       sellingPrice: money(sellingPrice), downPayment: money(downPayment), cashDownPayment: money(dto.downPayment),
       tradeInCreditAmount: money(credit?.base ?? 0), configId: config?.id ?? null,
-      vatSource: vat.source, effectiveVatPct: vat.vatPct.toFixed(4), interestRate: new Prisma.Decimal(rate).div(dto.totalMonths).toFixed(4),
+      vatSource: vat.source, effectiveVatPct: vat.vatPct.toFixed(4), interestRate: chargedRate.div(dto.totalMonths).toFixed(4),
       storeCommissionPct: params.storeCommissionPct.toFixed(4), minDownPaymentPct: params.minDownPaymentPct.toFixed(4),
       minInstallmentMonths: params.minInstallmentMonths, maxInstallmentMonths: params.maxInstallmentMonths,
-      ratePct: new Prisma.Decimal(rate).toFixed(8), principal: money(calc.principal), interestTotal: money(calc.interestTotal),
+      ratePct: chargedRate.toFixed(8), principal: money(calc.principal), interestTotal: money(calc.interestTotal),
       storeCommission: money(calc.storeCommission), vatAmount: money(calc.vatAmount), totalPayable: money(calc.financedAmount),
       monthlyPayment: money(calc.monthlyPayment), lastPayment: schedule[schedule.length - 1].amountDue,
       totalMonths: dto.totalMonths, firstDueDate: schedule[0].dueDate, schedule,

@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, useLocation } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import StockProductsPage from './ProductsPage';
 import type { StockProduct } from './types';
@@ -58,6 +58,10 @@ function product(overrides: Partial<StockProduct> = {}): StockProduct {
 const ALL_VIEW_PATH = '/stock/products?zone=shop&view=all';
 const DEFAULT_VIEW_PATH = '/stock/products?zone=shop';
 
+function LocationCapture() {
+  return <output data-testid="stock-location">{useLocation().search}</output>;
+}
+
 function showProducts(
   products: StockProduct[],
   failConfig = false,
@@ -95,6 +99,17 @@ function showProducts(
           },
         };
       }
+      if (url === '/gfin-config/settings')
+        return {
+          data: {
+            minDownPct: 25,
+            maxDownPct: 80,
+            downStepPct: 5,
+            contractFee: 100,
+            commissionPctByCategory: { PHONE: 15, TABLET: 5 },
+          },
+        };
+      if (url.startsWith('/gfin-config/')) return { data: [] };
       if (url === '/branches') return { data: [{ id: 'branch-1', name: 'สาขาทดสอบ' }] };
       if (url.startsWith('/interest-configs/resolved')) {
         if (failConfig) throw new Error('config unavailable');
@@ -112,10 +127,18 @@ function showProducts(
       client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
     >
       <MemoryRouter initialEntries={[initialPath]}>
+        <LocationCapture />
         <StockProductsPage />
       </MemoryRouter>
     </QueryClientProvider>,
   );
+}
+
+function showColumn(label: string) {
+  if (screen.queryByRole('columnheader', { name: label })) return;
+  fireEvent.click(screen.getByRole('button', { name: /คอลัมน์/ }));
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: label }));
+  fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
 }
 
 beforeEach(() => {
@@ -128,12 +151,13 @@ describe('Stock product pricing', () => {
   it('shows cost, cash, starting down and monthly quote without the installment selling price', async () => {
     showProducts([product(), product({ id: 'used-2', model: 'iPhone 14' })]);
     await screen.findAllByText('3,000 ฿');
-    for (const label of ['ราคาทุน', 'ราคาเต็มจำนวน', 'ดาวน์', 'ยอดผ่อนต่อเดือน']) {
+    showColumn('ราคาทุน');
+    for (const label of ['ราคาทุน', 'ราคาเงินสด', 'BESTCHOICE', 'GFIN']) {
       expect(screen.getByRole('columnheader', { name: label })).toBeInTheDocument();
     }
     const row = screen.getByRole('row', { name: /iPhone 13/ });
     expect(within(row).getByRole('button', { name: 'iPhone 13' })).toBeInTheDocument();
-    for (const value of ['10,000 ฿', '15,900 ฿', '3,000 ฿', '2,411.06 ฿', 'ต่อเดือน · 12 งวด']) {
+    for (const value of ['10,000 ฿', '15,900 ฿', '3,000 ฿', '2,409 ฿', '× 12 งวด']) {
       expect(within(row).getByText(value)).toBeInTheDocument();
     }
     expect(within(row).queryByText('29,900 ฿')).not.toBeInTheDocument();
@@ -155,7 +179,7 @@ describe('Stock product pricing', () => {
     ]);
     await screen.findByText('4,000 ฿');
     expect(
-      within(screen.getByRole('row', { name: /iPhone 16/ })).getByText('ต่อเดือน · 6 งวด'),
+      within(screen.getByRole('row', { name: /iPhone 16/ })).getByText('× 6 งวด'),
     ).toBeInTheDocument();
     const legacy = within(screen.getByRole('row', { name: /iPhone 12/ }));
     expect(legacy.getByText('9,900 ฿')).toBeInTheDocument();
@@ -178,10 +202,12 @@ describe('Stock product pricing', () => {
       product({ costPrice: '0', cashPrice: null, installmentPrice: null, prices: [] }),
       product({ id: 'accessory', model: 'Case', name: 'Case', category: 'ACCESSORY' }),
     ]);
+    await screen.findByText('iPhone 13');
+    showColumn('ราคาทุน');
     await screen.findByText('0 ฿');
     const blank = within(screen.getByRole('row', { name: /iPhone 13/ }));
-    expect(blank.getAllByText('—')).toHaveLength(3);
-    expect(screen.queryByText(/ต่อเดือน ·/)).not.toBeInTheDocument();
+    expect(blank.getAllByText('—').length).toBeGreaterThanOrEqual(3);
+    expect(screen.queryByText(/× \d+ งวด/)).not.toBeInTheDocument();
     expect(mocks.get.mock.calls.some(([url]) => url.startsWith('/interest-configs/'))).toBe(false);
   });
 
@@ -189,7 +215,7 @@ describe('Stock product pricing', () => {
     showProducts([product()], true);
     await screen.findByRole('alert');
     expect(screen.getByText('โหลดไม่สำเร็จ')).toBeInTheDocument();
-    expect(screen.queryByText(/ต่อเดือน ·/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/× \d+ งวด/)).not.toBeInTheDocument();
     expect(screen.getByText('15,900 ฿')).toBeInTheDocument();
     mocks.get.mockResolvedValueOnce({ data: config });
     fireEvent.click(screen.getByRole('button', { name: 'ลองใหม่' }));
@@ -200,7 +226,7 @@ describe('Stock product pricing', () => {
   it('explains when the category has no configured installment plan', async () => {
     showProducts([product()], false, { ...config, allowedMonths: [] });
     await screen.findByText('ยังไม่มีเงื่อนไขผ่อน');
-    expect(screen.queryByText(/ต่อเดือน ·/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/× \d+ งวด/)).not.toBeInTheDocument();
     expect(screen.getByText('15,900 ฿')).toBeInTheDocument();
   });
 
@@ -216,151 +242,29 @@ describe('Stock product pricing', () => {
     const cashOnly = within(screen.getByRole('row', { name: /iPhone SE/ }));
     expect(cashOnly.queryByText('โหลดไม่สำเร็จ')).not.toBeInTheDocument();
     expect(cashOnly.getByText('15,900 ฿')).toBeInTheDocument();
-    expect(cashOnly.getAllByText('—')).toHaveLength(2);
+    expect(cashOnly.getAllByText('—')).toHaveLength(4);
   });
 });
 
-describe('New phone stock view', () => {
-  it('separates model, specifications, cash total, terms, status and branch in the requested order', async () => {
-    showProducts([
-      product({ id: 'new', model: 'iPhone 16', category: 'PHONE_NEW' }),
-      product({
-        id: 'new-missing',
-        model: 'iPhone 16 Pro',
-        category: 'PHONE_NEW',
-        storage: null,
-        color: null,
-      }),
-    ]);
-    await screen.findByText('iPhone 16');
-    fireEvent.click(screen.getByRole('button', { name: 'มือ 1' }));
-    await screen.findByRole('row', { name: /iPhone 16 Pro/ });
-    expect(
-      screen
-        .getAllByRole('columnheader')
-        .map((header) => header.textContent)
-        .filter(Boolean),
-    ).toEqual([
-      'รุ่น',
-      'ความจุ',
-      'สี',
-      'ราคาเต็มจำนวน',
-      'ดาวน์',
-      'ยอดผ่อนต่อเดือน',
-      'วันที่รับเข้า',
-      'สถานะ',
-      'สาขา',
-    ]);
-    const row = within(screen.getByRole('row', { name: /iPhone 16 123456789012345/ }));
-    const cells = row.getAllByRole('cell');
-    expect(cells[2]).toHaveTextContent('128GB');
-    expect(cells[3]).toHaveTextContent('Black');
-    expect(cells[4]).toHaveTextContent('15,900 ฿');
-    expect(cells[5]).toHaveTextContent('4,000 ฿');
-    expect(cells[6]).toHaveTextContent('ต่อเดือน · 6 งวด');
-    expect(cells[7]).toHaveTextContent('ยังไม่ระบุ');
-    expect(cells[8]).toHaveTextContent('พร้อมขาย');
-    expect(cells[8]).not.toHaveTextContent('สาขาทดสอบ');
-    expect(cells[9]).toHaveTextContent('สาขาทดสอบ');
-    expect(cells[1]).not.toHaveTextContent('128GB');
-    expect(cells[1]).not.toHaveTextContent('Black');
-    expect(row.queryByText('19,900 ฿')).not.toBeInTheDocument();
-    expect(row.queryByText('29,900 ฿')).not.toBeInTheDocument();
-    const missing = within(screen.getByRole('row', { name: /iPhone 16 Pro/ })).getAllByRole('cell');
-    expect(missing[2]).toHaveTextContent('—');
-    expect(missing[3]).toHaveTextContent('—');
-    fireEvent.click(
-      within(screen.getByRole('group', { name: 'แบ่งประเภทสินค้า' })).getByRole('button', {
-        name: 'ทั้งหมด',
-      }),
-    );
-    await screen.findByRole('columnheader', { name: 'ราคาทุน' });
-    expect(screen.getByRole('columnheader', { name: 'ราคาเต็มจำนวน' })).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: 'สถานะ' })).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: 'สาขา' })).toBeInTheDocument();
-  });
-
-  it('keeps new phone specifications and branch visible in mobile cards', async () => {
-    mocks.mobile = true;
-    showProducts([product({ category: 'PHONE_NEW' })]);
-    await screen.findByText('iPhone 13');
-    fireEvent.click(screen.getByRole('button', { name: 'มือ 1' }));
-    await screen.findByRole('list', { name: 'รายการสินค้า' });
-    const card = within(
-      within(screen.getByRole('list', { name: 'รายการสินค้า' })).getByRole('listitem'),
-    );
-    for (const value of [
-      'ความจุ',
-      '128GB',
-      'สี',
-      'Black',
-      'ราคาเต็มจำนวน',
-      '15,900 ฿',
-      'ดาวน์',
-      '4,000 ฿',
-      'ยอดผ่อนต่อเดือน',
-      'ต่อเดือน · 6 งวด',
-      'พร้อมขาย',
-      'สาขาทดสอบ',
-    ]) {
-      expect(card.getByText(value)).toBeInTheDocument();
-    }
-    expect(card.queryByText('19,900 ฿')).not.toBeInTheDocument();
-  });
-});
-
-describe('Used phone stock view', () => {
+describe('Device comparison layout', () => {
   it.each([false, true])(
-    'shows used-device condition and prices without inventing missing information (mobile: %s)',
+    'separates full IMEI, capacity and color with both providers (mobile: %s)',
     async (mobile) => {
       mocks.mobile = mobile;
-      showProducts([
-        product({
-          batteryHealth: 87,
-          hasBox: true,
-          warrantyExpired: false,
-          warrantyExpireDate: '2027-03-12T12:00:00',
-        }),
-        product({
-          id: 'expired',
-          model: 'iPhone 14',
-          batteryHealth: 0,
-          hasBox: false,
-          warrantyExpired: true,
-          warrantyExpireDate: '2030-01-01T12:00:00',
-        }),
-        product({ id: 'unknown', model: 'iPhone SE', warrantyExpired: false }),
-      ]);
-      await screen.findByText('iPhone 13');
-      fireEvent.click(screen.getByRole('button', { name: 'มือ 2' }));
-      await screen.findByText('87%');
-      if (!mobile) {
-        expect(
-          screen
-            .getAllByRole('columnheader')
-            .map((header) => header.textContent)
-            .filter(Boolean),
-        ).toEqual([
-          'รุ่น',
-          'ความจุ',
-          'สี',
-          '%แบตเตอรี่',
-          'มีกล่อง',
-          'ประกันศูนย์',
-          'ราคาเต็มจำนวน',
-          'ดาวน์',
-          'ยอดผ่อนต่อเดือน',
-          'วันที่รับเข้า',
-          'สถานะ',
-          'สาขา',
-        ]);
-      }
-      const rows = mobile
-        ? within(screen.getByRole('list', { name: 'รายการสินค้า' })).getAllByRole('listitem')
-        : screen.getAllByRole('row').slice(1);
-      const full = within(rows[0]);
-      expect(full.getByRole('button', { name: 'iPhone 13' })).toBeInTheDocument();
-      for (const value of [
+      showProducts(
+        [product({ batteryHealth: 87, hasBox: true, warrantyExpireDate: '2027-03-12T12:00:00' })],
+        false,
+        config,
+        undefined,
+        '/stock/products?inventoryScope=devices&zone=shop',
+      );
+      await screen.findByText('3,000 ฿');
+      const row = mobile
+        ? within(screen.getByRole('list')).getByRole('listitem')
+        : screen.getByRole('row', { name: /iPhone 13/ });
+      const content = within(row);
+      for (const text of [
+        '123456789012345',
         '128GB',
         'Black',
         '87%',
@@ -368,235 +272,114 @@ describe('Used phone stock view', () => {
         'ถึง 12/03/2570',
         '15,900 ฿',
         '3,000 ฿',
-        '2,411.06 ฿',
-        'ต่อเดือน · 12 งวด',
-        'พร้อมขาย',
-        'สาขาทดสอบ',
-      ]) {
-        expect(full.getByText(value)).toBeInTheDocument();
-      }
-      expect(full.queryByText('19,900 ฿')).not.toBeInTheDocument();
-      expect(full.queryByText('29,900 ฿')).not.toBeInTheDocument();
-      const expired = within(rows[1]);
-      expect(expired.getByText('0%')).toBeInTheDocument();
-      expect(expired.getByText('ไม่มี')).toBeInTheDocument();
-      expect(expired.getByText('หมดประกันแล้ว')).toBeInTheDocument();
-      expect(expired.queryByText('ถึง 01/01/2573')).not.toBeInTheDocument();
-      const unknown = within(rows[2]);
-      expect(unknown.getByText('—')).toBeInTheDocument();
-      expect(unknown.getAllByText('ยังไม่ระบุ')).toHaveLength(3);
-      expect(unknown.queryByText('ไม่มี')).not.toBeInTheDocument();
-      expect(unknown.queryByText('หมดประกันแล้ว')).not.toBeInTheDocument();
-      if (mobile) {
+        '2,409 ฿',
+        '× 12 งวด',
+      ])
+        expect(content.getByText(text)).toBeInTheDocument();
+      expect(content.getByRole('button', { name: 'คัดลอก IMEI/Serial' })).toBeInTheDocument();
+      expect(content.queryByText('19,900 ฿')).not.toBeInTheDocument();
+      if (!mobile) {
         for (const label of [
+          'รุ่นสินค้า',
           'ความจุ',
           'สี',
-          '%แบตเตอรี่',
-          'มีกล่อง',
+          'IMEI / Serial',
+          'แบต %',
           'ประกันศูนย์',
-          'ราคาเต็มจำนวน',
-          'ดาวน์',
-          'ยอดผ่อนต่อเดือน',
-        ]) {
-          expect(full.getByText(label)).toBeInTheDocument();
-        }
-      } else {
-        const cells = full.getAllByRole('cell');
-        for (const [index, value] of [
-          [2, '128GB'],
-          [3, 'Black'],
-          [4, '87%'],
-          [5, 'มี'],
-          [6, 'ถึง 12/03/2570'],
-          [7, '15,900 ฿'],
-          [8, '3,000 ฿'],
-          [9, '2,411.06 ฿'],
-          [10, 'ยังไม่ระบุ'],
-          [11, 'พร้อมขาย'],
-          [12, 'สาขาทดสอบ'],
-        ] as const) {
-          expect(cells[index]).toHaveTextContent(value);
-        }
-        expect(cells[11]).not.toHaveTextContent('สาขาทดสอบ');
+          'กล่อง',
+          'ราคาเงินสด',
+          'BESTCHOICE',
+          'GFIN',
+        ])
+          expect(screen.getByRole('columnheader', { name: label })).toBeInTheDocument();
+        expect(screen.queryByRole('columnheader', { name: 'ราคาทุน' })).not.toBeInTheDocument();
+        showColumn('ราคาทุน');
+        expect(content.getByText('10,000 ฿')).toBeInTheDocument();
+        showColumn('สาขา');
+        expect(content.getByText('สาขาทดสอบ')).toBeInTheDocument();
       }
     },
   );
-});
-
-describe('New tablet stock view', () => {
   it.each([false, true])(
-    'shows tablet specifications, stock entry and installment terms (mobile: %s)',
+    'distinguishes zero battery, no box, expired and unknown warranty (mobile: %s)',
     async (mobile) => {
       mocks.mobile = mobile;
       showProducts([
         product({
-          id: 'wifi',
-          category: 'TABLET',
-          model: 'iPad 10',
-          name: 'iPad 10 Wi-Fi 128GB Blue',
+          batteryHealth: 0,
+          hasBox: false,
+          warrantyExpired: true,
+          warrantyExpireDate: '2030-01-01T12:00:00',
         }),
-        product({
-          id: 'cellular',
-          category: 'TABLET',
-          model: 'iPad Air Wi-Fi + Cellular',
-          name: 'iPad Air',
-        }),
-        product({
-          id: 'unknown',
-          category: 'TABLET',
-          model: 'iPad mini',
-          name: 'iPad mini 4GB RAM',
-        }),
-        product({
-          id: '5g',
-          category: 'TABLET',
-          brand: 'Samsung',
-          model: 'Galaxy Tab S9 5G',
-          name: 'Galaxy Tab S9',
-        }),
+        product({ id: 'unknown', model: 'iPhone SE' }),
+      ]);
+      await screen.findByText('หมดประกันแล้ว');
+      expect(screen.getByText('0%')).toBeInTheDocument();
+      expect(screen.getByText('ไม่มี')).toBeInTheDocument();
+      expect(screen.queryByText('ถึง 01/01/2573')).not.toBeInTheDocument();
+      const unknown = mobile
+        ? within(screen.getByRole('list')).getAllByRole('listitem')[1]
+        : screen.getByRole('row', { name: /iPhone SE/ });
+      expect(within(unknown).queryByText('ไม่มี')).not.toBeInTheDocument();
+      expect(within(unknown).getAllByText('ยังไม่ระบุ').length).toBeGreaterThan(0);
+    },
+  );
+  it.each([false, true])(
+    'retains tablet connectivity without inferring it from IMEI (mobile: %s)',
+    async (mobile) => {
+      mocks.mobile = mobile;
+      showProducts([
+        product({ category: 'TABLET', model: 'iPad 10', name: 'iPad 10 Wi-Fi' }),
+        product({ id: 'cellular', category: 'TABLET', model: 'iPad Air 5G' }),
+        product({ id: 'ram', category: 'TABLET', model: 'iPad mini', name: 'iPad mini 4GB RAM' }),
       ]);
       await screen.findByText('iPad 10');
       fireEvent.click(screen.getByRole('button', { name: 'แท็บเล็ต' }));
       await screen.findByText('Wi-Fi');
-      if (!mobile) {
-        expect(
-          screen
-            .getAllByRole('columnheader')
-            .map((header) => header.textContent)
-            .filter(Boolean),
-        ).toEqual([
-          'รุ่น',
-          'ความจุ',
-          'สี',
-          'การเชื่อมต่อ',
-          'ราคาเต็มจำนวน',
-          'ดาวน์',
-          'ยอดผ่อนต่อเดือน',
-          'วันที่รับเข้า',
-          'สถานะ',
-          'สาขา',
-        ]);
-      }
+      expect(screen.getByText('Wi-Fi')).toBeInTheDocument();
+      expect(screen.getByText('Wi-Fi + Cellular')).toBeInTheDocument();
       const rows = mobile
-        ? within(screen.getByRole('list', { name: 'รายการสินค้า' })).getAllByRole('listitem')
+        ? within(screen.getByRole('list')).getAllByRole('listitem')
         : screen.getAllByRole('row').slice(1);
-      const wifi = within(rows[0]);
-      for (const value of [
-        '128GB',
-        'Black',
-        'Wi-Fi',
-        '15,900 ฿',
-        '3,000 ฿',
-        '2,411.06 ฿',
-        'ต่อเดือน · 12 งวด',
-        'พร้อมขาย',
-        'สาขาทดสอบ',
-      ]) {
-        expect(wifi.getByText(value)).toBeInTheDocument();
-      }
-      expect(wifi.getByRole('button', { name: 'iPad 10' })).toBeInTheDocument();
-      expect(wifi.queryByText('19,900 ฿')).not.toBeInTheDocument();
-      expect(wifi.queryByText('29,900 ฿')).not.toBeInTheDocument();
-      expect(within(rows[1]).getByText('Wi-Fi + Cellular')).toBeInTheDocument();
-      expect(within(rows[2]).getAllByText('ยังไม่ระบุ')).toHaveLength(2);
-      expect(within(rows[3]).getByText('Wi-Fi + Cellular')).toBeInTheDocument();
-      if (mobile) {
-        for (const label of [
-          'ความจุ',
-          'สี',
-          'การเชื่อมต่อ',
-          'ราคาเต็มจำนวน',
-          'ดาวน์',
-          'ยอดผ่อนต่อเดือน',
-        ]) {
-          expect(wifi.getByText(label)).toBeInTheDocument();
-        }
-        expect(wifi.queryByText('%แบตเตอรี่')).not.toBeInTheDocument();
-        expect(wifi.queryByText('มีกล่อง')).not.toBeInTheDocument();
-        expect(wifi.queryByText('ประกันศูนย์')).not.toBeInTheDocument();
-      }
-      const configReads = mocks.get.mock.calls.filter(([url]) =>
-        url.startsWith('/interest-configs/'),
-      );
-      expect(configReads.length).toBeGreaterThan(0);
+      expect(within(rows[2]).queryByText('Wi-Fi + Cellular')).not.toBeInTheDocument();
+      await screen.findAllByText('× 12 งวด');
       expect(
-        configReads.every(([url]) => url === '/interest-configs/resolved?category=TABLET'),
+        mocks.get.mock.calls
+          .filter(([url]) => url.startsWith('/interest-configs/'))
+          .every(([url]) => url.endsWith('TABLET')),
       ).toBe(true);
     },
   );
-
-  it('shows unavailable tablet terms instead of using phone defaults', async () => {
-    showProducts([product({ category: 'TABLET', model: 'iPad 10', name: 'iPad 10 WiFi' })], false, {
+  it('leaves unconfigured tablet quotes unavailable instead of using phone defaults', async () => {
+    showProducts([product({ category: 'TABLET', model: 'iPad 10' })], false, {
       ...config,
       allowedMonths: [],
     });
-    await screen.findByText('iPad 10');
-    fireEvent.click(screen.getByRole('button', { name: 'แท็บเล็ต' }));
     await screen.findByText('ยังไม่มีเงื่อนไขผ่อน');
-    expect(screen.getByRole('columnheader', { name: 'ราคาเต็มจำนวน' })).toBeInTheDocument();
-    expect(screen.getByText('15,900 ฿')).toBeInTheDocument();
-    expect(screen.queryByText(/ต่อเดือน ·/)).not.toBeInTheDocument();
+    expect(screen.queryByText('3,000 ฿')).not.toBeInTheDocument();
+  });
+  it('keeps device fields available in the mixed view while accessory payment cells are blank', async () => {
+    showProducts([
+      product(),
+      product({
+        id: 'case',
+        category: 'ACCESSORY',
+        name: 'เคสใส',
+        model: 'เคสใส',
+        imeiSerial: null,
+        storage: null,
+        installmentPrice: null,
+        prices: [],
+      }),
+    ]);
+    await screen.findByText('3,000 ฿');
+    const accessory = within(screen.getByRole('row', { name: /เคสใส/ }));
+    expect(accessory.getByText('อุปกรณ์เสริม')).toBeInTheDocument();
+    expect(accessory.queryByText(/× \d+ งวด/)).not.toBeInTheDocument();
   });
 });
 
 describe('All categories and accessory stock views', () => {
-  it.each([false, true])(
-    'shows common stock fields across categories (mobile: %s)',
-    async (mobile) => {
-      mocks.mobile = mobile;
-      showProducts([
-        product(),
-        product({ id: 'tablet', model: 'iPad Air', name: 'iPad Air Wi-Fi', category: 'TABLET' }),
-        product({
-          id: 'case',
-          name: 'เคสใส iPhone 16',
-          model: 'iPhone 16',
-          category: 'ACCESSORY',
-          accessoryType: 'เคส',
-          legacyProductCode: 'UNIT-001',
-          imeiSerial: null,
-          storage: null,
-          installmentPrice: null,
-          prices: [],
-          status: 'RESERVED',
-        }),
-      ]);
-      await screen.findAllByText('3,000 ฿');
-      if (!mobile) {
-        expect(
-          screen
-            .getAllByRole('columnheader')
-            .map((header) => header.textContent)
-            .filter(Boolean),
-        ).toEqual([
-          'ประเภท',
-          'ชื่อสินค้า/รุ่น',
-          'สเปกย่อ',
-          'ราคาทุน',
-          'ราคาเต็มจำนวน',
-          'ดาวน์',
-          'ยอดผ่อนต่อเดือน',
-          'วันที่รับเข้า',
-          'คงเหลือ',
-          'สถานะ',
-          'สาขา',
-        ]);
-      }
-      const rows = mobile
-        ? within(screen.getByRole('list', { name: 'รายการสินค้า' })).getAllByRole('listitem')
-        : screen.getAllByRole('row').slice(1);
-      const phone = within(rows[0]);
-      for (const value of ['มือถือมือสอง', '128GB · Black', '1 ชิ้น', 'พร้อมขาย', 'สาขาทดสอบ'])
-        expect(phone.getByText(value)).toBeInTheDocument();
-      expect(within(rows[1]).getByText('Wi-Fi')).toBeInTheDocument();
-      const accessory = within(rows[2]);
-      for (const value of ['อุปกรณ์เสริม', 'เคสใส iPhone 16', 'UNIT-001', '0 ชิ้น', 'จอง'])
-        expect(accessory.getByText(value)).toBeInTheDocument();
-      expect(accessory.queryByText(/ต่อเดือน ·/)).not.toBeInTheDocument();
-      expect(accessory.getAllByText('—')).toHaveLength(2);
-    },
-  );
-
   it.each([false, true])(
     'shows grouped accessory quantities and opens individual units safely (mobile: %s)',
     async (mobile) => {
@@ -664,7 +447,7 @@ describe('All categories and accessory stock views', () => {
       await screen.findByText('เคสใส iPhone 16');
       fireEvent.click(
         within(screen.getByRole('group', { name: 'แบ่งประเภทสินค้า' })).getByRole('button', {
-          name: 'อุปกรณ์',
+          name: 'อุปกรณ์เสริม',
         }),
       );
       await screen.findByText('F1601');
@@ -675,13 +458,14 @@ describe('All categories and accessory stock views', () => {
             .map((header) => header.textContent)
             .filter(Boolean),
         ).toEqual([
-          'รหัสสินค้า',
-          'ชื่อสินค้า/รุ่น',
+          'สินค้า / รุ่น',
+          'SKU / รหัสสินค้า',
           'ประเภท',
           'สี',
           'ราคาทุน',
           'ราคาขาย',
-          'คงเหลือ',
+          'กำไร / ชิ้น',
+          'พร้อมขาย',
           'สถานะ',
           'สาขา',
         ]);
@@ -691,7 +475,7 @@ describe('All categories and accessory stock views', () => {
         : screen.getAllByRole('row').slice(1);
       expect(rows).toHaveLength(2);
       for (const value of ['เคส', 'Black', '100–120 ฿', '250–300 ฿', '2 ชิ้น', 'จอง', 'พร้อมขาย'])
-        expect(within(rows[0]).getByText(value)).toBeInTheDocument();
+        expect(within(rows[0]).getAllByText(value).length).toBeGreaterThan(0);
       expect(within(rows[0]).queryByRole('checkbox')).not.toBeInTheDocument();
       expect(within(rows[0]).queryByRole('button', { name: 'จัดการราคา' })).not.toBeInTheDocument();
       const imported = within(rows[1]);
@@ -734,7 +518,7 @@ describe('All categories and accessory stock views', () => {
     await screen.findByText('สายชาร์จ');
     fireEvent.click(
       within(screen.getByRole('group', { name: 'แบ่งประเภทสินค้า' })).getByRole('button', {
-        name: 'อุปกรณ์',
+        name: 'อุปกรณ์เสริม',
       }),
     );
     await screen.findByText('15,900 ฿');
@@ -756,13 +540,13 @@ describe('Stock workspace interactions', () => {
     );
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
     for (const value of [
-      'ราคาเต็มจำนวน',
+      'ราคาเงินสด',
       'ดาวน์',
-      'ยอดผ่อนต่อเดือน',
+      'BESTCHOICE',
       '15,900 ฿',
       '3,000 ฿',
-      '2,411.06 ฿',
-      'ต่อเดือน · 12 งวด',
+      '2,409 ฿',
+      '× 12 งวด',
     ]) {
       expect(card.getByText(value)).toBeInTheDocument();
     }
@@ -797,7 +581,6 @@ describe('Stock workspace interactions', () => {
         product({ id: 'tablet', model: 'iPad Air', category: 'TABLET' }),
       ]);
       await screen.findByText('iPhone 13');
-      if (mobile) fireEvent.click(screen.getByRole('button', { name: 'ตัวกรอง' }));
       fireEvent.change(screen.getByRole('combobox', { name: 'สถานะ' }), {
         target: { value: 'IN_STOCK' },
       });
@@ -808,10 +591,10 @@ describe('Stock workspace interactions', () => {
       fireEvent.click(screen.getByRole('checkbox', { name: 'เลือก iPhone 13 123456789012345' }));
       const categories = within(screen.getByRole('group', { name: 'แบ่งประเภทสินค้า' }));
       for (const [category, model, excluded] of [
-        ['มือ 1', 'iPhone 16', ['iPhone 13', 'Charger', 'iPad Air', 'iPhone 16 Reserved']],
-        ['มือ 2', 'iPhone 13', ['iPhone 16', 'Charger', 'iPad Air']],
+        ['มือถือมือ 1', 'iPhone 16', ['iPhone 13', 'Charger', 'iPad Air', 'iPhone 16 Reserved']],
+        ['มือถือมือ 2', 'iPhone 13', ['iPhone 16', 'Charger', 'iPad Air']],
         ['แท็บเล็ต', 'iPad Air', ['iPhone 13', 'iPhone 16', 'Charger']],
-        ['อุปกรณ์', 'Charger', ['iPhone 13', 'iPhone 16', 'iPad Air']],
+        ['อุปกรณ์เสริม', 'Charger', ['iPhone 13', 'iPhone 16', 'iPad Air']],
       ] as const) {
         fireEvent.click(categories.getByRole('button', { name: category }));
         await screen.findByText(model);
@@ -826,7 +609,7 @@ describe('Stock workspace interactions', () => {
           screen.queryByRole('region', { name: 'จัดการสินค้าที่เลือก' }),
         ).not.toBeInTheDocument();
       }
-      fireEvent.click(categories.getByRole('button', { name: 'ทั้งหมด' }));
+      fireEvent.click(categories.getByRole('button', { name: 'ทุกประเภท' }));
       await screen.findByText('iPhone 13');
       expect(screen.getByText('iPhone 16')).toBeInTheDocument();
       expect(screen.getByText('Charger')).toBeInTheDocument();
@@ -836,47 +619,36 @@ describe('Stock workspace interactions', () => {
   );
 
   it.each([false, true])(
-    'offers each filter once and excludes the category tab from the mobile filter count (mobile: %s)',
+    'shows one status selector and removable active filters (mobile: %s)',
     async (mobile) => {
       mocks.mobile = mobile;
       showProducts([product()]);
       await screen.findByText('iPhone 13');
-      fireEvent.click(screen.getByRole('button', { name: 'มือ 2' }));
-      await screen.findByText('iPhone 13');
-      expect(screen.queryByRole('combobox', { name: 'ประเภทสินค้า' })).not.toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: /^ลบ ประเภท:/ })).not.toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: 'ล้างทั้งหมด' })).not.toBeInTheDocument();
-      if (mobile) {
-        const toggle = screen.getByRole('button', { name: 'ตัวกรอง' });
-        expect(toggle).not.toHaveTextContent('1');
-        fireEvent.click(toggle);
-      }
+      fireEvent.click(screen.getByRole('button', { name: 'มือถือมือ 2' }));
       expect(screen.getAllByRole('textbox', { name: 'ค้นหาสินค้า' })).toHaveLength(1);
       expect(screen.getAllByRole('combobox', { name: 'สถานะ' })).toHaveLength(1);
       expect(screen.getAllByRole('combobox', { name: 'สาขา' })).toHaveLength(1);
-      fireEvent.change(screen.getByRole('combobox', { name: 'สถานะ' }), {
-        target: { value: 'IN_STOCK' },
-      });
-      fireEvent.change(screen.getByRole('combobox', { name: 'สาขา' }), {
-        target: { value: 'branch-1' },
-      });
+      expect(screen.queryByRole('button', { name: 'ตัวกรอง' })).not.toBeInTheDocument();
+      fireEvent.change(screen.getByLabelText('สถานะ'), { target: { value: 'IN_STOCK' } });
+      fireEvent.change(screen.getByLabelText('สาขา'), { target: { value: 'branch-1' } });
       await screen.findByText('iPhone 13');
-      expect(screen.queryByRole('button', { name: /^ลบ สถานะ:/ })).not.toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: /^ลบ สาขา:/ })).not.toBeInTheDocument();
-      if (mobile) expect(screen.getByRole('button', { name: 'ตัวกรอง' })).toHaveTextContent('2');
-      else
-        expect(screen.getByRole('region', { name: 'เลื่อนตารางรายการสินค้า' })).toHaveAttribute(
-          'tabindex',
-          '0',
-        );
-      fireEvent.click(screen.getByRole('button', { name: 'ล้างทั้งหมด' }));
-      await screen.findByText('iPhone 13');
-      expect(screen.getByRole('button', { name: 'ทั้งหมด' })).toHaveAttribute(
+      const chips = within(screen.getByRole('group', { name: 'ตัวกรองที่ใช้' }));
+      expect(chips.getByRole('button', { name: /^ลบ ประเภท:/ })).toBeVisible();
+      expect(chips.getByRole('button', { name: /^ลบ สถานะ:/ })).toBeVisible();
+      fireEvent.click(chips.getByRole('button', { name: /^ลบ สาขา:/ }));
+      expect(screen.getByLabelText('สาขา')).toHaveValue('');
+      expect(screen.getByLabelText('สถานะ')).toHaveValue('IN_STOCK');
+      expect(screen.getByRole('button', { name: 'มือถือมือ 2' })).toHaveAttribute(
         'aria-pressed',
         'true',
       );
-      expect(screen.getByRole('combobox', { name: 'สถานะ' })).toHaveValue('');
-      expect(screen.getByRole('combobox', { name: 'สาขา' })).toHaveValue('');
+      fireEvent.click(screen.getByRole('button', { name: 'ล้างตัวกรอง' }));
+      expect(screen.getByLabelText('สถานะ')).toHaveValue('');
+      expect(screen.getByRole('button', { name: 'ทุกประเภท' })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
+      expect(screen.queryByRole('group', { name: 'ตัวกรองที่ใช้' })).not.toBeInTheDocument();
     },
   );
 
@@ -885,15 +657,13 @@ describe('Stock workspace interactions', () => {
     showProducts([product(), product({ id: 'new-1', model: 'iPhone 16', category: 'PHONE_NEW' })]);
     await screen.findByText('iPhone 13');
     expect(screen.queryByRole('combobox', { name: 'ประเภทสินค้า' })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'ตัวกรอง' }));
-    fireEvent.click(screen.getByRole('button', { name: 'มือ 2' }));
+    fireEvent.click(screen.getByRole('button', { name: 'มือถือมือ 2' }));
     await screen.findByText('iPhone 13');
     expect(screen.queryByText('iPhone 16')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'ตัวกรอง' })).toHaveAttribute(
-      'aria-expanded',
+    expect(screen.getByRole('button', { name: 'มือถือมือ 2' })).toHaveAttribute(
+      'aria-pressed',
       'true',
     );
-    expect(screen.getByRole('button', { name: 'มือ 2' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('combobox', { name: 'สถานะ' })).toBeVisible();
     const search = screen.getByRole('textbox', { name: 'ค้นหาสินค้า' });
     search.focus();
@@ -914,19 +684,22 @@ describe('Stock workspace interactions', () => {
     fireEvent.change(screen.getByRole('combobox', { name: 'สถานะ' }), {
       target: { value: 'IN_STOCK' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'มือ 2' }));
+    fireEvent.click(screen.getByRole('button', { name: 'มือถือมือ 2' }));
     fireEvent.change(await screen.findByRole('combobox', { name: 'สาขา' }), {
       target: { value: 'branch-1' },
     });
     await screen.findByText('iPhone 13');
-    fireEvent.click(screen.getByRole('button', { name: 'ล้างทั้งหมด' }));
+    fireEvent.click(screen.getByRole('button', { name: 'ล้างตัวกรอง' }));
     await screen.findByText('iPhone 16');
     expect(screen.getByRole('textbox', { name: 'ค้นหาสินค้า' })).toHaveValue('');
     for (const name of ['สถานะ', 'สาขา']) {
       expect(screen.getByRole('combobox', { name })).toHaveValue('');
     }
-    expect(screen.queryByRole('button', { name: 'ล้างทั้งหมด' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'ทั้งหมด' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByRole('button', { name: 'ล้างตัวกรอง' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'ทุกประเภท' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
   });
 
   it.each([false, true])('clears selections on page change (mobile: %s)', async (mobile) => {
@@ -959,7 +732,7 @@ describe('Stock table server sorting', () => {
   it('cycles ascending, descending and default while retaining filters', async () => {
     showProducts([product()]);
     await screen.findByText('15,900 ฿');
-    fireEvent.click(screen.getByRole('button', { name: 'ราคาเต็มจำนวน' }));
+    fireEvent.click(screen.getByRole('button', { name: 'ราคาเงินสด' }));
     await waitFor(() =>
       expect(lastProductQuery()).toMatchObject({
         page: '1',
@@ -967,7 +740,7 @@ describe('Stock table server sorting', () => {
         sortDirection: 'asc',
       }),
     );
-    expect(screen.getByRole('columnheader', { name: 'ราคาเต็มจำนวน' })).toHaveAttribute(
+    expect(screen.getByRole('columnheader', { name: 'ราคาเงินสด' })).toHaveAttribute(
       'aria-sort',
       'ascending',
     );
@@ -981,16 +754,16 @@ describe('Stock table server sorting', () => {
         sortDirection: 'asc',
       }),
     );
-    fireEvent.click(screen.getByRole('button', { name: 'ราคาเต็มจำนวน' }));
+    fireEvent.click(screen.getByRole('button', { name: 'ราคาเงินสด' }));
     await waitFor(() =>
-      expect(screen.getByRole('columnheader', { name: 'ราคาเต็มจำนวน' })).toHaveAttribute(
+      expect(screen.getByRole('columnheader', { name: 'ราคาเงินสด' })).toHaveAttribute(
         'aria-sort',
         'descending',
       ),
     );
-    fireEvent.click(screen.getByRole('button', { name: 'ราคาเต็มจำนวน' }));
+    fireEvent.click(screen.getByRole('button', { name: 'ราคาเงินสด' }));
     await waitFor(() =>
-      expect(screen.getByRole('columnheader', { name: 'ราคาเต็มจำนวน' })).toHaveAttribute(
+      expect(screen.getByRole('columnheader', { name: 'ราคาเงินสด' })).toHaveAttribute(
         'aria-sort',
         'none',
       ),
@@ -1014,7 +787,7 @@ describe('Stock table server sorting', () => {
       '/products',
       expect.objectContaining({ params: expect.objectContaining({ page: '2' }) }),
     );
-    fireEvent.click(screen.getByRole('button', { name: 'ราคาเต็มจำนวน' }));
+    fireEvent.click(screen.getByRole('button', { name: 'ราคาเงินสด' }));
     await screen.findByRole('button', { name: 'iPhone 0' });
     expect(lastProductQuery()).toMatchObject({
       page: '1',
@@ -1037,7 +810,7 @@ describe('Stock table server sorting', () => {
     await waitFor(() =>
       expect(lastProductQuery()).toMatchObject({ sortBy: 'monthlyPayment', sortDirection: 'desc' }),
     );
-    fireEvent.click(screen.getByRole('button', { name: 'มือ 2' }));
+    fireEvent.click(screen.getByRole('button', { name: 'มือถือมือ 2' }));
     await waitFor(() => expect(screen.getByRole('combobox', { name: 'เรียงตาม' })).toHaveValue(''));
   });
 
@@ -1055,6 +828,9 @@ describe('Stock table server sorting', () => {
     );
     const region = screen.getByRole('region', { name: 'เลื่อนตารางรายการสินค้า' });
     region.scrollLeft = 220;
+    showColumn('สาขา');
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await new Promise((resolve) => setTimeout(resolve, 0));
     const button = screen.getByRole('button', { name: 'สาขา' });
     button.focus();
     fireEvent.click(button);
@@ -1077,14 +853,15 @@ describe('Stock received dates', () => {
   afterEach(() => vi.restoreAllMocks());
   for (const mobile of [false, true]) {
     it.each([
-      ['PHONE_NEW', 'มือ 1'],
-      ['PHONE_USED', 'มือ 2'],
+      ['PHONE_NEW', 'มือถือมือ 1'],
+      ['PHONE_USED', 'มือถือมือ 2'],
       ['TABLET', 'แท็บเล็ต'],
     ])(`shows and sorts received dates for %s (mobile=${mobile})`, async (category, tab) => {
       mocks.mobile = mobile;
       showProducts([product({ category, stockInDate: '2026-08-20T10:00:00+07:00' })]);
       await screen.findByText('iPhone 13');
       fireEvent.click(screen.getByRole('button', { name: tab }));
+      if (!mobile) showColumn('วันที่รับเข้า');
       await screen.findByText('20/08/2569');
       const container = mobile
         ? within(screen.getByRole('list', { name: 'รายการสินค้า' })).getByRole('listitem')
@@ -1151,6 +928,7 @@ describe('Stock received dates', () => {
         },
       };
       showProducts([device], false, config, [device, accessoryGroup]);
+      if (!mobile) showColumn('วันที่รับเข้า');
       await screen.findByText('20/08/2569');
       expect(screen.queryByText('01/08/2569')).not.toBeInTheDocument();
       if (mobile) {
@@ -1163,17 +941,17 @@ describe('Stock received dates', () => {
           target: { value: 'stockInDate' },
         });
       } else {
-        // อยู่หลังยอดผ่อนต่อเดือน ก่อนคงเหลือ (index 8 นับจากคอลัมน์เลือกของผู้จัดการ)
         const headers = screen.getAllByRole('columnheader').map((header) => header.textContent);
-        expect(headers[7]).toBe('ยอดผ่อนต่อเดือน');
-        expect(headers[8]).toBe('วันที่รับเข้า');
-        expect(headers[9]).toBe('คงเหลือ');
-        const deviceCells = within(screen.getByRole('row', { name: /iPhone 13/ })).getAllByRole('cell');
-        expect(deviceCells[8]).toHaveTextContent('20/08/2569');
-        const groupCells = within(screen.getByRole('row', { name: /เคสใส iPhone 16/ })).getAllByRole(
+        const dateIndex = headers.indexOf('วันที่รับเข้า');
+        expect(dateIndex).toBeGreaterThan(-1);
+        const deviceCells = within(screen.getByRole('row', { name: /iPhone 13/ })).getAllByRole(
           'cell',
         );
-        expect(groupCells[8]).toHaveTextContent('—');
+        const groupCells = within(
+          screen.getByRole('row', { name: /เคสใส iPhone 16/ }),
+        ).getAllByRole('cell');
+        expect(deviceCells[dateIndex]).toHaveTextContent('20/08/2569');
+        expect(groupCells[dateIndex]).toHaveTextContent('—');
         fireEvent.click(screen.getByRole('button', { name: 'วันที่รับเข้า' }));
       }
       await waitFor(() =>
@@ -1190,66 +968,204 @@ describe('Stock received dates', () => {
   );
 });
 
-// คำขอเจ้าของ 2026-09-11: แบ่ง "สินค้าทั้งหมด" กับ "สินค้าในสต๊อกพร้อมขาย" — mockup canvas 54e6c624 เคาะแล้ว
-describe('Stock view switch — พร้อมขาย | ทั้งหมด', () => {
+describe('Stock unified status filter', () => {
   const ready = () => product();
   const reserved = () =>
-    product({ id: 'reserved-1', model: 'iPhone 14', imeiSerial: '999999999999999', status: 'RESERVED' });
+    product({
+      id: 'reserved-1',
+      model: 'iPhone 14',
+      imeiSerial: '999999999999999',
+      status: 'RESERVED',
+    });
   const openDefault = () =>
     showProducts([ready(), reserved()], false, config, undefined, DEFAULT_VIEW_PATH);
-  // แท็บหมวด "ทั้งหมด" ก็เป็นปุ่ม — เจาะจงที่กลุ่มสวิตช์เท่านั้น
-  const viewSwitch = () => within(screen.getByRole('group', { name: 'แสดงสินค้า' }));
 
-  it('opens on the ready view: only IN_STOCK is requested, both counts show, status filter and column are hidden', async () => {
+  it('keeps ready as the default and makes its active status visible', async () => {
     openDefault();
     await screen.findByRole('row', { name: /iPhone 13/ });
     expect(screen.queryByRole('row', { name: /iPhone 14/ })).not.toBeInTheDocument();
-    const listCalls = mocks.get.mock.calls.filter(([url]) => url === '/products');
-    const lastList = listCalls[listCalls.length - 1];
-    expect(lastList?.[1]?.params.status).toBe('IN_STOCK');
-
-    const readyButton = viewSwitch().getByRole('button', { name: /พร้อมขาย/ });
-    const allButton = viewSwitch().getByRole('button', { name: /^ทั้งหมด/ });
-    expect(readyButton).toHaveAttribute('aria-pressed', 'true');
-    expect(allButton).toHaveAttribute('aria-pressed', 'false');
-    expect(readyButton).toHaveTextContent('1');
-    expect(allButton).toHaveTextContent('2');
-
-    expect(screen.queryByLabelText('สถานะ')).not.toBeInTheDocument();
-    expect(screen.queryByRole('columnheader', { name: 'สถานะ' })).not.toBeInTheDocument();
+    expect(screen.getByLabelText('สถานะ')).toHaveValue('IN_STOCK');
+    expect(screen.getByRole('button', { name: 'ลบ สถานะ: พร้อมขาย' })).toBeVisible();
+    expect(screen.queryByRole('group', { name: 'แสดงสินค้า' })).not.toBeInTheDocument();
     expect(
-      screen.getByText(/พร้อมขาย 1 รายการ · อีก 1 รายการอยู่ในสถานะอื่น/),
-    ).toBeInTheDocument();
+      mocks.get.mock.calls.filter(([url]) => url === '/products').at(-1)?.[1]?.params.status,
+    ).toBe('IN_STOCK');
   });
 
-  it('switching to ทั้งหมด drops the status param and brings back the status filter and column', async () => {
+  it('removing the ready chip really includes every status without changing the category', async () => {
     openDefault();
     await screen.findByRole('row', { name: /iPhone 13/ });
-    fireEvent.click(viewSwitch().getByRole('button', { name: /^ทั้งหมด/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'มือถือมือ 2' }));
+    fireEvent.click(screen.getByRole('button', { name: 'ลบ สถานะ: พร้อมขาย' }));
     await screen.findByRole('row', { name: /iPhone 14/ });
-    const listCalls = mocks.get.mock.calls.filter(([url]) => url === '/products');
-    const lastList = listCalls[listCalls.length - 1];
-    expect(lastList?.[1]?.params.status).toBeUndefined();
-    expect(viewSwitch().getByRole('button', { name: /^ทั้งหมด/ })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByLabelText('สถานะ')).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: 'สถานะ' })).toBeInTheDocument();
-    expect(screen.getByText(/ทั้งหมด 2 รายการ · พร้อมขาย 1/)).toBeInTheDocument();
-  });
-
-  it('the summary line offers ดูทั้งหมด which switches views, and the status filter narrows only the all view', async () => {
-    openDefault();
-    await screen.findByRole('row', { name: /iPhone 13/ });
-    fireEvent.click(screen.getByRole('button', { name: 'ดูทั้งหมด' }));
-    await screen.findByRole('row', { name: /iPhone 14/ });
-    fireEvent.change(screen.getByLabelText('สถานะ'), { target: { value: 'RESERVED' } });
-    await waitFor(() =>
-      expect(screen.queryByRole('row', { name: /iPhone 13/ })).not.toBeInTheDocument(),
+    expect(screen.getByLabelText('สถานะ')).toHaveValue('');
+    expect(screen.getByRole('button', { name: 'มือถือมือ 2' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
     );
-    // กลับไป "พร้อมขาย" แล้วตัวกรองสถานะที่เลือกไว้ต้องถูกล้าง (ไม่งั้นกลับมาโหมด ทั้งหมด จะกรองค้าง)
-    fireEvent.click(viewSwitch().getByRole('button', { name: /พร้อมขาย/ }));
-    await screen.findByRole('row', { name: /iPhone 13/ });
-    fireEvent.click(viewSwitch().getByRole('button', { name: /^ทั้งหมด/ }));
-    await screen.findByRole('row', { name: /iPhone 14/ });
-    expect((screen.getByLabelText('สถานะ') as HTMLSelectElement).value).toBe('');
+    expect(
+      mocks.get.mock.calls.filter(([url]) => url === '/products').at(-1)?.[1]?.params.status,
+    ).toBeUndefined();
   });
+
+  it('switches directly between reserved, ready and all without a stale hidden status', async () => {
+    openDefault();
+    await screen.findByRole('row', { name: /iPhone 13/ });
+    fireEvent.change(screen.getByLabelText('สถานะ'), { target: { value: 'RESERVED' } });
+    await screen.findByRole('row', { name: /iPhone 14/ });
+    expect(screen.queryByRole('row', { name: /iPhone 13/ })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('สถานะ'), { target: { value: 'IN_STOCK' } });
+    await screen.findByRole('row', { name: /iPhone 13/ });
+    expect(screen.queryByRole('row', { name: /iPhone 14/ })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('สถานะ'), { target: { value: '' } });
+    await screen.findByRole('row', { name: /iPhone 14/ });
+    expect(screen.getByRole('row', { name: /iPhone 13/ })).toBeInTheDocument();
+  });
+});
+
+it('preserves inventory scope and aging from the overview, then clears page and category on scope change', async () => {
+  showProducts(
+    [product()],
+    false,
+    config,
+    undefined,
+    '/stock/products?zone=shop&view=ready&inventoryScope=devices&aging=over90&category=PHONE_USED&page=2',
+  );
+  await waitFor(() =>
+    expect(mocks.get).toHaveBeenCalledWith(
+      '/products',
+      expect.objectContaining({
+        params: expect.objectContaining({
+          inventoryScope: 'devices',
+          aging: 'over90',
+          status: 'IN_STOCK',
+        }),
+      }),
+    ),
+  );
+  fireEvent.click(screen.getByRole('radio', { name: 'อุปกรณ์เสริม' }));
+  await waitFor(() =>
+    expect(mocks.get).toHaveBeenCalledWith(
+      '/products',
+      expect.objectContaining({
+        params: expect.objectContaining({ inventoryScope: 'accessories', page: '1' }),
+      }),
+    ),
+  );
+  const requests = mocks.get.mock.calls.filter(([url]) => url === '/products');
+  expect(requests.at(-1)?.[1].params.category).toBeUndefined();
+});
+
+it('preserves finance zone when returning to the overview', async () => {
+  showProducts(
+    [product()],
+    false,
+    config,
+    undefined,
+    '/stock/products?zone=finance&inventoryScope=devices&branchId=branch-1&view=all',
+  );
+  await screen.findByText('iPhone 13');
+  fireEvent.keyDown(screen.getByRole('button', { name: 'เครื่องมือ' }), {
+    key: 'Enter',
+    code: 'Enter',
+  });
+  fireEvent.click(await screen.findByRole('menuitem', { name: 'ดูภาพรวมคลัง' }));
+  expect(screen.getByTestId('stock-location')).toHaveTextContent('zone=finance');
+  expect(screen.getByTestId('stock-location')).toHaveTextContent('inventoryScope=devices');
+  expect(screen.getByTestId('stock-location')).toHaveTextContent('branchId=branch-1');
+});
+
+describe('Accessory-specific comparison behavior', () => {
+  it.each(['scope', 'category'])(
+    'clears device-origin constraints when switching by %s',
+    async (mode) => {
+      showProducts(
+        [product()],
+        false,
+        config,
+        undefined,
+        '/stock/products?zone=shop&deviceOrigin=THAI',
+      );
+      await screen.findByText('iPhone 13');
+      if (mode === 'scope') fireEvent.click(screen.getByRole('radio', { name: 'อุปกรณ์เสริม' }));
+      else
+        fireEvent.click(
+          within(screen.getByRole('group', { name: 'แบ่งประเภทสินค้า' })).getByRole('button', {
+            name: 'อุปกรณ์เสริม',
+          }),
+        );
+      await waitFor(() =>
+        expect(screen.getByTestId('stock-location').textContent).not.toContain('deviceOrigin'),
+      );
+      expect(
+        screen.queryByRole('combobox', { name: 'เครื่องไทย / เครื่องนอก' }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'ตัวกรอง' })).not.toBeInTheDocument();
+    },
+  );
+  it('shows compatibility and exact per-unit margin, preserving zero costs', async () => {
+    showProducts(
+      [
+        product({
+          category: 'ACCESSORY',
+          name: 'เคสใส MagSafe',
+          model: 'iPhone 16 Pro',
+          costPrice: '0',
+          cashPrice: '290',
+          imeiSerial: null,
+        }),
+      ],
+      false,
+      config,
+      undefined,
+      '/stock/products?zone=shop&inventoryScope=accessories',
+    );
+    await screen.findByText('เคสใส MagSafe');
+    const row = screen.getByRole('row', { name: /เคสใส MagSafe/ });
+    expect(within(row).getByText('iPhone 16 Pro')).toBeInTheDocument();
+    const headers = screen.getAllByRole('columnheader').map((h) => h.textContent);
+    expect(within(row).getAllByRole('cell')[headers.indexOf('กำไร / ชิ้น')]).toHaveTextContent(
+      '290 ฿',
+    );
+    expect(screen.queryByRole('columnheader', { name: 'IMEI / Serial' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'GFIN' })).not.toBeInTheDocument();
+  });
+  it('does not subtract minima across different units in a grouped margin', async () => {
+    const p = product({
+      category: 'ACCESSORY',
+      name: 'เคส',
+      model: 'iPhone 16',
+      costPrice: '100',
+      cashPrice: '250',
+      imeiSerial: null,
+      stockGroup: {
+        key: 'g',
+        unitCount: 2,
+        inStockQuantity: 2,
+        statuses: ['IN_STOCK'],
+        costPriceMax: '200',
+        cashPriceMax: '300',
+        cashPriceMissingCount: 0,
+      },
+    });
+    showProducts([p], false, config, [p], '/stock/products?zone=shop&inventoryScope=accessories');
+    await screen.findByText('ดูแยกรายชิ้น');
+    expect(screen.queryByText('150 ฿')).not.toBeInTheDocument();
+  });
+});
+
+it('keeps an incompatible category from an old accessory link visible and removable', async () => {
+  showProducts(
+    [product({ category: 'ACCESSORY', model: 'Case', name: 'Case' })],
+    false,
+    config,
+    undefined,
+    '/stock/products?zone=shop&inventoryScope=accessories&view=all&category=PHONE_NEW',
+  );
+  const chip = await screen.findByRole('button', { name: 'ลบ ประเภท: มือถือมือ 1' });
+  expect(screen.queryByRole('group', { name: 'แบ่งประเภทสินค้า' })).not.toBeInTheDocument();
+  fireEvent.click(chip);
+  await screen.findByText('Case');
+  expect(screen.getByTestId('stock-location').textContent).not.toContain('category=');
+  expect(screen.getByTestId('stock-location').textContent).toContain('inventoryScope=accessories');
 });

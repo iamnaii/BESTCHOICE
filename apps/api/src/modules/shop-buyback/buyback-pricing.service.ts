@@ -1,3 +1,4 @@
+import { sellExchangeBonusAmount } from '@installment/shared';
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type { BuybackPricingMode } from './reference-pricing.types';
@@ -87,13 +88,9 @@ export class BuybackPricingService {
     return 'D';
   }
 
-  /**
-   * ราคาเทิร์น = เงินสด × (1 + โบนัส%) ปัดลงหลักสิบ (spec /sell §3)
-   * ห้ามสร้าง Decimal จาก float (1 + pct/100) — คูณ/หารด้วย 100 ตรงๆ
-   */
-  applyExchangeBonus(cash: Prisma.Decimal, bonusPct: Prisma.Decimal): Prisma.Decimal {
-    const HUNDRED = new Prisma.Decimal(100);
-    const raw = cash.mul(HUNDRED.plus(bonusPct)).div(HUNDRED);
-    return Prisma.Decimal.max(raw.div(10).floor().mul(10), new Prisma.Decimal(0));
+  /** Fixed credit bonus on the final cash valuation; preserve cents. */
+  applyExchangeBonus(cash: Prisma.Decimal): Prisma.Decimal {
+    const base = Prisma.Decimal.max(cash, 0);
+    return base.plus(sellExchangeBonusAmount(base.toString()));
   }
 }

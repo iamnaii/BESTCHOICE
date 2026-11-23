@@ -167,6 +167,7 @@ export class ContractLifecycleService {
               vatAmount: quote.vatAmount,
               vatPct: quote.effectiveVatPct,
               monthlyPayment: quote.monthlyPayment,
+              installmentRoundingPolicy: quote.installmentRoundingPolicy,
               status: 'DRAFT',
               workflowStatus: 'CREATING',
               notes: dto.notes,
@@ -457,7 +458,8 @@ export class ContractLifecycleService {
         sellingPrice: dto.sellingPrice ?? Number(contract.sellingPrice), downPayment: dto.downPayment ?? Number(contract.downPayment),
         totalMonths: dto.totalMonths ?? contract.totalMonths, paymentDueDay: dto.paymentDueDay ?? contract.paymentDueDay ?? undefined,
         interestRate: dto.interestRate ?? Number(contract.interestRate),
-      }, { id: userId, role: user?.role ?? 'SALES', branchId: user?.branchId }, tx);
+      }, { id: userId, role: user?.role ?? 'SALES', branchId: user?.branchId }, tx,
+      { sheetPricing: contract.installmentRoundingPolicy === 'SHEET_WHOLE_BAHT' });
       const payments = contractQuotePayments(quote, id);
       await assertContractCreditApproval(tx, { customerId: contract.customerId, contractId: id,
         monthlyAmounts: payments.map(row => Number(row.amountDue)), paymentDueDay: dto.paymentDueDay ?? contract.paymentDueDay,
@@ -467,6 +469,7 @@ export class ContractLifecycleService {
         interestRate: quote.interestRate, interestTotal: quote.interestTotal, financedAmount: quote.principal,
         storeCommission: quote.storeCommission, vatAmount: quote.vatAmount, vatPct: quote.effectiveVatPct,
         monthlyPayment: quote.monthlyPayment, interestConfigId: quote.configId,
+        installmentRoundingPolicy: quote.installmentRoundingPolicy,
         paymentDueDay: dto.paymentDueDay ?? contract.paymentDueDay,
         ...(dto.notes !== undefined ? { notes: dto.notes } : {}),
       } });

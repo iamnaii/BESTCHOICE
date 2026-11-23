@@ -9,6 +9,7 @@ import {
 } from '../../modules/products/product-hold.util';
 import { findPricingTemplate, positiveDecimal } from '../../utils/pricing-template-match.util';
 import { templateKeyOf } from '../../utils/product-finance-price.util';
+import { normalizeStorage } from '../../utils/device-query-normalize.util';
 import {
   CASH_LABEL,
   FINANCE_LABEL,
@@ -199,8 +200,9 @@ async function evaluateStock(db: Db, item: PlannedStockItem): Promise<PlannedSto
   };
   let reason: string | null = null;
   if (!validBranch(branch)) reason = 'INVALID_SHOP_BRANCH';
+  const master = decision?.pricing.mode === 'MASTER_INSTALLMENTS' ? decision.pricing : null;
   const template =
-    decision?.pricing.mode === 'TEMPLATE'
+    decision?.pricing.mode === 'TEMPLATE' || master
       ? await findPricingTemplate(
           db,
           templateKeyOf({ ...payload, warrantyExpired: null, warrantyExpireDate: null }),
@@ -220,10 +222,14 @@ async function evaluateStock(db: Db, item: PlannedStockItem): Promise<PlannedSto
     ...(supplierLink ? { supplierLink } : {}),
     companyId: branch?.companyId ?? null,
     templateId: template?.id ?? null,
-    cashPrice: explicit ? explicit.cashPrice : (templateCash?.toFixed(2) ?? null),
+    cashPrice: master
+      ? master.cashPrice
+      : explicit
+        ? explicit.cashPrice
+        : (templateCash?.toFixed(2) ?? null),
     installmentPrice: explicit
       ? explicit.installmentPrice
-      : templateCash
+      : master || templateCash
         ? (positiveDecimal(template?.installmentBestchoicePrice)?.toFixed(2) ?? null)
         : null,
     financePrice: explicit
@@ -238,7 +244,10 @@ async function evaluateStock(db: Db, item: PlannedStockItem): Promise<PlannedSto
   if (!decision || !['IN_STOCK', 'QC_PENDING'].includes(decision.desiredStatus))
     reason = 'UNRESOLVED_STOCK_STATUS';
   else if (
-    !['EXPLICIT', 'TEMPLATE'].includes(decision.pricing.mode) ||
+    !['EXPLICIT', 'TEMPLATE', 'MASTER_INSTALLMENTS'].includes(decision.pricing.mode) ||
+    (master &&
+      master.cashPrice !== null &&
+      (typeof master.cashPrice !== 'string' || !/^\d{1,10}(\.\d{1,2})?$/.test(master.cashPrice))) ||
     (explicit &&
       [explicit.cashPrice, explicit.installmentPrice, explicit.financePrice].some(
         (v) => v !== null && (typeof v !== 'string' || !/^\d{1,10}(\.\d{1,2})?$/.test(v)),
@@ -251,6 +260,23 @@ async function evaluateStock(db: Db, item: PlannedStockItem): Promise<PlannedSto
     (raw.kind === 'ACCESSORY' && decision.deviceOrigin !== null)
   )
     reason = 'INVALID_DEVICE_ORIGIN';
+  else if (
+    master &&
+    (!['PHONE_NEW', 'PHONE_USED'].includes(raw.category) ||
+      !template ||
+      !raw.storage ||
+      normalizeStorage(template.storage) !== normalizeStorage(raw.storage) ||
+      !positiveDecimal(template.installmentBestchoicePrice) ||
+      !positiveDecimal(template.installmentFinancePrice))
+  )
+    reason = 'EXACT_INSTALLMENT_TEMPLATE_REQUIRED';
+  else if (
+    payload.desiredStatus === 'IN_STOCK' &&
+    ['PHONE_NEW', 'PHONE_USED'].includes(raw.category) &&
+    !payload.deviceOrigin &&
+    (positiveDecimal(payload.installmentPrice) || positiveDecimal(payload.financePrice))
+  )
+    reason = 'DEVICE_ORIGIN_REQUIRED_FOR_INSTALLMENTS';
   else if (!validAccessoryCompatibility(raw, decision)) reason = 'INVALID_ACCESSORY_COMPATIBILITY';
   else if (decision.zeroPriceGift !== undefined && !isReviewedZeroPriceGift(raw, decision))
     reason = 'INVALID_ZERO_PRICE_GIFT';

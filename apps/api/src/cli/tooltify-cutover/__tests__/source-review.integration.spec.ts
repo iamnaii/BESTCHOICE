@@ -303,7 +303,7 @@ it.each([
                   ...stockEvidence,
                   action: 'RESOLVE_STOCK',
                   supplier: { mode: 'NO_SUPPLIER' },
-                  deviceOrigin: null,
+                  deviceOrigin: 'THAI',
                   desiredStatus: 'IN_STOCK',
                   pricing: { mode: 'TEMPLATE' },
                 },

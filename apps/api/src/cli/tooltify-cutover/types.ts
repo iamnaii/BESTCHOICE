@@ -106,6 +106,8 @@ export type StockPriceColumns = Pick<
 >;
 export type StockPricingDecision =
   | ({ mode: 'EXPLICIT' } & StockPriceColumns)
+  // Preserve evidenced intake cash; resolve both installment bases from the current exact master.
+  | { mode: 'MASTER_INSTALLMENTS'; cashPrice: string | null }
   | { mode: 'TEMPLATE' };
 export type SourceDecisions = { entries: SourceDecision[] };
 

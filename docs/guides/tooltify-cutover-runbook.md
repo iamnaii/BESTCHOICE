@@ -179,3 +179,55 @@ The supplier context must include `workbookPath`, pointing to the unchanged orig
 Supplier reversal uses the same closed-admission/sole-backend handshake as stock reversal, with a READ COMMITTED transaction so it observes admission closing after the reported PID. Reverse stock first: an owned, unchanged product may release its original receipt-bound supplier FK when it is archived; the immutable stock receipt retains the supplier association. Unrelated archived/live products and later supplier changes remain blockers. No historical purchase or accounting document is synthesized.
 
 An owner may explicitly leave a supplier phone blank: keep the phone cell blank and record the exact decision `เจ้าของยืนยันให้เว้นเบอร์โทรว่าง` on its own line in that supplier's notes. The original workbook SHA and full parsed input remain required at plan/apply. Only this evidenced blank maps to the existing Supplier phone field's empty string; other missing phones remain pending. Do not insert a dummy phone or infer the decision from a missing cell.
+
+## Daily stock refresh: keep installment quotes aligned with the master
+
+For the owner-reviewed Tooltify store `TOOLTIFY_3012`, the November 2026 migration
+uses **THAI** for phones whose source export omits origin. Keep the owner's
+confirmation as an evidence file. This is a store-specific migration policy,
+not an inference that every Apple phone is Thai. Explicit source `IMPORTED`
+stays imported; contradictory source and reviewed origins must be resolved.
+
+After preparing the new snapshot, intake cash prices, supplier decisions and
+exclusions for already imported physical units, run this file-only preparation
+command from the repository root. Use a **new output directory for every review**:
+
+```sh
+./node_modules/.bin/tsx --tsconfig apps/api/tsconfig.json \
+  apps/api/src/cli/prepare-tooltify-stock-pricing.cli.ts \
+  --manifest /absolute/path/to/new-round/manifest.json \
+  --out-dir /absolute/path/to/new-round/master-reviewed \
+  --store-key TOOLTIFY_3012 --default-origin THAI \
+  --origin-evidence /absolute/path/to/owner-origin-confirmation.txt
+```
+
+The output retains evidenced cash and supplier links, fills only missing phone
+origins, and uses `pricing: { mode: "MASTER_INSTALLMENTS", cashPrice: "…" }`.
+It copies the origin evidence and binds its SHA-256 into the hashed decisions.
+It never changes a database, existing review directory, QC decision or accessory.
+Use the **output manifest** for the existing cutover dry-run/apply commands above.
+Do not run a previous checkout or dated `.tmp/prepare-stock.ts` directly for new
+production imports; those predate the origin guard and this preparation step.
+
+At dry-run, `MASTER_INSTALLMENTS` selects current active BESTCHOICE/GFIN bases for
+the exact model, category and normalized capacity, using the reviewed origin.
+Missing capacity, missing/zero installment bases or an unknown origin on a ready
+financed phone blocks import. Cash-only phones and QC remain available for review.
+The selected master row is bound to the plan: a change before apply requires a
+fresh dry-run. Existing same-batch replay uses immutable accepted receipts; a new
+batch with conflicting prices/origins stops instead of overwriting existing stock.
+
+Before accepting a daily refresh, compare **down payment, monthly amount and term**
+as well as base prices with the current approved master. For the Thai used-phone
+sheet approved on 23 Nov 2026, examples are iPhone 14 128GB: BESTCHOICE 1,800 /
+1,411 × 12 and GFIN 0 / 2,000 × 12; iPhone 17 256GB: BESTCHOICE 3,800 / 3,023 × 12
+and GFIN 3,900 / 3,060 × 15. Different origins, terms, or subsequently approved
+master/rate changes legitimately change quotes; do not freeze these examples as
+universal defaults. The shared quote regression and cutover integration tests
+cover persisted origin, these calculations, changed-master rejection and replay.
+
+Corrections after an import (such as the 23 Nov origin repair) have their own
+normal product PATCH audit. **Never rewrite an old import receipt fingerprint**
+to conceal an edited target. Keep the original import verification as historical
+evidence and record the correction separately. Later daily snapshots exclude
+already imported physical units after reconciliation, preserving legitimate edits.

@@ -1,4 +1,8 @@
 import { UseGuards, UseInterceptors } from '@nestjs/common';
+import { EmployeeAccessController } from '../../src/modules/employee-access/employee-access.controller';
+import { EmployeeAccessService } from '../../src/modules/employee-access/employee-access.service';
+import { EmployeeAccessConsoleService } from '../../src/modules/employee-access/employee-access-console.service';
+import { seedPreviewEmployeeAccess } from './preview-employee-access';
 import { ContractEvidenceCaptureInterceptor, registerContractEvidenceCapture } from '../../src/modules/contracts/services/contract-evidence-capture-context';
 import { ImportedSalesService } from '../../src/modules/imported-sales/imported-sales.service';
 import { QueryImportedSalesDto } from '../../src/modules/imported-sales/dto/query-imported-sales.dto';
@@ -610,6 +614,7 @@ async function main() {
     });
   }
   await seedPreviewPortfolio(db, actor.id);
+  await seedPreviewEmployeeAccess(db);
   const salesFixture = await seedPreviewSales(db, actor);
   await seedPreviewExternalFinanceSale(db, actor.id);
   await db.systemConfig.upsert({where:{key:'chat_analytics_v2_enabled'},create:{key:'chat_analytics_v2_enabled',value:'true'},update:{value:'true',deletedAt:null}});
@@ -633,7 +638,7 @@ async function main() {
       OcrController,
       CustomerCreditCheckController,
       GlobalCreditCheckController,
-      PreviewController,
+      PreviewController, EmployeeAccessController,
     ],
     providers: [{ provide: ChatDispatchService, useValue: dispatch }, GeneratedDocumentsService, AccessGeneratedDocumentsBoundaries, ContractSignaturesAccessService, AccessSignaturesBoundaries, AppointmentConfirmationService, StoreAppointmentsService, AppointmentScheduleService, AppointmentLinksService, ChatLibraryService, ChatLibraryDeliveryService, { provide: MessageRouterService, useValue: library.router }, ChatAnalyticsV2Service, ChatSalesAttributionService,
       ChatServiceRequestService, ChatServiceCaseLinkService, ...afterSales.providers,
@@ -642,6 +647,7 @@ async function main() {
       ...tradeInProviders(db, storageForPreview as StorageService),
       ProductPhotosService, DocumentsService, ContractDocumentsService, ContractFileAccessGuard,
       AccessContractFilesBoundaries, AccessPartySourceService, AccessProcurementSourceService, AccessDocumentTemplateBoundaries, AccessResourceService, AccessSnapshotService,
+      EmployeeAccessService, EmployeeAccessConsoleService,
       { provide: SettingsService, useValue: { findAll: () => db.systemConfig.findMany() } },
       { provide: NotificationsService, useValue: { send: () => { throw new Error('Document preview cannot send notifications'); } } },
       RoomCreditService,
@@ -732,6 +738,7 @@ async function main() {
       return res.json({ data: [], total: 0 });
     if (
       (req.method === 'GET' && ['/api/imported-sales', '/api/imported-sales/summary'].includes(path)) ||
+      /^\/api\/employee-access(?:\/|$)/.test(path) ||
       /^\/api\/(store-appointments|store-appointment-links|store-appointments-public)(\/|$)/.test(path) ||
       /^\/api\/(todos|trade-ins|contacts|promotions|gfin-config|documents|preview|auth\/me|credit-checks|ocr\/bank-statement|products|contracts|interest-configs|sales|bookings)/.test(path) || path.startsWith('/api/chat-analytics/v2/') || path.startsWith('/api/staff-chat/facebook-comments') || path.startsWith('/api/staff-chat/service-requests/') || path.startsWith('/api/after-sales') || path === '/api/customers' || path === '/api/users' ||
       /^\/api\/customers\/(search|[^/]+(?:\/credit-check.*|\/blacklist|\/detail|\/journey(?:\/summary)?)?)$/.test(path) ||

@@ -1,5 +1,6 @@
-import { ForbiddenException, BadRequestException, ConflictException } from '@nestjs/common';
+import { ForbiddenException, BadRequestException, ConflictException, ValidationPipe } from '@nestjs/common';
 import { EmployeeAccessService } from './employee-access.service';
+import { ReplaceAccessAssignmentsDto, UpdateAccessPositionDto } from './employee-access.dto';
 import { AccessSnapshotService } from './access-snapshot.service';
 
 describe('employee access persistence boundary', () => {
@@ -113,5 +114,34 @@ describe('employee access persistence boundary', () => {
         assignments: [{ positionId: 'p', ...assignment } as any],
       }),
     ).rejects.toThrow(BadRequestException);
+  });
+});
+
+describe('employee access review request validation', () => {
+  const pipe = new ValidationPipe({
+    transform: true,
+    whitelist: true,
+    transformOptions: { enableImplicitConversion: true },
+  });
+  const positionId = '0d883600-a8e7-4422-9a20-afe46abaa8d3';
+  const assignment = { positionId, company: 'SHOP', scope: 'COMPANY', branchIds: [] };
+
+  it('accepts both zero-valued and omitted expectations', async () => {
+    const position = { expectedRevision: 3, expectedAffectedEmployeeCount: 0 };
+    const assignments = { expectedRevision: 4, assignments: [assignment, { ...assignment, expectedPositionRevision: 0 }] };
+    await expect(pipe.transform(position, { type: 'body', metatype: UpdateAccessPositionDto })).resolves.toEqual(position);
+    await expect(pipe.transform(assignments, { type: 'body', metatype: ReplaceAccessAssignmentsDto })).resolves.toEqual(assignments);
+    await expect(pipe.transform({ expectedRevision: 3 }, { type: 'body', metatype: UpdateAccessPositionDto })).resolves.toEqual({ expectedRevision: 3 });
+  });
+
+  it.each([-1, 1.5, '3', '', false, null])('rejects an invalid review expectation %j', async (value) => {
+    await expect(pipe.transform(
+      { expectedRevision: 3, expectedAffectedEmployeeCount: value },
+      { type: 'body', metatype: UpdateAccessPositionDto },
+    )).rejects.toBeInstanceOf(BadRequestException);
+    await expect(pipe.transform(
+      { expectedRevision: 4, assignments: [{ ...assignment, expectedPositionRevision: value }] },
+      { type: 'body', metatype: ReplaceAccessAssignmentsDto },
+    )).rejects.toBeInstanceOf(BadRequestException);
   });
 });

@@ -1,4 +1,4 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayUnique,
@@ -13,6 +13,7 @@ import {
   Matches,
   Max,
   Min,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 
@@ -33,6 +34,11 @@ export class CreateAccessPositionDto {
 }
 export class UpdateAccessPositionDto {
   @IsInt() @Min(0, { message: 'กรุณาระบุรุ่นข้อมูลที่กำลังแก้ไข' }) expectedRevision!: number;
+  @Transform(({ obj, key }) => obj[key], { toClassOnly: true })
+  @ValidateIf((_, value) => value !== undefined)
+  @IsInt({ message: 'จำนวนพนักงานที่ตรวจสอบต้องเป็นจำนวนเต็ม' })
+  @Min(0, { message: 'จำนวนพนักงานที่ตรวจสอบต้องไม่ติดลบ' })
+  expectedAffectedEmployeeCount?: number;
   @IsOptional() @IsString() @Length(1, 120) name?: string;
   @IsOptional()
   @IsArray()
@@ -45,6 +51,11 @@ export class UpdateAccessPositionDto {
 }
 export class AccessAssignmentDto {
   @IsUUID() positionId!: string;
+  @Transform(({ obj, key }) => obj[key], { toClassOnly: true })
+  @ValidateIf((_, value) => value !== undefined)
+  @IsInt({ message: 'รุ่นข้อมูลตำแหน่งที่ตรวจสอบต้องเป็นจำนวนเต็ม' })
+  @Min(0, { message: 'รุ่นข้อมูลตำแหน่งที่ตรวจสอบต้องไม่ติดลบ' })
+  expectedPositionRevision?: number;
   @IsIn(['SHOP', 'FINANCE'], { message: 'กรุณาเลือกงานหน้าร้านหรืองานการเงิน' }) company!:
     | 'SHOP'
     | 'FINANCE';

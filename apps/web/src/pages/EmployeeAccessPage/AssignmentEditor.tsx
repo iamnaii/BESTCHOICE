@@ -21,7 +21,7 @@ import { AccessEditorDialog } from './AccessEditorDialog';
 import { AccessReviewDialog, PermissionChanges, SaveIssue } from './AccessReviewDialog';
 import { AssignmentFields } from './AssignmentFields';
 import { AssignmentList } from './AssignmentList';
-import { MigrationReview } from './MigrationReview';
+import { hasPersonalOverrides, MigrationReview } from './MigrationReview';
 import {
   accessQueries,
   accessWrites,
@@ -30,6 +30,7 @@ import {
   type AccessEmployee,
   type AccessPosition,
   type MigrationPreview,
+  type ReviewedAssignment,
 } from './api';
 import {
   assignmentKey,
@@ -44,22 +45,27 @@ interface EditorAccount {
   snapshot: AccessSnapshot;
 }
 
+interface AssignmentReview {
+  proposalKey: string;
+  summaryKey: string | null;
+  assignments: ReviewedAssignment[];
+}
+
 const permissionLabels = new Map(PERMISSION_CATALOG.map(({ key, label }) => [key, label]));
 const permissionLabel = (key: PermissionKey) => permissionLabels.get(key) ?? key;
 
-function legacyReviewKey(preview: MigrationPreview | undefined) {
+function overrideReviewKey(preview: MigrationPreview | undefined) {
   if (!preview) return null;
   const { canReverseOverride, accounting_permissions, payment_approval_permissions } = preview.personalGrants;
   return JSON.stringify([
     preview.accessRevision,
     preview.managed,
-    preview.role,
-    preview.branchId,
-    preview.proposedCompanies,
+    preview.isActive,
+    preview.isOwner,
     canReverseOverride,
     accounting_permissions,
     payment_approval_permissions,
-    preview.warnings,
+    preview.managed ? null : [preview.role, preview.branchId, preview.proposedCompanies, preview.warnings],
   ]);
 }
 
@@ -81,22 +87,41 @@ export function AssignmentEditor({
     savedAssignments(initial.employee).map((input, key) => ({ key, input })),
   );
   const nextKey = useRef(rows.length);
-  const [reviewed, setReviewed] = useState<string | null>(null);
+  const [reviewed, setReviewed] = useState<AssignmentReview | null>(null);
   const [showErrors, setShowErrors] = useState(false);
-  const [verifyingLegacy, setVerifyingLegacy] = useState(false);
+  const [verifyingOverrides, setVerifyingOverrides] = useState(false);
+  const [summaryChangedOnSave, setSummaryChangedOnSave] = useState(false);
   const [reloading, setReloading] = useState(false);
   const [reloadError, setReloadError] = useState<unknown>(null);
   const replace = useAccessWrite(accessWrites.replaceAssignments);
   const { employee, snapshot } = account;
   const isLegacy = !snapshot.managed;
-  const migration = useQuery({ ...accessQueries.migration, enabled: isLegacy });
-  const legacy = migration.data?.find(({ id }) => employee.id === id);
-  const migrationKey = legacyReviewKey(legacy);
+  const migration = useQuery({ ...accessQueries.migration, staleTime: 0 });
+  const overridePreview = migration.data?.find(({ id }) => employee.id === id);
+  const summaryKey = overrideReviewKey(overridePreview);
+  const freshPreview =
+    overridePreview &&
+    overridePreview.accessRevision === snapshot.revision &&
+    overridePreview.managed === snapshot.managed &&
+    overridePreview.isActive &&
+    !overridePreview.isOwner;
+  const summaryChanged =
+    summaryChangedOnSave || (reviewed?.summaryKey != null && reviewed.summaryKey !== summaryKey);
+
   const assignments = rows.map(({ input }) => input);
   const proposed = proposedGrants(assignments, positions);
+  const revisions = new Map(positions.map(({ id, revision }) => [id, revision]));
+  const writeAssignments = assignments.flatMap((assignment) => {
+    const expectedPositionRevision = revisions.get(assignment.positionId);
+    return expectedPositionRevision === undefined ? [] : [{ ...assignment, expectedPositionRevision }];
+  });
   const problems = assignmentProblems(assignments, positions, context);
+  if (!problems.length && writeAssignments.length !== assignments.length) {
+    problems.push('ไม่พบรุ่นข้อมูลตำแหน่ง กรุณาโหลดรายการตำแหน่งใหม่');
+  }
   const conflict = isAccessConflict(replace.error);
-  const proposalKey = JSON.stringify([proposed, problems]);
+  const proposalKey = JSON.stringify([proposed, writeAssignments, problems]);
+  const proposalChanged = reviewed !== null && reviewed.proposalKey !== proposalKey;
   const currentPermissions = snapshot.grants.flatMap((grant) => [...grant.permissions]);
   const proposedPermissions = proposed.flatMap((grant) => [...grant.permissions]);
   const activeKeys = new Set(snapshot.grants.map(assignmentKey));
@@ -123,7 +148,7 @@ export function AssignmentEditor({
       setReviewed(null);
       setShowErrors(false);
       replace.reset();
-      if (!latest.snapshot.managed) void migration.refetch();
+      void migration.refetch();
     } catch (error) {
       setReloadError(error);
     } finally {
@@ -135,7 +160,8 @@ export function AssignmentEditor({
     setShowErrors(true);
     if (problems.length) return;
     replace.reset();
-    setReviewed(proposalKey);
+    setSummaryChangedOnSave(false);
+    setReviewed({ proposalKey, summaryKey, assignments: writeAssignments });
   }
 
   function addAssignment() {
@@ -149,38 +175,49 @@ export function AssignmentEditor({
   }
 
   async function save() {
+    if (!reviewed || proposalChanged || !freshPreview) return;
+    setVerifyingOverrides(true);
     try {
-      if (isLegacy) {
-        setVerifyingLegacy(true);
-        const latest = await migration.refetch({ throwOnError: true });
-        const current = latest.data?.find(({ id }) => id === employee.id);
-        if (legacyReviewKey(current) !== migrationKey) return;
+      const latest = await migration.refetch({ throwOnError: true });
+      const current = latest.data?.find(({ id }) => id === employee.id);
+      if (overrideReviewKey(current) !== summaryKey) {
+        setSummaryChangedOnSave(true);
+        return;
       }
-      await replace.mutateAsync({ id: employee.id, expectedRevision: snapshot.revision, assignments });
+      await replace.mutateAsync({
+        id: employee.id,
+        expectedRevision: snapshot.revision,
+        assignments: reviewed.assignments,
+      });
       toast.success('บันทึกการมอบหมายแล้ว');
       onClose();
     } catch {
       // Query and mutation errors appear in the open review.
     } finally {
-      setVerifyingLegacy(false);
+      setVerifyingOverrides(false);
     }
   }
 
-  const freshLegacyPreview = legacy && legacy.accessRevision === snapshot.revision && !legacy.managed;
+  let acknowledgement: string | undefined;
+  if (freshPreview) {
+    if (isLegacy) {
+      acknowledgement = 'รับทราบว่าจะเริ่มใช้สิทธิ์ตามตำแหน่งทันทีและลบสิทธิ์รายบุคคลเดิม';
+    } else if (hasPersonalOverrides(overridePreview)) {
+      acknowledgement = 'รับทราบว่าระบบจะลบสิทธิ์รายบุคคลที่แสดง';
+    } else if (summaryChanged) {
+      acknowledgement = 'รับทราบข้อมูลสิทธิ์รายบุคคลล่าสุด';
+    }
+  }
+
   return (
-    <AccessEditorDialog busy={replace.isPending || verifyingLegacy || reloading} onClose={onClose}>
+    <AccessEditorDialog busy={replace.isPending || verifyingOverrides || reloading} onClose={onClose}>
       {reviewed !== null ? (
         <AccessReviewDialog
-          key={JSON.stringify([proposalKey, migrationKey])}
+          key={JSON.stringify([proposalKey, summaryKey])}
           description={`ตรวจสอบการมอบหมายของ ${employee.name} ก่อนบันทึก`}
-          acknowledgement={
-            isLegacy ? 'รับทราบว่าจะเริ่มใช้สิทธิ์ตามตำแหน่งทันทีและลบสิทธิ์รายบุคคลเดิม' : undefined
-          }
-          confirmDisabled={
-            reviewed !== proposalKey ||
-            (isLegacy && (migration.isFetching || migration.isError || !freshLegacyPreview))
-          }
-          pending={replace.isPending || verifyingLegacy}
+          acknowledgement={acknowledgement}
+          confirmDisabled={proposalChanged || migration.isFetching || migration.isError || !freshPreview}
+          pending={replace.isPending || verifyingOverrides}
           error={replace.error}
           reloading={reloading}
           onReload={reload}
@@ -190,7 +227,7 @@ export function AssignmentEditor({
           }}
           onConfirm={() => void save()}
         >
-          {reviewed !== proposalKey && (
+          {proposalChanged && (
             <p role="alert" className="rounded-lg bg-warning/10 p-3 text-warning-strong">
               ตำแหน่งหรือสาขามีการเปลี่ยนแปลง กรุณากลับไปตรวจสอบร่างอีกครั้ง
             </p>
@@ -205,25 +242,30 @@ export function AssignmentEditor({
               ร่างนี้ไม่มีสิทธิ์จากตำแหน่ง พนักงานอาจเข้าไม่ถึงงานที่ใช้ระบบสิทธิ์นี้
             </p>
           )}
-          {isLegacy && (
-            <QueryBoundary
-              isLoading={migration.isPending}
-              isError={migration.isError}
-              error={migration.error}
-              onRetry={() => void migration.refetch()}
-            >
-              {freshLegacyPreview ? (
-                <MigrationReview preview={legacy} branches={context.branches} />
-              ) : (
-                <div role="alert" className="space-y-2">
-                  <p>ข้อมูลสิทธิ์เดิมเปลี่ยนแปลงหรือไม่พบข้อมูล กรุณาโหลดข้อมูลล่าสุดเพื่อตรวจสอบอีกครั้ง</p>
+          {summaryChanged && (
+            <p role="status" className="rounded-lg bg-warning/10 p-3 text-warning-strong">
+              ข้อมูลสิทธิ์รายบุคคลเปลี่ยนแปลง กรุณาตรวจสอบและรับทราบข้อมูลล่าสุด
+            </p>
+          )}
+          <QueryBoundary
+            isLoading={migration.isPending}
+            isError={migration.isError}
+            error={migration.error}
+            onRetry={() => void migration.refetch()}
+          >
+            {freshPreview ? (
+              <MigrationReview preview={overridePreview} branches={context.branches} />
+            ) : (
+              <div role="alert" className="space-y-2">
+                <p>ข้อมูลสิทธิ์พนักงานเปลี่ยนแปลงหรือไม่พบข้อมูล กรุณาโหลดข้อมูลล่าสุดเพื่อตรวจสอบอีกครั้ง</p>
+                {!conflict && (
                   <Button variant="outline" disabled={reloading} onClick={() => void reload()}>
                     โหลดข้อมูลล่าสุด
                   </Button>
-                </div>
-              )}
-            </QueryBoundary>
-          )}
+                )}
+              </div>
+            )}
+          </QueryBoundary>
           <div className="grid gap-3 sm:grid-cols-2">
             <section aria-label="การมอบหมายปัจจุบัน" className="min-w-0 space-y-2">
               <h3 className="font-medium">การมอบหมายปัจจุบัน</h3>

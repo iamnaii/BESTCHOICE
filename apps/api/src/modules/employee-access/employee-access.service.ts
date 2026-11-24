@@ -227,6 +227,14 @@ export class EmployeeAccessService {
       )
         throw new BadRequestException('สถานะตำแหน่งไม่ถูกต้อง');
       const affectedEmployeeCount = await this.affectedCount(tx, id);
+      if (dto.expectedAffectedEmployeeCount !== undefined) {
+        if (
+          !Number.isInteger(dto.expectedAffectedEmployeeCount) || dto.expectedAffectedEmployeeCount < 0
+        )
+          throw new BadRequestException('จำนวนพนักงานที่ตรวจสอบไม่ถูกต้อง');
+        if (affectedEmployeeCount !== dto.expectedAffectedEmployeeCount)
+          throw new ConflictException('จำนวนพนักงานที่ได้รับมอบหมายเปลี่ยนแปลง กรุณาโหลดใหม่ก่อนบันทึก');
+      }
       const changed = await tx.accessPosition.updateMany({
         where: { id, revision: dto.expectedRevision },
         data: {
@@ -265,6 +273,8 @@ export class EmployeeAccessService {
       throw new BadRequestException('งาน ขอบเขต หรือสาขาไม่ถูกต้อง');
     }
     const position = await tx.accessPosition.findUnique({ where: { id: assignment.positionId } });
+    if (position && assignment.expectedPositionRevision !== undefined)
+      revisionMatches(position.revision, assignment.expectedPositionRevision);
     if (!position || !position.isActive || position.deletedAt || position.code === 'OWNER')
       throw new BadRequestException('ตำแหน่งไม่พร้อมใช้งานหรือไม่สามารถมอบหมายได้');
     const activeCompany = await tx.companyInfo.findFirst({

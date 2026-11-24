@@ -13,6 +13,7 @@ import type {
 import api from '@/lib/api';
 
 export type Assignment = EmployeeAccessHistoryAssignment;
+export type ReviewedAssignment = Assignment & { expectedPositionRevision: number };
 
 export interface AccessPosition {
   id: string;
@@ -78,6 +79,7 @@ export interface PositionInput {
 type PositionUpdate = Partial<Omit<PositionInput, 'code'>> & {
   isActive?: boolean;
   expectedRevision: number;
+  expectedAffectedEmployeeCount: number;
 };
 
 const prefix = ['employee-access'];
@@ -128,7 +130,7 @@ export const accessWrites = {
   }: {
     id: string;
     expectedRevision: number;
-    assignments: Assignment[];
+    assignments: ReviewedAssignment[];
   }) =>
     (
       await api.put<AccessSnapshot>(`${endpoint}/employees/${id}/assignments`, {

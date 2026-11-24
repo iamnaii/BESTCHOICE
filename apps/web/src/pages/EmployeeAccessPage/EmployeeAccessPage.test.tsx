@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   DEFAULT_ACCESS_POSITIONS,
@@ -19,7 +19,7 @@ const position: AccessPosition = {
   name: 'พนักงานขายตัวอย่าง',
   permissions: ['sales.read', 'sales.create'],
   isActive: true,
-  revision: 3,
+  revision: 7,
   affectedEmployeeCount: 2,
 };
 const disabledPosition = {
@@ -81,6 +81,12 @@ const migration: MigrationPreview = {
   requiresReview: true,
   reservedRightsRemoved: [],
 };
+const managedPreview: MigrationPreview = {
+  ...migration,
+  ...managed,
+  managed: true,
+  personalGrants: { canReverseOverride: null, accounting_permissions: [], payment_approval_permissions: [] },
+};
 const history: EmployeeAccessHistoryPage = {
   page: 1,
   limit: 20,
@@ -109,7 +115,7 @@ function renderPage() {
       { ...legacy, id: 'owner', name: 'เจ้าของตัวอย่าง', role: 'OWNER' },
       { ...legacy, id: 'inactive', name: 'พนักงานที่ปิด', isActive: false },
     ],
-    migration: [migration],
+    migration: [migration, managedPreview],
     historyFailure: false,
     positionsFailure: false,
   };
@@ -225,15 +231,33 @@ describe('EmployeeAccessPage', () => {
     expect(await screen.findByRole('button', { name: 'โหลดข้อมูลล่าสุด' })).toBeVisible();
     expect(patch).toHaveBeenCalledWith(
       '/employee-access/positions/position-sales',
-      expect.objectContaining({ expectedRevision: 3, name: 'ร่างก่อนบันทึก' }),
+      expect.objectContaining({
+        expectedRevision: 7,
+        expectedAffectedEmployeeCount: 2,
+        name: 'ร่างก่อนบันทึก',
+      }),
     );
     expect(button('ยืนยันบันทึก')).toBeDisabled();
     await user.click(button('กลับไปแก้ไข'));
     expect(screen.getByRole('textbox', { name: 'ชื่อตำแหน่ง' })).toHaveValue('ร่างก่อนบันทึก');
     expect(review()).toBeDisabled();
-    data.positions = [{ ...position, name: 'ข้อมูลล่าสุด', revision: 4 }];
+    data.positions = [{ ...position, name: 'ข้อมูลล่าสุด', revision: 8 }];
     await user.click(button('โหลดข้อมูลล่าสุด'));
     expect(await screen.findByDisplayValue('ข้อมูลล่าสุด')).toBeVisible();
+  });
+
+  it('binds status changes to the reviewed affected employee count', async () => {
+    const patch = vi.spyOn(api, 'patch').mockResolvedValue({ data: {} });
+    const { user } = renderPage();
+    await user.click(positionTab());
+    await user.click(await screen.findByRole('button', { name: `ปิดใช้งาน ${position.name}` }));
+    expect(screen.getByText(/พนักงานที่ได้รับมอบหมาย 2 คน/)).toBeVisible();
+    await user.click(button('ยืนยันบันทึก'));
+    expect(patch).toHaveBeenCalledWith('/employee-access/positions/position-sales', {
+      expectedRevision: 7,
+      expectedAffectedEmployeeCount: 2,
+      isActive: false,
+    });
   });
 
   it('keeps the draft if an explicit reload fails after a revision conflict', async () => {
@@ -310,7 +334,15 @@ describe('EmployeeAccessPage', () => {
     await user.click(button('ยืนยันบันทึก'));
     expect(put).toHaveBeenCalledWith('/employee-access/employees/legacy/assignments', {
       expectedRevision: 3,
-      assignments: [{ positionId: position.id, company: 'FINANCE', scope: 'COMPANY', branchIds: [] }],
+      assignments: [
+        {
+          positionId: position.id,
+          company: 'FINANCE',
+          scope: 'COMPANY',
+          branchIds: [],
+          expectedPositionRevision: 7,
+        },
+      ],
     });
   });
 
@@ -332,6 +364,71 @@ describe('EmployeeAccessPage', () => {
     expect(await screen.findByText(/รายจ่าย: ยกเลิก/)).toBeVisible();
     expect(put).not.toHaveBeenCalled();
     expect(button('ยืนยันบันทึก')).toBeDisabled();
+  });
+
+  it('requires acknowledgement before removing a managed employee’s explicit deny override', async () => {
+    const put = vi.spyOn(api, 'put').mockResolvedValue({ data: {} });
+    const { data, user } = renderPage();
+    data.migration = [
+      {
+        ...managedPreview,
+        personalGrants: { ...managedPreview.personalGrants, canReverseOverride: false },
+      },
+    ];
+    await user.click(await screen.findByRole('button', { name: /พนักงานระบบใหม่/ }));
+    await user.click(await screen.findByRole('button', { name: 'แก้ไขการมอบหมาย' }));
+    await user.click(button('นำการมอบหมายที่ 1 ออก'));
+    await user.click(review());
+    expect(await screen.findByText(/ปฏิเสธเป็นรายบุคคล/)).toBeVisible();
+    expect(screen.queryByText('เริ่มใช้สิทธิ์ตามตำแหน่งทันที')).toBeNull();
+    expect(button('ยืนยันบันทึก')).toBeDisabled();
+    await user.click(screen.getByRole('checkbox', { name: /รับทราบ/ }));
+    await user.click(button('ยืนยันบันทึก'));
+    expect(put).toHaveBeenCalledWith('/employee-access/employees/managed/assignments', {
+      expectedRevision: 3,
+      assignments: [],
+    });
+  });
+
+  it('rechecks managed overrides and requires a new acknowledgement if a reviewed override disappears', async () => {
+    const put = vi.spyOn(api, 'put').mockResolvedValue({ data: {} });
+    const { data, user } = renderPage();
+    data.migration = [
+      {
+        ...managedPreview,
+        personalGrants: { ...managedPreview.personalGrants, canReverseOverride: false },
+      },
+    ];
+    await user.click(await screen.findByRole('button', { name: /พนักงานระบบใหม่/ }));
+    await user.click(await screen.findByRole('button', { name: 'แก้ไขการมอบหมาย' }));
+    await user.click(button('นำการมอบหมายที่ 1 ออก'));
+    await user.click(review());
+    await user.click(await screen.findByRole('checkbox', { name: /รับทราบ/ }));
+    data.migration = [managedPreview];
+    await user.click(button('ยืนยันบันทึก'));
+    expect(await screen.findByText(/ข้อมูลสิทธิ์รายบุคคลเปลี่ยนแปลง/)).toBeVisible();
+    expect(put).not.toHaveBeenCalled();
+    expect(screen.getByRole('checkbox', { name: /รับทราบ/ })).not.toBeChecked();
+    expect(button('ยืนยันบันทึก')).toBeDisabled();
+  });
+
+  it('invalidates an assignment confirmation when a reviewed position revision changes without changing permission labels', async () => {
+    const put = vi.spyOn(api, 'put').mockResolvedValue({ data: {} });
+    const { user, client } = renderPage();
+    await user.click(await screen.findByRole('button', { name: /พนักงานเดิม/ }));
+    await user.click(await screen.findByRole('button', { name: 'แก้ไขการมอบหมาย' }));
+    await user.click(button('เพิ่มตำแหน่งที่มอบหมาย'));
+    await user.selectOptions(screen.getByRole('combobox', { name: 'ตำแหน่ง' }), position.id);
+    await user.click(screen.getByRole('checkbox', { name: /สาขาเหนือ/ }));
+    await user.click(review());
+    await user.click(await screen.findByRole('checkbox', { name: /รับทราบ/ }));
+    expect(button('ยืนยันบันทึก')).toBeEnabled();
+    act(() =>
+      client.setQueryData(['employee-access', 'positions'], [{ ...position, revision: 8 }, disabledPosition]),
+    );
+    expect(await screen.findByText(/ตำแหน่งหรือสาขามีการเปลี่ยนแปลง/)).toBeVisible();
+    expect(button('ยืนยันบันทึก')).toBeDisabled();
+    expect(put).not.toHaveBeenCalled();
   });
 
   it('retries failed history reads and renders hand-labelled before and after states', async () => {

@@ -323,6 +323,95 @@ test('history retains saved assignments when a branch becomes inactive before th
   });
 });
 
+test('changed position revision rejects a newly reviewed assignment before touching account or overrides', async () => {
+  const target = await db.user.create({
+    data: {
+      name: 'TEST Reviewed Assignment',
+      email: `${suffix}-reviewed-assignment@test.invalid`,
+      password: 'unused',
+      role: 'SALES',
+      canReverseOverride: false,
+    },
+  });
+  const previousConfig = await db.systemConfig.findUnique({ where: { key: 'accounting_permissions' } });
+  const previousGrants = previousConfig ? JSON.parse(previousConfig.value) : {};
+  const values = JSON.stringify({ ...previousGrants, [target.id]: ['EXPENSE_POST'] });
+  const config = await db.systemConfig.upsert({
+    where: { key: 'accounting_permissions' },
+    create: { key: 'accounting_permissions', value: values },
+    update: { value: values },
+  });
+  const reviewed = await service.createPosition(owner, {
+    code: `REVIEW_ASSIGN_${suffix}`,
+    name: 'TEST Review Assignment',
+    permissions: ['sales.read'],
+  });
+  const assignment: EmployeeAccessHistoryAssignment = {
+    positionId: reviewed.id, company: 'SHOP', scope: 'BRANCHES', branchIds: [branch],
+  };
+  const dto = {
+    expectedRevision: target.accessRevision,
+    assignments: [{ ...assignment, expectedPositionRevision: reviewed.revision }],
+  };
+
+  const changed = await service.updatePosition(owner, reviewed.id, {
+    expectedRevision: reviewed.revision, permissions: ['sensitive.cost.read'],
+  });
+  expect(await snapshot.forUser(target.id)).toMatchObject({ managed: false, revision: target.accessRevision });
+  await expect(service.replaceAssignments(owner, target.id, dto)).rejects.toBeInstanceOf(ConflictException);
+  expect(await snapshot.forUser(target.id)).toMatchObject({ managed: false, revision: target.accessRevision });
+  expect(await db.employeeAccessAssignment.count({ where: { userId: target.id } })).toBe(0);
+  expect(await db.auditLog.count({ where: { entityId: target.id, action: 'ACCESS_ASSIGNMENTS_REPLACED' } })).toBe(0);
+  expect((await db.user.findUniqueOrThrow({ where: { id: target.id } })).canReverseOverride).toBe(false);
+  expect((await db.systemConfig.findUniqueOrThrow({ where: { id: config.id } })).value).toBe(values);
+
+  const latestDto = { ...dto, assignments: [{ ...assignment, expectedPositionRevision: changed.revision }] };
+  const result = await service.replaceAssignments(owner, target.id, latestDto);
+  expect(result.grants).toEqual([{ ...assignment, permissions: ['sensitive.cost.read'] }]);
+  const audit = await db.auditLog.findFirstOrThrow({ where: { entityId: target.id, action: 'ACCESS_ASSIGNMENTS_REPLACED' } });
+  expect(audit.newValue).toHaveProperty('assignments', [assignment]);
+});
+
+test('a newly assigned employee invalidates the reviewed affected count without changing position revision', async () => {
+  const reviewed = await service.createPosition(owner, {
+    code: `REVIEW_COUNT_${suffix}`,
+    name: 'TEST Review Count',
+    permissions: ['sales.read'],
+  });
+  const target = await db.user.create({
+    data: {
+      name: 'TEST Added Assignment',
+      email: `${suffix}-added-assignment@test.invalid`,
+      password: 'unused',
+      role: 'SALES',
+    },
+  });
+  const dto = {
+    expectedRevision: reviewed.revision,
+    expectedAffectedEmployeeCount: reviewed.affectedEmployeeCount,
+    isActive: false,
+  };
+  // An existing API caller may omit the new position expectation.
+  const assigned = await service.replaceAssignments(owner, target.id, {
+    expectedRevision: target.accessRevision,
+    assignments: [{ positionId: reviewed.id, company: 'SHOP', scope: 'BRANCHES', branchIds: [branch] }],
+  });
+  expect(await db.accessPosition.findUniqueOrThrow({ where: { id: reviewed.id } })).toMatchObject({
+    revision: reviewed.revision, isActive: true,
+  });
+  await expect(service.updatePosition(owner, reviewed.id, dto)).rejects.toBeInstanceOf(ConflictException);
+  expect(await db.accessPosition.findUniqueOrThrow({ where: { id: reviewed.id } })).toMatchObject({
+    revision: reviewed.revision, isActive: true,
+  });
+  expect(await snapshot.forUser(target.id)).toMatchObject({ revision: assigned.revision, grants: assigned.grants });
+  expect(await db.auditLog.count({ where: { entityId: reviewed.id, action: 'ACCESS_POSITION_UPDATED' } })).toBe(0);
+
+  const latestDto = { ...dto, expectedAffectedEmployeeCount: 1 };
+  const updated = await service.updatePosition(owner, reviewed.id, latestDto);
+  expect(updated).toMatchObject({ isActive: false, affectedEmployeeCount: 1, revision: reviewed.revision + 1 });
+  expect((await snapshot.forUser(target.id)).grants).toEqual([]);
+});
+
 test('concurrent position edits with the same revision have exactly one winner', async () => {
   const results = await Promise.allSettled([
     service.updatePosition(owner, position, { expectedRevision: 1, name: 'first' }),

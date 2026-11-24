@@ -15,6 +15,16 @@ function overrideLabels(value: unknown, labels: Record<string, string>) {
   return [...known, ...(unknownCount ? [`ไม่ทราบประเภท ${unknownCount} รายการ`] : [])].join(' · ');
 }
 
+export function hasPersonalOverrides(preview: MigrationPreview) {
+  const { canReverseOverride, accounting_permissions, payment_approval_permissions } = preview.personalGrants;
+  const hasSettings = (value: unknown) => value !== undefined && (!Array.isArray(value) || value.length > 0);
+  return (
+    typeof canReverseOverride === 'boolean' ||
+    hasSettings(accounting_permissions) ||
+    hasSettings(payment_approval_permissions)
+  );
+}
+
 export function MigrationReview({
   preview,
   branches,
@@ -30,21 +40,35 @@ export function MigrationReview({
         ? 'ปฏิเสธเป็นรายบุคคล'
         : 'ไม่มีการตั้งค่าเฉพาะบุคคล';
 
+  const title = preview.managed ? 'การตั้งค่าสิทธิ์รายบุคคล' : 'การเปลี่ยนจากสิทธิ์เดิม';
   return (
     <section
-      aria-label="การเปลี่ยนจากสิทธิ์เดิม"
+      aria-label={title}
       className="space-y-2 rounded-lg border border-warning/50 bg-warning/10 p-3 leading-snug"
     >
-      <h3 className="font-semibold">เริ่มใช้สิทธิ์ตามตำแหน่งทันที</h3>
-      <p>เมื่อบันทึก ระบบจะเปิดใช้สิทธิ์ตามตำแหน่งสำหรับพนักงานคนนี้ทันที และลบสิทธิ์รายบุคคลเดิม</p>
-      <p className="font-medium">ข้อมูลเดิมที่ต้องตรวจสอบ</p>
-      <p>
-        {ROLE_LABELS[preview.role] ?? preview.role}
-        {preview.proposedCompanies.length > 0 &&
-          ` · ${preview.proposedCompanies.map((work) => WORK_NAMES[work]).join(' · ')}`}
-        {preview.branchId &&
-          ` · ${branches.find(({ id }) => id === preview.branchId)?.name ?? 'สาขาเดิมไม่พร้อมใช้'}`}
-      </p>
+      {preview.managed ? (
+        <>
+          <h3 className="font-semibold">{title}</h3>
+          <p>
+            {hasPersonalOverrides(preview)
+              ? 'เมื่อบันทึก ระบบจะลบสิทธิ์รายบุคคลที่ตั้งไว้ด้านล่าง'
+              : 'ไม่มีสิทธิ์รายบุคคลที่ต้องลบเมื่อบันทึก'}
+          </p>
+        </>
+      ) : (
+        <>
+          <h3 className="font-semibold">เริ่มใช้สิทธิ์ตามตำแหน่งทันที</h3>
+          <p>เมื่อบันทึก ระบบจะเปิดใช้สิทธิ์ตามตำแหน่งสำหรับพนักงานคนนี้ทันที และลบสิทธิ์รายบุคคลเดิม</p>
+          <p className="font-medium">ข้อมูลเดิมที่ต้องตรวจสอบ</p>
+          <p>
+            {ROLE_LABELS[preview.role] ?? preview.role}
+            {preview.proposedCompanies.length > 0 &&
+              ` · ${preview.proposedCompanies.map((work) => WORK_NAMES[work]).join(' · ')}`}
+            {preview.branchId &&
+              ` · ${branches.find(({ id }) => id === preview.branchId)?.name ?? 'สาขาเดิมไม่พร้อมใช้'}`}
+          </p>
+        </>
+      )}
       <ul className="list-disc space-y-1 pl-5">
         <li>การตั้งค่ากลับรายการสินทรัพย์ · {reverse}</li>
         <li>
@@ -56,7 +80,7 @@ export function MigrationReview({
           {overrideLabels(payment_approval_permissions, PAYMENT_APPROVAL_PERMISSION_LABELS)}
         </li>
       </ul>
-      {preview.warnings.length > 0 && (
+      {!preview.managed && preview.warnings.length > 0 && (
         <ul className="list-disc space-y-1 pl-5">
           {preview.warnings.map((warning) => (
             <li key={warning}>

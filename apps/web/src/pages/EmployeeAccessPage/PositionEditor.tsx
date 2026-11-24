@@ -135,10 +135,11 @@ export function EditPositionDialog({
       if (original) {
         await update.mutateAsync({
           id: original.id,
-          input:
-            mode === 'status'
-              ? { expectedRevision: original.revision, isActive: nextActive }
-              : { expectedRevision: original.revision, name, permissions: draft.permissions },
+          input: {
+            expectedRevision: original.revision,
+            expectedAffectedEmployeeCount: original.affectedEmployeeCount,
+            ...(mode === 'status' ? { isActive: nextActive } : { name, permissions: draft.permissions }),
+          },
         });
       } else {
         await create.mutateAsync({ ...draft, name });

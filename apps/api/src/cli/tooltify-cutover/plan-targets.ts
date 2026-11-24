@@ -277,6 +277,14 @@ async function evaluateStock(db: Db, item: PlannedStockItem): Promise<PlannedSto
     (positiveDecimal(payload.installmentPrice) || positiveDecimal(payload.financePrice))
   )
     reason = 'DEVICE_ORIGIN_REQUIRED_FOR_INSTALLMENTS';
+  else if (
+    raw.batteryHealth !== undefined &&
+    (raw.kind !== 'DEVICE' ||
+      !Number.isInteger(raw.batteryHealth) ||
+      raw.batteryHealth < 0 ||
+      raw.batteryHealth > 100)
+  )
+    reason = 'INVALID_BATTERY_HEALTH';
   else if (!validAccessoryCompatibility(raw, decision)) reason = 'INVALID_ACCESSORY_COMPATIBILITY';
   else if (decision.zeroPriceGift !== undefined && !isReviewedZeroPriceGift(raw, decision))
     reason = 'INVALID_ZERO_PRICE_GIFT';
@@ -353,6 +361,7 @@ async function evaluateStock(db: Db, item: PlannedStockItem): Promise<PlannedSto
       target.storage !== raw.storage ||
       target.color !== raw.color ||
       target.deviceOrigin !== payload.deviceOrigin ||
+      (payload.batteryHealth !== undefined && target.batteryHealth !== payload.batteryHealth) ||
       (raw.kind === 'DEVICE' && target.imeiSerial !== raw.barcode) ||
       (raw.kind === 'ACCESSORY' && target.imeiSerial !== null) ||
       !target.costPrice.equals(raw.cost) ||

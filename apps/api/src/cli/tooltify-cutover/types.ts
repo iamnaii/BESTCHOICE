@@ -291,6 +291,8 @@ export type InspectionReport = {
 export type ParseResult<T> = { rows: T[]; issues: ImportIssue[] };
 
 export type CanonicalStockUnit = {
+  /** Absent means no source evidence; never infer 100 or erase an existing value. */
+  batteryHealth?: number;
   sourceMapping?: Extract<SourceDecision, { action: 'MAP_STOCK_ITEM' }>;
   supplierLabel?: string;
   source: SourceRef;

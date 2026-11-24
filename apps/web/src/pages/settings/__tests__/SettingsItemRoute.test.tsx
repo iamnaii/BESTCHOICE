@@ -7,6 +7,8 @@ let role = 'OWNER';
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { role } }) }));
 vi.mock('@/pages/InterestConfigPage', () => ({ default: () => <div>interest-page</div> }));
 
+vi.mock('@/pages/EmployeeAccessPage', () => ({ default: () => <h1>พนักงานและสิทธิ์</h1> }));
+
 function renderAt(path: string) {
   return render(
     <MemoryRouter initialEntries={[path]}>
@@ -29,6 +31,18 @@ describe('SettingsItemRoute', () => {
     role = 'FINANCE_MANAGER'; // interest = OWNER-only
     renderAt('/settings/finance/interest');
     expect(screen.getByText('category-fallback')).toBeTruthy();
+  });
+
+  it('opens the employee access console for an owner', async () => {
+    role = 'OWNER';
+    renderAt('/settings/access/employee-permissions');
+    expect(await screen.findByRole('heading', { name: 'พนักงานและสิทธิ์' })).toBeVisible();
+  });
+
+  it('denies the direct employee access console route to an accountant', () => {
+    role = 'ACCOUNTANT';
+    renderAt('/settings/access/employee-permissions');
+    expect(screen.getByText('category-fallback')).toBeVisible();
   });
 
   it('item ไม่รู้จัก → redirect ไปหน้าหมวด', () => {

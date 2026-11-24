@@ -33,6 +33,16 @@ describe('settingsRegistry', () => {
     }
   });
 
+  it('links the employee permissions console from access settings only for owners', () => {
+    const access = settingsRegistry.find((category) => category.id === 'access');
+    expect(access?.items.find((item) => item.id === 'employee-permissions')).toMatchObject({
+      kind: 'route',
+      path: '/settings/access/employee-permissions',
+      roles: ['OWNER'],
+      component: expect.anything(),
+    });
+  });
+
   it('contacts ไม่อยู่ใน company category (ย้ายเป็น standalone แล้ว)', () => {
     const company = settingsRegistry.find((c) => c.id === 'company')!;
     const ids = company.items.map((i) => i.id);

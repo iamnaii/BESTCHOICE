@@ -1,9 +1,9 @@
 import { Prisma } from '@prisma/client';
 import {
   DEFAULT_RECEIPT_WARRANTY_TERMS,
+  formatDefaultWarrantyTerms,
   PAYMENT_METHOD_RECEIPT_LABEL,
   PAPER_SPACING_CSS,
-  TRANSACTION_PAGE_CSS,
   paperSpacingScript,
   transactionDocumentCss,
 } from '@installment/shared';
@@ -98,7 +98,6 @@ export interface SaleReceiptModel {
     downPayment: string | null;
   };
   warranty: { headline: string; terms: string; productTerms: string | null };
-  notice: string;
   qrDataUrl: string;
   voided: { at: Date; reason: string | null } | null;
 }
@@ -107,6 +106,15 @@ const dec = (v: Money): Prisma.Decimal => new Prisma.Decimal(v ?? 0);
 const fixed = (v: Money): string => dec(v).toFixed(2);
 
 const CATEGORY_LABEL: Record<string, string> = { PHONE_NEW: 'เครื่องใหม่', PHONE_USED: 'มือสอง' };
+
+// Shop contact confirmed by the owner; LINE matches the public storefront channel.
+const RECEIPT_CONTACT = {
+  phone: '095-567-8887',
+  phoneUrl: 'tel:0955678887',
+  line: '@BESTCHOICE',
+  lineUrl: 'https://line.me/R/ti/p/@bestchoice',
+} as const;
+
 
 /** วันที่+เวลาไทย `dd/MM/พ.ศ. HH:mm` */
 function fmtDateTimeThai(d: Date): string {
@@ -200,10 +208,32 @@ export function toSaleReceiptModel(
       : receivedFromTenders.toFixed(2);
 
   const disclosure = readProductDisclosure(sale.productDisclosure);
+  let headline: string;
+  let warrantyDays = 0;
+  if (sale.shopWarrantyEndDate) {
+    const days =
+      disclosure && disclosure.shopWarrantyDays > 0
+        ? disclosure.shopWarrantyDays
+        : Math.max(
+            1,
+            Math.round(
+              (sale.shopWarrantyEndDate.getTime() -
+                (sale.shopWarrantyStartDate ?? sale.createdAt).getTime()) /
+                86_400_000,
+            ),
+          );
+    warrantyDays = days;
+    headline = `ประกันร้าน ${days} วัน · ${fmtDateShort(sale.shopWarrantyStartDate ?? sale.createdAt)} – ${fmtDateShort(sale.shopWarrantyEndDate)}`;
+  } else {
+    headline = 'ไม่มีประกันร้าน · ประกันศูนย์ตามเงื่อนไขผู้ผลิต';
+  }
+
   // เงื่อนไขของเครื่องที่ตรงกับข้อความมาตรฐานท้ายใบเสร็จ (หน้าเพิ่มสินค้าเติมให้เป็นค่าเริ่มต้น) — พิมพ์ในกล่องประกันครั้งเดียว
-  const shopTerms = ctx.terms?.trim() || DEFAULT_RECEIPT_WARRANTY_TERMS;
+  const baseTerms = ctx.terms?.trim() || DEFAULT_RECEIPT_WARRANTY_TERMS;
+  const shopTerms = warrantyDays > 0 ? formatDefaultWarrantyTerms(baseTerms, warrantyDays) : '';
   const productTerms = disclosure?.warrantyTerms?.trim() || null;
-  const ownTerms = productTerms && productTerms !== shopTerms ? productTerms : null;
+  const ownTerms =
+    productTerms && productTerms !== shopTerms && productTerms !== baseTerms ? productTerms : null;
   const noteDisclosure =
     disclosure && productTerms && !ownTerms
       ? { ...(sale.productDisclosure as object), warrantyTerms: null }
@@ -217,29 +247,6 @@ export function toSaleReceiptModel(
     : sale.product.serialNumber
       ? 'S/N'
       : null;
-
-  let headline: string;
-  if (sale.shopWarrantyEndDate) {
-    const days =
-      disclosure && disclosure.shopWarrantyDays > 0
-        ? disclosure.shopWarrantyDays
-        : Math.max(
-            1,
-            Math.round(
-              (sale.shopWarrantyEndDate.getTime() -
-                (sale.shopWarrantyStartDate ?? sale.createdAt).getTime()) /
-                86_400_000,
-            ),
-          );
-    headline = `ประกันร้าน ${days} วัน · ${fmtDateShort(sale.shopWarrantyStartDate ?? sale.createdAt)} – ${fmtDateShort(sale.shopWarrantyEndDate)}`;
-  } else {
-    headline = 'ไม่มีประกันร้าน · ประกันศูนย์ตามเงื่อนไขผู้ผลิต';
-  }
-
-  const notice =
-    saleType === 'EXTERNAL_FINANCE'
-      ? `ส่วนที่เหลือ ${fmtMoney(Number(fixed(sale.financeAmount)))} บาท ชำระกับ ${finance?.company} ตามสัญญาของบริษัทไฟแนนซ์ · ร้านค้าไม่ได้จดทะเบียนภาษีมูลค่าเพิ่ม — เอกสารนี้ไม่ใช่ใบกำกับภาษี`
-      : 'ร้านค้าไม่ได้จดทะเบียนภาษีมูลค่าเพิ่ม — เอกสารนี้เป็นใบเสร็จรับเงิน ไม่ใช่ใบกำกับภาษี';
 
   return {
     saleNumber: sale.saleNumber,
@@ -281,7 +288,6 @@ export function toSaleReceiptModel(
       downPayment: saleType === 'EXTERNAL_FINANCE' ? fixed(sale.downPaymentAmount) : null,
     },
     warranty: { headline, terms: shopTerms, productTerms: ownTerms },
-    notice,
     qrDataUrl: ctx.qrDataUrl,
     voided: sale.deletedAt ? { at: sale.deletedAt, reason: sale.voidReason || null } : null,
   };
@@ -355,27 +361,44 @@ export function buildSaleReceiptHtml(m: SaleReceiptModel, fontCss: string): stri
   <meta charset="UTF-8">
   <style>
 ${fontCss}
-${TRANSACTION_PAGE_CSS}
+@page { size: A4; margin: 10mm 12mm; }
 ${transactionDocumentCss('body')}
 html, body { margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 .item-name { font-weight: 700; } .item-meta { color: #52645d; } .mono { font-variant-numeric: tabular-nums; letter-spacing: .02em; }
 .items { table-layout: fixed; } .items thead th { white-space: nowrap; } .items th:nth-child(2) { width: 18mm; } .items th:nth-child(3) { width: 26mm; } .items th:nth-child(4) { width: 28mm; }
 .items td.right { white-space: nowrap; }
 .wbox { margin-top: 3mm; border: 1px solid #d4dfd9; border-radius: 2mm; padding: 2mm 3mm; break-inside: avoid; }
-.wbox p { color: #52645d; margin-top: 1mm; }
-.notice { margin-top: 3mm; color: #52645d; }
+.wbox p { white-space: pre-line; color: #52645d; margin-top: 1mm; }
+.receipt-contact a { color: inherit; text-decoration: none; }
 .bc-doc-approval { grid-auto-flow: initial; grid-template-columns: 24mm minmax(0,1fr) minmax(0,1fr); }
 body { position: relative; }
 /* ลายน้ำอยู่ในกล่องกว้าง 70% กลางหน้า — หมุนแล้วไม่ล้นขอบกระดาษ (ล้น = Chrome เพิ่มหน้าเปล่า) · font-size !important สู้กับ typography ของเอกสาร */
 .void { position: absolute; top: 40%; left: 15%; right: 15%; text-align: center; transform: rotate(-20deg); color: rgba(185,28,28,.22); font-size: 64pt !important; line-height: 1 !important; font-weight: 800; letter-spacing: .1em; pointer-events: none; }
 .void-line { color: #b91c1c; font-weight: 700; }
+/* Receipt-specific whitespace budget: retain the shared 16 pt type and all six warranty clauses. */
+body .bc-doc-header { gap: 4mm; padding-bottom: 1mm; margin-bottom: 1mm; }
+body .bc-doc-brand svg { height: 8mm; margin-bottom: 1mm; }
+body .bc-doc-meta { gap: .5mm 3mm; margin-top: 1mm; }
+body .bc-doc-parties { padding: 0 0 1mm; margin-bottom: 2mm; }
+body .bc-doc-kv { gap: 0 2mm; }
+body table { margin-top: 2mm; }
+body .items :is(th,td) { padding: .7mm 2mm; }
+body .bc-doc-closing { margin-top: 2mm; }
+body .bc-doc-totals { gap: .7mm 3mm; }
+body .bc-doc-grand { padding: 1.5mm 3mm; margin-top: 1mm; }
+body .wbox { margin-top: 2mm; padding: 1mm 2.5mm; }
+body .wbox p { margin-top: .5mm; }
+body .bc-doc-approval { margin-top: 2mm; }
+body .bc-doc-signature .sign-space { height: 8mm; }
+body .bc-doc-footer { margin-top: 1mm; padding-top: 1mm; }
+
 ${PAPER_SPACING_CSS}
 </style>
 </head>
-<body data-bc-paper>
+<body data-bc-paper data-bc-paper-fit="fixed">
 ${voidHtml}<div class="bc-doc-header">
   <div class="bc-doc-brand"><div>${BESTCHOICE_LOGO_SVG}</div><p class="bc-doc-company">${e(m.company.nameTh)} (สาขา${e(m.branchName)})</p>
-    <p>${e(m.company.address)}</p><p>${m.company.taxId ? `เลขประจำตัวผู้เสียภาษี ${e(m.company.taxId)}` : ''}${m.company.phone ? ` · โทร ${e(m.company.phone)}` : ''}</p>
+    <p>${e(m.company.address)}</p><p>${m.company.taxId ? `เลขประจำตัวผู้เสียภาษี ${e(m.company.taxId)}` : ''} · โทร ${RECEIPT_CONTACT.phone}</p>
   </div>
   <div class="bc-doc-identity"><h1>ใบเสร็จรับเงิน</h1><p class="bc-doc-kicker">${kicker}</p>
     <div class="bc-doc-meta"><span>เลขที่</span><span>${e(m.saleNumber)}</span><span>วันที่</span><span>${fmtDateTimeThai(m.createdAt)}</span><span>สาขา</span><span>${e(m.branchName)}</span></div>
@@ -385,10 +408,10 @@ ${voidHtml}<div class="bc-doc-header">
 <div><p class="bc-doc-label">การรับชำระเงิน</p><div class="bc-doc-kv"><span>วันที่ชำระ</span><span>${fmtDateShort(m.createdAt)}</span>${tenderHtml}</div></div></div>
 <table class="items"><thead><tr><th>รายการ</th><th class="right">จำนวน</th><th class="right">ราคา</th><th class="right">จำนวนเงิน</th></tr></thead><tbody>${mainRow}${bundleRows}</tbody></table>
 <div class="bc-doc-closing">
-<div class="bc-doc-total-grid"><div><p class="bc-doc-label">จำนวนเงิน (ตัวอักษร)</p><strong>${e(thaiBahtText(Number(grandAmount)))}</strong>${warrantyHtml}</div>
+<div class="bc-doc-total-grid"><div><p class="bc-doc-label">จำนวนเงิน (ตัวอักษร)</p><strong>${e(thaiBahtText(Number(grandAmount)))}</strong></div>
 <div><div class="bc-doc-totals">${totalsRows}</div><div class="bc-doc-grand"><span>${grandLabel}</span><span>${money(grandAmount)} บาท</span></div></div></div>
-<p class="notice">${e(m.notice)}</p>
-<div class="bc-doc-approval"><div class="bc-doc-qr">${m.qrDataUrl ? `<img src="${m.qrDataUrl}" alt="เปิดใบเสร็จ"/><p class="bc-doc-kicker">สแกนเพื่อเปิดใบเสร็จ</p>` : ''}</div><div><p class="bc-doc-label">ติดต่อ</p><p>สาขา${e(m.branchName)}${m.company.phone ? ` · โทร ${e(m.company.phone)}` : ''}</p></div><div class="bc-doc-signature"><div class="sign-space">${e(m.salespersonName)}</div><strong>${e(m.salespersonName)}</strong><p>ผู้ขาย · ${fmtDateShort(m.createdAt)}</p></div></div>
+${warrantyHtml}
+<div class="bc-doc-approval"><div class="bc-doc-qr">${m.qrDataUrl ? `<img src="${m.qrDataUrl}" alt="เปิดใบเสร็จ"/><p class="bc-doc-kicker">สแกนเพื่อเปิดใบเสร็จ</p>` : ''}</div><div class="receipt-contact"><p class="bc-doc-label">ติดต่อสาขา${e(m.branchName)}</p><p>LINE <a href="${RECEIPT_CONTACT.lineUrl}">${RECEIPT_CONTACT.line}</a></p><p>โทร <a href="${RECEIPT_CONTACT.phoneUrl}">${RECEIPT_CONTACT.phone}</a></p></div><div class="bc-doc-signature"><div class="sign-space">${e(m.salespersonName)}</div><strong>${e(m.salespersonName)}</strong><p>ผู้ขาย · ${fmtDateShort(m.createdAt)}</p></div></div>
 <footer class="bc-doc-footer"><span>${e(m.saleNumber)}</span><span>ออกโดยระบบ BESTCHOICE</span></footer></div>
 ${paperSpacingScript()}
 </body>

@@ -49,6 +49,7 @@ try {
     ['Web tests', 'npm', ['run', 'test', '--workspace=apps/web']],
     ['Shared tests', 'npm', ['run', 'test', '--workspace=@installment/shared']],
     ['Storefront tests', 'npm', ['run', 'test', '--workspace=apps/web-shop']],
+    ['Storefront focus + reduced motion', 'npm', ['exec', '--workspace=apps/web-shop', '--', 'playwright', 'test', '-c', 'e2e/ui-followup.config.ts']],
     ['Storefront build + types', 'npm', ['run', 'build', '--workspace=apps/web-shop']],
     ['Web build', 'npm', ['run', 'build', '--workspace=apps/web']],
   ];

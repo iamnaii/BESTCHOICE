@@ -1,4 +1,8 @@
-import ProductPhotoFields, { type EvidencePhotos, type ProductPhotoKey, type EvidencePhotoKey } from '@/components/product/ProductPhotoFields';
+import ProductPhotoFields, {
+  type EvidencePhotos,
+  type ProductPhotoKey,
+  type EvidencePhotoKey,
+} from '@/components/product/ProductPhotoFields';
 import { PHOTO_ANGLES, type AnglePhotos, type PhotoAngle } from '@/constants/photo-angles';
 import FormSection from './components/FormSection';
 import { formControlClass } from '@/components/ui/form-styles';
@@ -9,6 +13,7 @@ import { toast } from 'sonner';
 import { Loader2 } from '@/lib/icons';
 import {
   DEFAULT_RECEIPT_WARRANTY_TERMS,
+  formatDefaultWarrantyTerms,
   RECEIPT_WARRANTY_TERMS_KEY,
   formatBahtPlain,
 } from '@installment/shared';
@@ -87,9 +92,13 @@ export default function ProductCreatePage() {
   const [anglePhotos, setAnglePhotos] = useState<Partial<AnglePhotos>>({});
   const [evidencePhotos, setEvidencePhotos] = useState<EvidencePhotos>({});
   const [photosBusy, setPhotosBusy] = useState(false);
+  const [photoGeneration, setPhotoGeneration] = useState(0);
+  const currentPhotoGeneration = useRef(0);
   const changePhoto = (key: ProductPhotoKey, value: string | null) => {
-    if (PHOTO_ANGLES.includes(key as PhotoAngle)) setAnglePhotos(prev => ({ ...prev, [key]: value }));
-    else setEvidencePhotos(prev => ({ ...prev, [key as EvidencePhotoKey]: value }));
+    if (photoGeneration !== currentPhotoGeneration.current) return;
+    if (PHOTO_ANGLES.includes(key as PhotoAngle))
+      setAnglePhotos((prev) => ({ ...prev, [key]: value }));
+    else setEvidencePhotos((prev) => ({ ...prev, [key as EvidencePhotoKey]: value }));
   };
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
   const [photoPreviews, setPhotoPreviews] = useState<string[]>([]);
@@ -135,9 +144,20 @@ export default function ProductCreatePage() {
     staleTime: 5 * 60_000,
     retry: false,
   });
-  const defaultTerms = shopTermsSetting || DEFAULT_RECEIPT_WARRANTY_TERMS;
+  const newPhone = form.category === 'PHONE_NEW';
+  const defaultTerms = formatDefaultWarrantyTerms(
+    shopTermsSetting || DEFAULT_RECEIPT_WARRANTY_TERMS,
+    Number(form.shopWarrantyDays),
+  );
   const hasShopWarranty = Number(form.shopWarrantyDays) > 0;
-  const effectiveTerms = termsEdited ? form.warrantyTerms : hasShopWarranty ? defaultTerms : '';
+  const effectiveTerms =
+    newPhone || (form.category === 'PHONE_USED' && !hasShopWarranty)
+      ? ''
+      : termsEdited
+        ? form.warrantyTerms
+        : hasShopWarranty
+          ? defaultTerms
+          : '';
 
   // --- การ์ดราคาขาย (แบบ D) — เติมจากตารางราคากลางเมื่อเลือกยี่ห้อ + รุ่น (+ ความจุ / ประกัน / ไทย-นอก) ---
   const accessory = form.category === 'ACCESSORY';
@@ -274,7 +294,9 @@ export default function ProductCreatePage() {
         category: form.category,
         deviceOrigin: isAccessory ? undefined : form.deviceOrigin || null,
         shopWarrantyDays:
-          isAccessory || form.shopWarrantyDays === '' ? null : Number(form.shopWarrantyDays),
+          isAccessory || newPhone || form.shopWarrantyDays === ''
+            ? null
+            : Number(form.shopWarrantyDays),
         warrantyTerms: isAccessory ? null : effectiveTerms.trim() || null,
         costPrice: parseFloat(form.costPrice),
         supplierId: form.supplierId || undefined,
@@ -298,8 +320,8 @@ export default function ProductCreatePage() {
             }
           : {}),
         photos: isAccessory && photoPreviews.length > 0 ? photoPreviews : undefined,
-        anglePhotos: isAccessory ? undefined : anglePhotos,
-        evidencePhotos: isAccessory ? undefined : evidencePhotos,
+        anglePhotos: isAccessory || newPhone ? undefined : anglePhotos,
+        evidencePhotos: isAccessory || newPhone ? undefined : evidencePhotos,
         ...toPricePayload(form.category, priceFields, {
           gfinBlocked: isGfinBlocked || gfinTablesState !== 'ready',
         }),
@@ -365,8 +387,15 @@ export default function ProductCreatePage() {
     // อุปกรณ์เสริมมีช่องเดียว — ราคาที่กรอกไว้ของมือถือ/แท็บเล็ตไม่ใช่ราคาของอุปกรณ์ (และกลับกัน)
     if ((newCategory === 'ACCESSORY') !== (form.category === 'ACCESSORY'))
       setPriceFields(EMPTY_PRICE_FIELDS);
+    currentPhotoGeneration.current += 1;
+    setPhotoGeneration(currentPhotoGeneration.current);
+    setPhotosBusy(false);
+    setTermsEdited(false);
+    setAnglePhotos({});
+    setEvidencePhotos({});
     setForm({
       ...form,
+      warrantyTerms: '',
       category: newCategory,
       shopWarrantyDays: defaultShopWarrantyDays(newCategory),
       brand: '',
@@ -411,7 +440,7 @@ export default function ProductCreatePage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (photosBusy || createMutation.isPending) return;
+    if ((!newPhone && photosBusy) || createMutation.isPending) return;
     const isAccessory = form.category === 'ACCESSORY';
     const isCharger = isAccessory && form.accessoryType === 'ชุดชาร์จ';
     if (!isAccessory && !form.brand) {
@@ -484,7 +513,7 @@ export default function ProductCreatePage() {
               onToggleModel={handleToggleModel}
             />
 
-            {!accessory && (
+            {!accessory && !newPhone && (
               <ShopWarrantySection
                 number={4}
                 category={form.category}
@@ -503,17 +532,31 @@ export default function ProductCreatePage() {
               />
             )}
 
-            {accessory ? <PhotoUpload
-              number={accessory ? 3 : 5}
-              photoPreviews={photoPreviews}
-              onAdd={handlePhotoAdd}
-              onRemove={removePhoto}
-            /> : <FormSection number={5} title="รูปถ่ายสินค้า">
-              <ProductPhotoFields photos={anglePhotos} evidencePhotos={evidencePhotos} onChange={changePhoto} onBusyChange={setPhotosBusy} disabled={createMutation.isPending} />
-            </FormSection>}
+            {!newPhone &&
+              (accessory ? (
+                <PhotoUpload
+                  number={accessory ? 3 : 5}
+                  photoPreviews={photoPreviews}
+                  onAdd={handlePhotoAdd}
+                  onRemove={removePhoto}
+                />
+              ) : (
+                <FormSection number={5} title="รูปถ่ายสินค้า">
+                  <ProductPhotoFields
+                    key={photoGeneration}
+                    photos={anglePhotos}
+                    evidencePhotos={evidencePhotos}
+                    onChange={changePhoto}
+                    onBusyChange={(busy) => {
+                      if (photoGeneration === currentPhotoGeneration.current) setPhotosBusy(busy);
+                    }}
+                    disabled={createMutation.isPending}
+                  />
+                </FormSection>
+              ))}
 
             <BranchSupplierCard
-              number={accessory ? 4 : 6}
+              number={accessory || newPhone ? 4 : 6}
               branchId={form.branchId}
               supplierId={form.supplierId}
               costPrice={form.costPrice}
@@ -615,7 +658,7 @@ export default function ProductCreatePage() {
                 <button
                   data-ui-control="button"
                   type="submit"
-                  disabled={createMutation.isPending || pricesLoading || photosBusy}
+                  disabled={createMutation.isPending || pricesLoading || (!newPhone && photosBusy)}
                   className="inline-flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-lg bg-primary px-6 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 lg:w-full"
                 >
                   {pricesLoading && (

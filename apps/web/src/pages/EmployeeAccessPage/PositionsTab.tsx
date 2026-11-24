@@ -39,6 +39,10 @@ export function PositionsTab() {
         }}
       >
         <section className="space-y-4" aria-label="รายการตำแหน่ง">
+          <p className="text-sm leading-snug text-muted-foreground">
+            กำหนดว่าแต่ละตำแหน่งดูข้อมูลและทำอะไรได้ การแก้สิทธิ์มีผลกับพนักงานที่ได้รับตำแหน่งนี้
+            โดยระบบจะแสดงจำนวนผู้ได้รับผลกระทบก่อนบันทึก
+          </p>
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div className="w-full space-y-1.5 sm:max-w-xs">
               <Label htmlFor="access-position-search">ค้นหาตำแหน่ง</Label>

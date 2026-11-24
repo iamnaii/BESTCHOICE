@@ -50,8 +50,8 @@ export async function checkEmployeeAccessUi(origin) {
         return data.data ?? data;
       };
       await page.goto(`${origin}/settings/access/employee-permissions?zone=settings`);
-      await expect(page.getByRole('heading', { name: 'พนักงานและสิทธิ์', exact: true })).toBeVisible();
-      await tab('ตำแหน่งและสิทธิ์').click();
+      await expect(page.getByRole('heading', { name: 'ตำแหน่งและสิทธิ์', exact: true })).toBeVisible();
+      await expect(tab('ตำแหน่ง')).toHaveAttribute('aria-selected', 'true');
       await expect(page.getByRole('button', { name: 'สร้างตำแหน่ง', exact: true })).toBeEnabled();
       const seed = page.getByRole('button', { name: 'เพิ่มตำแหน่งจากแม่แบบ', exact: true });
       if (width === 1440 && await seed.isEnabled()) {
@@ -87,7 +87,7 @@ export async function checkEmployeeAccessUi(origin) {
       const disabled = await save('PATCH', `/employee-access/positions/${clone.id}`);
       assert.equal(disabled.isActive, false);
 
-      await tab('พนักงาน').click();
+      await tab('มอบหมายพนักงาน').click();
       await page.getByRole('button', { name: new RegExp(fixture.employee.name) }).click();
       await expect(page.getByText(/ยังไม่ได้คำนวณสิทธิ์เดิมทั้งหมด/)).toBeVisible();
       await page.getByRole('button', { name: 'แก้ไขการมอบหมาย' }).click();
@@ -106,7 +106,7 @@ export async function checkEmployeeAccessUi(origin) {
       await expect(page.locator('[data-sonner-toast]')).toHaveCount(0, { timeout: 15000 });
       await page.screenshot({ path: join(output, `employee-access-employees-${width}.png`), fullPage: true });
 
-      await tab('ตำแหน่งและสิทธิ์').click();
+      await tab('ตำแหน่ง').click();
       await page.getByRole('button', { name: `แก้ไข ${name}`, exact: true }).click();
       await permissionSearch().fill('sales.create');
       await dialog().getByRole('checkbox', { name: /สร้างการขาย/ }).uncheck();

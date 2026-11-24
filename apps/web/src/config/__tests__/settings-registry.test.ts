@@ -38,6 +38,7 @@ describe('settingsRegistry', () => {
     expect(access?.items.find((item) => item.id === 'employee-permissions')).toMatchObject({
       kind: 'route',
       path: '/settings/access/employee-permissions',
+      label: 'ตำแหน่งและสิทธิ์',
       roles: ['OWNER'],
       component: expect.anything(),
     });

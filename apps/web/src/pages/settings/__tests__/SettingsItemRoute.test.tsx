@@ -7,7 +7,7 @@ let role = 'OWNER';
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { role } }) }));
 vi.mock('@/pages/InterestConfigPage', () => ({ default: () => <div>interest-page</div> }));
 
-vi.mock('@/pages/EmployeeAccessPage', () => ({ default: () => <h1>พนักงานและสิทธิ์</h1> }));
+vi.mock('@/pages/EmployeeAccessPage', () => ({ default: () => <h1>ตำแหน่งและสิทธิ์</h1> }));
 
 function renderAt(path: string) {
   return render(
@@ -36,7 +36,7 @@ describe('SettingsItemRoute', () => {
   it('opens the employee access console for an owner', async () => {
     role = 'OWNER';
     renderAt('/settings/access/employee-permissions');
-    expect(await screen.findByRole('heading', { name: 'พนักงานและสิทธิ์' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: 'ตำแหน่งและสิทธิ์' })).toBeVisible();
   });
 
   it('denies the direct employee access console route to an accountant', () => {

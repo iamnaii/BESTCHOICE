@@ -180,7 +180,7 @@ function renderPage() {
 }
 
 const button = (name: string | RegExp) => screen.getByRole('button', { name });
-const positionTab = () => screen.getByRole('tab', { name: 'ตำแหน่งและสิทธิ์' });
+const positionTab = () => screen.getByRole('tab', { name: 'ตำแหน่ง' });
 const review = () => button('ตรวจสอบผลกระทบ');
 
 afterEach(() => vi.restoreAllMocks());
@@ -188,7 +188,7 @@ afterEach(() => vi.restoreAllMocks());
 describe('EmployeeAccessPage', () => {
   it('keeps permission selections when filtering and locks reserved catalog entries', async () => {
     const { user } = renderPage();
-    await user.click(positionTab());
+    expect(positionTab()).toHaveAttribute('aria-selected', 'true');
     await user.click(await screen.findByRole('button', { name: 'สร้างตำแหน่ง' }));
     const search = screen.getByRole('searchbox', { name: 'ค้นหาสิทธิ์' });
     const dialog = within(screen.getByRole('dialog'));
@@ -293,6 +293,7 @@ describe('EmployeeAccessPage', () => {
 
   it('locks owner and inactive accounts and shows saved tuples alongside the server snapshot', async () => {
     const { user, get } = renderPage();
+    await user.click(screen.getByRole('tab', { name: 'มอบหมายพนักงาน' }));
     await user.click(await screen.findByRole('button', { name: /พนักงานที่ปิด/ }));
     expect(screen.queryByRole('button', { name: 'แก้ไขการมอบหมาย' })).toBeNull();
     expect(get).not.toHaveBeenCalledWith('/employee-access/employees/inactive/effective-access');
@@ -311,6 +312,7 @@ describe('EmployeeAccessPage', () => {
   it('requires a fresh acknowledgement before converting legacy access and sends only the chosen tuple', async () => {
     const put = vi.spyOn(api, 'put').mockResolvedValue({ data: {} });
     const { user } = renderPage();
+    await user.click(screen.getByRole('tab', { name: 'มอบหมายพนักงาน' }));
     await user.click(await screen.findByRole('button', { name: /พนักงานเดิม/ }));
     expect(await screen.findByText(/ยังไม่ได้คำนวณสิทธิ์เดิมทั้งหมด/)).toBeVisible();
     await user.click(await screen.findByRole('button', { name: 'แก้ไขการมอบหมาย' }));
@@ -352,6 +354,7 @@ describe('EmployeeAccessPage', () => {
   it('requires another acknowledgement when the legacy overrides change before saving', async () => {
     const put = vi.spyOn(api, 'put').mockResolvedValue({ data: {} });
     const { data, user } = renderPage();
+    await user.click(screen.getByRole('tab', { name: 'มอบหมายพนักงาน' }));
     await user.click(await screen.findByRole('button', { name: /พนักงานเดิม/ }));
     await user.click(await screen.findByRole('button', { name: 'แก้ไขการมอบหมาย' }));
     await user.click(review());
@@ -378,6 +381,7 @@ describe('EmployeeAccessPage', () => {
   it.each([undefined, null, 'invalid'])('blocks confirmation when the preview fingerprint is %s', async (value) => {
     const { data, user } = renderPage();
     data.migration = [{ ...migration, legacyGrantsFingerprint: value }];
+    await user.click(screen.getByRole('tab', { name: 'มอบหมายพนักงาน' }));
     await user.click(await screen.findByRole('button', { name: /พนักงานเดิม/ }));
     await user.click(await screen.findByRole('button', { name: 'แก้ไขการมอบหมาย' }));
     await user.click(review());
@@ -388,6 +392,7 @@ describe('EmployeeAccessPage', () => {
   it('keeps the assignment draft when the server detects a changed legacy fingerprint', async () => {
     const put = vi.spyOn(api, 'put').mockRejectedValue(httpError(409));
     const { user } = renderPage();
+    await user.click(screen.getByRole('tab', { name: 'มอบหมายพนักงาน' }));
     await user.click(await screen.findByRole('button', { name: /พนักงานเดิม/ }));
     await user.click(await screen.findByRole('button', { name: 'แก้ไขการมอบหมาย' }));
     await user.click(button('เพิ่มตำแหน่งที่มอบหมาย'));
@@ -414,6 +419,7 @@ describe('EmployeeAccessPage', () => {
         personalGrants: { ...managedPreview.personalGrants, canReverseOverride: false },
       },
     ];
+    await user.click(screen.getByRole('tab', { name: 'มอบหมายพนักงาน' }));
     await user.click(await screen.findByRole('button', { name: /พนักงานระบบใหม่/ }));
     await user.click(await screen.findByRole('button', { name: 'แก้ไขการมอบหมาย' }));
     await user.click(button('นำการมอบหมายที่ 1 ออก'));
@@ -439,6 +445,7 @@ describe('EmployeeAccessPage', () => {
         personalGrants: { ...managedPreview.personalGrants, canReverseOverride: false },
       },
     ];
+    await user.click(screen.getByRole('tab', { name: 'มอบหมายพนักงาน' }));
     await user.click(await screen.findByRole('button', { name: /พนักงานระบบใหม่/ }));
     await user.click(await screen.findByRole('button', { name: 'แก้ไขการมอบหมาย' }));
     await user.click(button('นำการมอบหมายที่ 1 ออก'));
@@ -455,6 +462,7 @@ describe('EmployeeAccessPage', () => {
   it('invalidates an assignment confirmation when a reviewed position revision changes without changing permission labels', async () => {
     const put = vi.spyOn(api, 'put').mockResolvedValue({ data: {} });
     const { user, client } = renderPage();
+    await user.click(screen.getByRole('tab', { name: 'มอบหมายพนักงาน' }));
     await user.click(await screen.findByRole('button', { name: /พนักงานเดิม/ }));
     await user.click(await screen.findByRole('button', { name: 'แก้ไขการมอบหมาย' }));
     await user.click(button('เพิ่มตำแหน่งที่มอบหมาย'));

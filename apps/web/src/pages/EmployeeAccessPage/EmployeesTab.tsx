@@ -77,6 +77,10 @@ export function EmployeesTab() {
 
   return (
     <>
+      <p className="mb-4 text-sm leading-snug text-muted-foreground">
+        เลือกพนักงานเพื่อมอบหมายตำแหน่งและสาขาที่รับผิดชอบ
+        พนักงานที่ใช้ตำแหน่งเดียวกันสามารถมีขอบเขตสาขาต่างกันได้
+      </p>
       <QueryBoundary
         isLoading={employees.isPending || context.isPending || positions.isPending}
         isError={employees.isError || context.isError || positions.isError}

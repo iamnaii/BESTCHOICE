@@ -3,30 +3,33 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
+import { resolveListingWarrantyTerms } from '@installment/shared';
 
 interface Props {
-  product: { id: string; shopWarrantyDays?: number | null; warrantyTerms?: string | null };
+  product: { id: string; shopWarrantyDays?: number | null; warrantyTerms?: string | null; defaultShopWarrantyDays?: number; defaultWarrantyTerms?: string };
   canEdit: boolean;
 }
 
 export default function ProductWarrantyForm({ product, canEdit }: Props) {
   const queryClient = useQueryClient();
   const serverDays = product.shopWarrantyDays == null ? '' : String(product.shopWarrantyDays);
-  const serverTerms = product.warrantyTerms ?? '';
+  const serverTerms = product.warrantyTerms?.trim() || null;
   const [days, setDays] = useState(serverDays);
   const [terms, setTerms] = useState(serverTerms);
   useEffect(() => { setDays(serverDays); }, [product.id, serverDays]);
   useEffect(() => { setTerms(serverTerms); }, [product.id, serverTerms]);
 
   const validDays = days === '' || (Number.isSafeInteger(Number(days)) && Number(days) >= 0);
+  const effectiveDays = days === '' ? product.defaultShopWarrantyDays ?? 0 : Number(days);
+  const displayedTerms = terms ?? resolveListingWarrantyTerms(null, effectiveDays, product.defaultWarrantyTerms) ?? '';
   const dirty = days !== serverDays || terms !== serverTerms;
   const save = useMutation({
     mutationFn: () => api.patch(`/products/${product.id}/online-listing`, {
       ...(days !== serverDays ? { shopWarrantyDays: days === '' ? null : Number(days) } : {}),
-      ...(terms !== serverTerms ? { warrantyTerms: terms.trim() || null } : {}),
+      ...(terms !== serverTerms ? { warrantyTerms: terms?.trim() || null } : {}),
     }),
     onSuccess: async () => {
-      setTerms(terms.trim());
+      setTerms(terms?.trim() || null);
       await Promise.all([['product', product.id], ['stock-list'], ['products'], ['pos-products'], ['products-available']].map(queryKey => queryClient.invalidateQueries({ queryKey })));
       toast.success('บันทึกประกันเครื่องสำเร็จ');
     },
@@ -62,15 +65,24 @@ export default function ProductWarrantyForm({ product, canEdit }: Props) {
         <label htmlFor="warranty-terms" className="block text-sm mb-1">ผู้รับประกันและเงื่อนไขความคุ้มครอง</label>
         <textarea
           id="warranty-terms"
-          value={terms}
+          value={displayedTerms}
           onChange={(event) => setTerms(event.target.value)}
           disabled={!canEdit || save.isPending}
           maxLength={2000}
-          rows={4}
+          rows={8}
           placeholder="ระบุผู้รับประกัน ความคุ้มครอง ข้อยกเว้น และวิธีติดต่อเคลมของเครื่องนี้"
           className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm disabled:opacity-50"
         />
-        <p className="text-xs text-muted-foreground">แสดงบนหน้าสินค้าตามเครื่องที่ลูกค้าเลือก · {terms.length}/2000</p>
+        <p className="text-xs text-muted-foreground leading-snug">
+          {terms?.trim() ? 'ใช้เงื่อนไขเฉพาะเครื่อง' : effectiveDays > 0 ? 'ใช้เงื่อนไขมาตรฐานของร้านอัตโนมัติ ตามระยะประกันเครื่องนี้' : 'เครื่องนี้ไม่มีประกันร้าน'}
+          {' · '}แสดงบนหน้าสินค้าที่ลูกค้าเลือก
+        </p>
+        {terms?.trim() && effectiveDays > 0 && (
+          <button type="button" disabled={!canEdit || save.isPending} onClick={() => setTerms(null)}
+            className="min-h-11 text-xs text-primary underline disabled:opacity-50">
+            ใช้เงื่อนไขมาตรฐานของร้าน
+          </button>
+        )}
       </div>
       <button data-ui-control="button"
         type="submit"

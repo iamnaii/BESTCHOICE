@@ -22,6 +22,17 @@ export function formatDefaultWarrantyTerms(terms: string, days: number): string 
   return terms.replace('ตามระยะประกันร้านที่ระบุ', `${days} วัน`);
 }
 
+/** Listing defaults are projected at read time; explicit per-device terms remain authoritative. */
+export function resolveListingWarrantyTerms(
+  terms: string | null | undefined,
+  days: number | null | undefined,
+  standardTerms = DEFAULT_RECEIPT_WARRANTY_TERMS,
+): string | undefined {
+  if (terms?.trim()) return terms.trim();
+  if (days == null || !Number.isInteger(days) || days <= 0) return undefined;
+  return formatDefaultWarrantyTerms(standardTerms.trim() || DEFAULT_RECEIPT_WARRANTY_TERMS, days);
+}
+
 /** ป้ายวิธีรับเงินบนใบเสร็จ (คีย์ = Prisma enum `PaymentMethod`). */
 export const PAYMENT_METHOD_RECEIPT_LABEL: Record<string, string> = {
   CASH: 'เงินสด',

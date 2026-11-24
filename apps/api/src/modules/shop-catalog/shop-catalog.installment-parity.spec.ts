@@ -55,6 +55,8 @@ describe('ผ่อนเริ่มต้นหน้ารายการ ===
 
   beforeEach(async () => {
     prisma = {
+      // These installment fixtures have no recorded angle photos.
+      $queryRaw: jest.fn().mockResolvedValue([]),
       product: {
         // listGroupedByModel now issues BOTH a groupBy (new stock) and a
         // findMany (second-hand devices) on every call — default each to empty

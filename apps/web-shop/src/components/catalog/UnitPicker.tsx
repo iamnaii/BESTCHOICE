@@ -5,7 +5,7 @@ import { deviceOriginLabel } from '@/lib/device-origin';
 function unitLabel(u: ProductUnit, isNew: boolean): string {
   const parts = [
     deviceOriginLabel(u.deviceOrigin),
-    !isNew && u.conditionGrade && u.conditionGrade !== 'unknown'
+    !isNew && u.conditionGrade && ['A', 'B', 'C', 'D'].includes(u.conditionGrade)
       ? `เกรด ${u.conditionGrade}`
       : null,
     u.color || null,

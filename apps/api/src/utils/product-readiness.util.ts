@@ -1,3 +1,4 @@
+import { listingPhotoWhere } from './product-listing-gallery.util';
 import { Prisma } from '@prisma/client';
 
 export const SHOP_BRAND = 'Apple';
@@ -48,20 +49,13 @@ export function productReadinessWhere(opts?: ProductReadinessOptions): Prisma.Pr
     { brand: SHOP_BRAND },
     { category: { in: [...SHOP_PHONE_CATEGORIES] } },
     { cashPrice: { gt: 0 } },
-    { gallery: { isEmpty: false } },
+    listingPhotoWhere(),
     // ไม่ผูกกับ NODE_ENV — QA local ต้องเห็นพฤติกรรมเดียวกับ prod; ผูกกับ
     // excludeDemo (ผู้เรียกอ่าน SystemConfig flag `shop_hide_demo_products` มาแล้ว) แทน
     ...(excludeDemo
       ? [{ NOT: { name: { startsWith: DEMO_NAME_PREFIX } } } as Prisma.ProductWhereInput]
       : []),
-    {
-      // ⚠️ ต้องใช้ชุดค่าเดียวกับ evaluateReadiness — `{ not: '' }` ปล่อยเกรดที่เป็น
-      // ช่องว่างเดียวผ่าน (ขึ้นเว็บได้) ทั้งที่ checklist บอกว่ายังไม่พร้อม
-      OR: [
-        { category: { not: 'PHONE_USED' } },
-        { conditionGrade: { in: [...VALID_CONDITION_GRADES] } },
-      ],
-    },
+
   ];
   return { AND: and };
 }
@@ -111,12 +105,9 @@ export interface ReadinessResult {
 /** checklist รายข้อสำหรับหน้าสินค้า admin (B1 กิน endpoint นี้) */
 export function evaluateReadiness(p: ReadinessProductShape): ReadinessResult {
   const cash = p.cashPrice != null ? Number(p.cashPrice) : 0;
-  const isUsed = p.category === 'PHONE_USED';
   const inShopGate =
     p.brand === SHOP_BRAND && (SHOP_PHONE_CATEGORIES as readonly string[]).includes(p.category);
 
-  const conditionGradeOk =
-    !isUsed || (VALID_CONDITION_GRADES as readonly string[]).includes(p.conditionGrade ?? '');
   const isDemoProduct = p.name.startsWith(DEMO_NAME_PREFIX);
 
   const checks: ReadinessCheck[] = [
@@ -151,19 +142,7 @@ export function evaluateReadiness(p: ReadinessProductShape): ReadinessResult {
       key: 'gallery',
       label: 'มีรูปขึ้นเว็บอย่างน้อย 1 รูป',
       ok: p.gallery.length > 0,
-      hint: p.gallery.length > 0 ? undefined : 'เลือกรูปจากรูปสินค้าในระบบมาเป็นรูปขึ้นเว็บ',
-      severity: 'blocking',
-    },
-    {
-      key: 'conditionGrade',
-      label: 'มีเกรดเครื่อง (เฉพาะมือสอง)',
-      // ชุดเดียวกับ where fragment เป๊ะ — ห้ามใช้ `.trim().length > 0` (จะยอมรับค่านอกชุด
-      // และเกรดช่องว่างจะตัดสินไม่ตรงกับ DB)
-      ok: conditionGradeOk,
-      // Minor fix (reviewer): hint belongs on the FAILING side (มือสองไม่มีเกรด —
-      // the one row admin actually needs guidance on), not the passing มือ 1 side —
-      // matches every other check in this list (hint only when ok:false).
-      hint: conditionGradeOk ? undefined : 'ตั้งเกรดได้ที่หน้าแก้ไขสินค้า (OWNER/BM)',
+      hint: p.gallery.length > 0 ? undefined : 'เพิ่มรูปสินค้าในแท็บรูปถ่าย ระบบจะใช้รูปที่บันทึกไว้ขึ้นเว็บอัตโนมัติ',
       severity: 'blocking',
     },
     {

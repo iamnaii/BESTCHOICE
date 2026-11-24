@@ -89,6 +89,8 @@ interface Product {
   onlineDescription: string | null;
   deviceOrigin?: 'THAI' | 'IMPORTED' | null;
   warrantyTerms?: string | null;
+  defaultShopWarrantyDays?: number;
+  defaultWarrantyTerms?: string;
   partsHistory?: PartsHistoryValue | null;
   partsHistoryNote?: string | null;
   conditionGrade: string | null;
@@ -107,7 +109,7 @@ interface Product {
   lockedByBookings?: { id: string; bookingNumber: string; customer: { name: string } }[];
 }
 
-type Tab = 'info' | 'photos' | 'online';
+type Tab = 'info' | 'photos';
 
 const CALC_CATEGORIES = new Set(['PHONE_NEW', 'PHONE_USED', 'TABLET']);
 const SOLD_STATUSES = new Set(['SOLD_INSTALLMENT', 'SOLD_CASH', 'SOLD_RESELL']);
@@ -467,12 +469,11 @@ export default function ProductDetailPage() {
 
       <AdjustmentPendingBanner productId={product.id} status={product.status} />
 
-      {/* Tabs — always shown; 'photos' only for PHONE_USED, 'online' for every category */}
+      {/* Tabs — always shown; listing controls are in info, photo capture has its own tab. */}
       <div className="flex max-w-full min-w-0 overflow-x-auto overflow-y-hidden gap-0.5 mb-5 border-b border-border/60">
         {([
           { key: 'info' as Tab, label: 'ข้อมูลสินค้า' },
           ...(product.category !== 'ACCESSORY' ? [{ key: 'photos' as Tab, label: 'รูปถ่าย' }] : []),
-          { key: 'online' as Tab, label: 'ขึ้นเว็บ' },
         ]).map((tab) => (
           <button data-ui-control="button"
             key={tab.key}
@@ -497,34 +498,17 @@ export default function ProductDetailPage() {
         />
       )}
 
-      {/* Tab: Online listing */}
-      {activeTab === 'online' && (
-        <OnlineListingPanel product={product} canEdit={isManager} />
-      )}
-
-      {/* Tab: Info — แนว A: ซ้าย ข้อมูลเครื่อง · ขวา (sticky) ราคา + ค่างวด · จอแคบ ขวาขึ้นก่อน */}
+      {/* Tab: Info — identity, photos, listing, warranty and prices in one view. */}
       {activeTab === 'info' && (
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_420px] lg:items-start">
-          <div className="order-2 space-y-5 lg:order-1">
-            <ProductIdentityCard
-              product={product}
-              onGoPhotos={() => setActiveTab(product.category !== 'ACCESSORY' ? 'photos' : 'online')}
-            />
-            {product.inspection && <QcSummaryCard inspection={product.inspection} />}
-            <CostProfitStrip
-              canSeeCost={canSeeCost}
-              costPrice={product.costPrice}
-              profit={profitInfo.profit}
-              profitBasis={profitInfo.basis}
-              basisPrice={profitInfo.basisPrice}
-            />
-            <div className="grid gap-5 md:grid-cols-2">
-              <SameModelCard productId={product.id} model={product.model} storage={product.storage} />
-              {!isSoldAny && <ActivePromotionsCard />}
-            </div>
-          </div>
-
-          <div className="order-1 space-y-5 lg:order-2 lg:sticky lg:top-[76px]">
+        <OnlineListingPanel
+          product={product}
+          canEdit={isManager}
+          onGoPhotos={product.category !== 'ACCESSORY' ? () => setActiveTab('photos') : undefined}
+          onEditPrice={isManager ? openSellingPriceModal : undefined}
+          productInfo={
+            <ProductIdentityCard product={product} showPhotoStrip={false} onGoPhotos={() => setActiveTab('photos')} />
+          }
+          pricing={
             <SellingPriceCard
               cashPrice={displayCashPrice}
               installmentPrice={displayInstallmentPrice}
@@ -533,35 +517,45 @@ export default function ProductDetailPage() {
               installmentIsFallback={installmentIsFallback}
               canEdit={isManager}
               onEdit={openSellingPriceModal}
-              readiness={
-                readiness.data
-                  ? { isReady: readiness.data.isReady, checks: readiness.data.checks }
-                  : null
-              }
-              onGoOnline={() => setActiveTab('online')}
               legacyPrices={product.prices}
             />
-            {isSoldInstallment && product.activeContract ? (
-              <ContractSummaryCard contract={product.activeContract} />
-            ) : isSoldAny ? (
-              <NoticeBox>
-                เครื่องนี้{statusCfg.label}แล้ว — ไม่มีเครื่องคำนวณค่างวด
-                {product.status === 'SOLD_INSTALLMENT' ? ' (ไม่พบสัญญาที่ผูกกับเครื่อง)' : ''}
-              </NoticeBox>
-            ) : isCalcCategory && quotes ? (
-              <InstallmentCalculatorCard
-                product={product}
-                state={calcState}
-                quotes={quotes}
-                onChange={setCalcState}
-                onEditPrice={openSellingPriceModal}
-                canEditPrice={isManager}
-                gfinSettings={gfinTablesQuery.tables?.settings}
-                loading={bcConfigQuery.isLoading || gfinTablesQuery.isLoading}
+          }
+          calculator={isSoldInstallment && product.activeContract ? (
+            <ContractSummaryCard contract={product.activeContract} />
+          ) : isSoldAny ? (
+            <NoticeBox>
+              เครื่องนี้{statusCfg.label}แล้ว — ไม่มีเครื่องคำนวณค่างวด
+              {product.status === 'SOLD_INSTALLMENT' ? ' (ไม่พบสัญญาที่ผูกกับเครื่อง)' : ''}
+            </NoticeBox>
+          ) : isCalcCategory && quotes ? (
+            <InstallmentCalculatorCard
+              product={product}
+              state={calcState}
+              quotes={quotes}
+              onChange={setCalcState}
+              onEditPrice={openSellingPriceModal}
+              canEditPrice={isManager}
+              gfinSettings={gfinTablesQuery.tables?.settings}
+              loading={bcConfigQuery.isLoading || gfinTablesQuery.isLoading}
+            />
+          ) : null}
+          additionalInfo={
+            <div className="space-y-5">
+              {product.inspection && <QcSummaryCard inspection={product.inspection} />}
+              <CostProfitStrip
+                canSeeCost={canSeeCost}
+                costPrice={product.costPrice}
+                profit={profitInfo.profit}
+                profitBasis={profitInfo.basis}
+                basisPrice={profitInfo.basisPrice}
               />
-            ) : null}
-          </div>
-        </div>
+              <div className="grid gap-5 md:grid-cols-2">
+                <SameModelCard productId={product.id} model={product.model} storage={product.storage} />
+                {!isSoldAny && <ActivePromotionsCard />}
+              </div>
+            </div>
+          }
+        />
       )}
 
       {/* Edit Selling Price Modal */}

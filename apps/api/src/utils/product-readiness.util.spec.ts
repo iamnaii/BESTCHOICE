@@ -1,3 +1,4 @@
+import { listingPhotoWhere } from './product-listing-gallery.util';
 import { productReadinessWhere, evaluateReadiness } from './product-readiness.util';
 
 describe('productReadinessWhere', () => {
@@ -13,7 +14,7 @@ describe('productReadinessWhere', () => {
     expect(and).toContainEqual({ isOnlineVisible: true });
     expect(and).toContainEqual({ status: 'IN_STOCK' });
     expect(and).toContainEqual({ cashPrice: { gt: 0 } });
-    expect(and).toContainEqual({ gallery: { isEmpty: false } });
+    expect(and).toContainEqual(listingPhotoWhere());
   });
 
   // [Important 1, mutation ก] structural-echo fix: เดิม `toContainEqual` แยกทีละตัว
@@ -29,13 +30,8 @@ describe('productReadinessWhere', () => {
       { brand: 'Apple' },
       { category: { in: ['PHONE_NEW', 'PHONE_USED'] } },
       { cashPrice: { gt: 0 } },
-      { gallery: { isEmpty: false } },
-      {
-        OR: [
-          { category: { not: 'PHONE_USED' } },
-          { conditionGrade: { in: ['A', 'B', 'C', 'D'] } },
-        ],
-      },
+      listingPhotoWhere(),
+
     ]);
   });
 
@@ -49,17 +45,8 @@ describe('productReadinessWhere', () => {
     expect(and).toContainEqual({ NOT: { name: { startsWith: '[DEMO]' } } });
   });
 
-  it('มือสองต้องมีเกรด — ห่ออยู่ใน AND ไม่ใช่ OR ระดับบนสุด และใช้ชุดเกรดเดียวกับ checklist (compose ถูกทั้งกับ excludeDemo true/false)', () => {
-    const nested = {
-      OR: [
-        { category: { not: 'PHONE_USED' } },
-        { conditionGrade: { in: ['A', 'B', 'C', 'D'] } },
-      ],
-    };
-    expect((productReadinessWhere() as { AND: Record<string, unknown>[] }).AND).toContainEqual(nested);
-    expect(
-      (productReadinessWhere({ excludeDemo: true }) as { AND: Record<string, unknown>[] }).AND,
-    ).toContainEqual(nested);
+  it('grade is optional in the shop filter', () => {
+    expect(JSON.stringify(productReadinessWhere())).not.toContain('conditionGrade');
   });
 
   it('requireInStock:false ตัดเฉพาะเงื่อนไขสถานะ (permalink เครื่องที่ขายแล้ว)', () => {
@@ -96,35 +83,10 @@ describe('evaluateReadiness', () => {
     expect(r.checks.find((c) => c.key === 'cashPrice')?.ok).toBe(false);
   });
 
-  it('มือสองไม่มีเกรด → ไม่ ready + hint แนะนำวิธีแก้ (Minor fix: hint อยู่ฝั่งตกไม่ใช่ฝั่งผ่าน)', () => {
-    const r = evaluateReadiness({ ...ok, category: 'PHONE_USED', conditionGrade: null } as never);
-    expect(r.checks.find((c) => c.key === 'conditionGrade')?.ok).toBe(false);
-    expect(r.checks.find((c) => c.key === 'conditionGrade')?.hint).toContain('ตั้งเกรดได้');
-    expect(r.ready).toBe(false);
-  });
-
-  it('มือ 1 (ไม่บังคับเกรด) → conditionGrade ok:true และไม่มี hint', () => {
-    const r = evaluateReadiness(ok as never);
-    expect(r.checks.find((c) => c.key === 'conditionGrade')?.ok).toBe(true);
-    expect(r.checks.find((c) => c.key === 'conditionGrade')?.hint).toBeUndefined();
-  });
-
-  // ปักหมุดความสอดคล้อง where ↔ checklist: เกรดที่เป็นช่องว่าง/ค่านอกชุด ต้องไม่ผ่านทั้งคู่
-  it('มือสองเกรดเป็นช่องว่างหรือค่านอกชุด A-D → ไม่ ready (ตรงกับ where ที่ใช้ in [A,B,C,D])', () => {
-    for (const grade of [' ', '', 'ก', 'E']) {
-      const r = evaluateReadiness({ ...ok, category: 'PHONE_USED', conditionGrade: grade } as never);
-      expect(r.checks.find((c) => c.key === 'conditionGrade')?.ok).toBe(false);
-      expect(r.ready).toBe(false);
-    }
-  });
-
-  // [Important 1, mutation ข] เดิมมีแต่เคส negative (ค่านอกชุด) — ไม่มีเคสยืนยันว่า A/B/C/D
-  // ทั้ง 4 ค่าผ่านจริง ถ้า evaluateReadiness แอบหด VALID_CONDITION_GRADES เหลือ ['A'] เฉพาะ
-  // ฝั่งนี้ (drift จาก where ที่ยังใช้ 4 ค่า) เทสต์เดิมเขียวหมดเพราะไม่มีใครทดสอบ B/C/D
-  it.each(['A', 'B', 'C', 'D'])('มือสองเกรด %s (ถูกต้องตามชุด VALID_CONDITION_GRADES) → ready:true', (grade) => {
+  it.each([null, '', ' ', 'A', 'B', 'C', 'D'])('grade %s is metadata, not a publish gate', grade => {
     const r = evaluateReadiness({ ...ok, category: 'PHONE_USED', conditionGrade: grade } as never);
-    expect(r.checks.find((c) => c.key === 'conditionGrade')?.ok).toBe(true);
     expect(r.ready).toBe(true);
+    expect(r.checks.some(c => c.key === 'conditionGrade')).toBe(false);
   });
 
   it('แบรนด์นอก shop gate → เตือนว่าเว็บไม่รับ', () => {
@@ -153,7 +115,6 @@ describe('evaluateReadiness', () => {
       'inStock',
       'cashPrice',
       'gallery',
-      'conditionGrade',
       'isOnlineVisible',
     ];
     for (const key of blockingKeys) {
@@ -171,7 +132,6 @@ describe('evaluateReadiness', () => {
       ['inStock', { status: 'RESERVED' }],
       ['cashPrice', { cashPrice: null }],
       ['gallery', { gallery: [] }],
-      ['conditionGrade', { category: 'PHONE_USED', conditionGrade: null }],
       ['isOnlineVisible', { isOnlineVisible: false }],
     ];
 

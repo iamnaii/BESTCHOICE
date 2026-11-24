@@ -1,3 +1,4 @@
+import { hydratePublicListingGalleries } from '../../../utils/public-listing-gallery.util';
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -330,6 +331,7 @@ export class RecommendDevicesTool {
       ...(excludeDemo ? { NOT: { name: { startsWith: DEMO_NAME_PREFIX } } } : {}),
       OR: models.map((m) => ({ model: { contains: m, mode: 'insensitive' as const } })),
       AND: [
+
         {
           OR: [
             { category: { not: 'PHONE_USED' } },
@@ -338,7 +340,7 @@ export class RecommendDevicesTool {
         },
       ],
     };
-    const rows: StockRow[] = await this.prisma.product.findMany({
+    const rawRows: StockRow[] = await this.prisma.product.findMany({
       where,
       take: STOCK_TAKE,
       orderBy: [{ batteryHealth: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }],
@@ -354,6 +356,7 @@ export class RecommendDevicesTool {
       },
     });
 
+    const rows = await hydratePublicListingGalleries(this.prisma, rawRows);
     for (const t of templates) {
       const key = stockKey(t);
       if (byKey.has(key)) continue;

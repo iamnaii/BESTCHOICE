@@ -1,3 +1,4 @@
+import { hydrateListingGalleries } from '../../utils/product-listing-gallery.util';
 import { domainAccessClient, currentDomainAccess } from '../employee-access/access-execution-context';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
@@ -31,6 +32,17 @@ export class ProductsOnlineListingService {
   async updateOnlineListing(id: string, dto: UpdateOnlineListingDto) {
     const product = await this.findProduct(id);
 
+    if (dto.onlineCoverAngle) {
+      if (!PHOTO_ANGLES.includes(dto.onlineCoverAngle)) throw new BadRequestException('ช่องรูปปกไม่ถูกต้อง');
+      const photos = await this.prisma.productPhoto.findFirst({
+        where: { productId: id, deletedAt: null, [dto.onlineCoverAngle]: { not: null, notIn: [''] } },
+        select: { productId: true },
+      });
+      if (!photos) {
+        throw new BadRequestException('ยังไม่มีรูปด้านที่เลือกเป็นปก');
+      }
+    }
+
     if (dto.gallery) {
       if (new Set(dto.gallery).size !== dto.gallery.length) {
         // defense-in-depth: DTO-level @ArrayUnique should already catch this,
@@ -52,6 +64,7 @@ export class ProductsOnlineListingService {
     return this.prisma.product.update({
       where: { id },
       data: {
+        ...(dto.onlineCoverAngle !== undefined ? { onlineCoverAngle: dto.onlineCoverAngle } : {}),
         ...(dto.deviceOrigin !== undefined ? { deviceOrigin: dto.deviceOrigin } : {}),
         ...(dto.shopWarrantyDays !== undefined ? { shopWarrantyDays: dto.shopWarrantyDays } : {}),
         ...(dto.warrantyTerms !== undefined ? { warrantyTerms: dto.warrantyTerms?.trim() || null } : {}),
@@ -64,6 +77,18 @@ export class ProductsOnlineListingService {
 
   async promotePhoto(id: string, dto: PromoteListingPhotoDto): Promise<{ gallery: string[] }> {
     const product = await this.findProduct(id);
+    // Compatibility for older open tabs: angles already appear automatically.
+    // Never copy them into the legacy fallback gallery, even on repeated calls.
+    if (dto.source === 'ANGLE') {
+      if (!dto.angle || !PHOTO_ANGLES.includes(dto.angle)) throw new BadRequestException('รูปหลักฐานภายในไม่สามารถนำขึ้นเว็บได้');
+      const active = await this.prisma.productPhoto.findFirst({
+        where: { productId: id, deletedAt: null, [dto.angle]: { not: null, notIn: [''] } },
+        select: { productId: true },
+      });
+      if (!active) throw new BadRequestException('ไม่พบรูปที่เลือก');
+      const [listing] = await hydrateListingGalleries(this.prisma, [product]);
+      return { gallery: listing.gallery };
+    }
     // Best-effort cap check — this is check-then-act against a value read
     // before the atomic push below, so two concurrent requests can both
     // pass this check and jointly land the gallery 1 photo over MAX_GALLERY.
@@ -73,15 +98,7 @@ export class ProductsOnlineListingService {
       throw new BadRequestException(`แกลเลอรีขึ้นเว็บได้สูงสุด ${MAX_GALLERY} รูป — ลบรูปเดิมออกก่อน`);
     }
 
-    let candidate: string | null | undefined;
-    if (dto.source === 'LEGACY') {
-      candidate = dto.index !== undefined ? product.photos[dto.index] : undefined;
-    } else {
-      // Service-level allowlist: evidence must never be promoted, even by internal callers.
-      if (!dto.angle || !PHOTO_ANGLES.includes(dto.angle)) throw new BadRequestException('รูปหลักฐานภายในไม่สามารถนำขึ้นเว็บได้');
-      const row = await this.prisma.productPhoto.findUnique({ where: { productId: id } });
-      candidate = dto.angle && row ? (row as Record<string, unknown>)[dto.angle] as string | null : undefined;
-    }
+    const candidate = dto.index !== undefined ? product.photos[dto.index] : undefined;
     if (!candidate) throw new BadRequestException('ไม่พบรูปที่เลือก');
 
     const match = DATA_URL_RE.exec(candidate);
@@ -179,7 +196,8 @@ export class ProductsOnlineListingService {
     // เดียวกับเช็คลิสต์ในหน้าสินค้า จะได้ไม่มีกติกาชุดที่สอง
     const blocked = new Map<string, number>();
     let willAppear = 0;
-    for (const r of rows) {
+    const listings = await hydrateListingGalleries(this.prisma, rows);
+    for (const r of listings) {
       const result = evaluateReadiness({
         name: r.name,
         brand: r.brand,

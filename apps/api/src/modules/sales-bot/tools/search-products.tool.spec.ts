@@ -30,6 +30,7 @@ const row = (over: Partial<Record<string, unknown>> = {}) => ({
 // ซึ่งตรงกับ prod จริงวันนี้ (fallback → false → โชว์ [DEMO] เหมือนเว็บ)
 const makePrisma = (rows: unknown[], configValue: string | null = null) =>
   ({
+    $queryRaw: jest.fn().mockResolvedValue([]),
     product: { findMany: jest.fn().mockResolvedValue(rows) },
     systemConfig: {
       findFirst: jest.fn().mockResolvedValue(configValue == null ? null : { value: configValue }),

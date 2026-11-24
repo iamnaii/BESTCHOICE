@@ -92,3 +92,12 @@ describe('ReadinessCard', () => {
     expect(screen.queryByLabelText('ยังไม่ผ่าน')).toBeNull();
   });
 });
+
+it('does not offer fixes that the current role or product cannot perform', () => {
+  render(<ReadinessCard isLoading={false} isError={false} data={{ ...ready, isReady: false, checks: [
+    { key: 'cashPrice', label: 'มีราคาเงินสด', ok: false, severity: 'blocking' },
+    { key: 'gallery', label: 'มีรูป', ok: false, severity: 'blocking' },
+  ] }} onFix={() => undefined} availableActions={[]} />);
+  expect(screen.queryByRole('button', { name: 'ตั้งราคาขาย' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'เพิ่มรูปสินค้า' })).not.toBeInTheDocument();
+});

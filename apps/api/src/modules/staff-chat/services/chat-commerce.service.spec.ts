@@ -3,7 +3,7 @@ import { ChatCommerceService } from './chat-commerce.service';
 import { MessageRouterService } from '../../chat-engine/services/message-router.service';
 
 function makeService(product?: any) {
-  const prisma = {
+  const prisma = { $queryRaw: jest.fn().mockResolvedValue([]),
     product: {
       findMany: jest.fn().mockResolvedValue(product ? [product] : []),
       findFirst: jest.fn().mockResolvedValue(product ?? null),
@@ -53,7 +53,7 @@ beforeEach(() => {
 
 describe('ChatCommerceService.createPaymentLinkInChat — ห้องที่ถือผู้สนใจอัตโนมัติยังส่งข้อมูลชำระไม่ได้', () => {
   function makeCommerceOnlyService() {
-    const prisma = { chatRoom: { findUnique: jest.fn() }, contract: { findUnique: jest.fn() } };
+    const prisma = { $queryRaw: jest.fn().mockResolvedValue([]), chatRoom: { findUnique: jest.fn() }, contract: { findUnique: jest.fn() } };
     const svc = new ChatCommerceService(prisma as any, {} as any, {} as any, {} as any);
     return { svc, prisma };
   }
@@ -198,7 +198,7 @@ describe('ChatCommerceService.sendProductCard — 2 bubble idempotent', () => {
   // เคสนี้จึงต่อ MessageRouterService ตัวจริงเข้ากับ adapter ปลอม เพื่อพิสูจน์ว่า
   // การ์ดใหม่ "ออกช่องทางจริง" ไม่ใช่แค่บันทึกลง DB
   it('เดินทะลุถึง adapter จริง (ไม่ใช่ saveMessage เฉยๆ แบบโค้ดเดิม)', async () => {
-    const prisma = { product: { findFirst: jest.fn().mockResolvedValue(PRODUCT) } };
+    const prisma = { $queryRaw: jest.fn().mockResolvedValue([]), product: { findFirst: jest.fn().mockResolvedValue(PRODUCT) } };
     const productQuote = {
       getQuotes: jest.fn().mockResolvedValue([
         { cashPrice: 19500, installmentPrice: 20000, months: 12, monthlyPayment: 1926, downAmount: 4000 },
@@ -254,7 +254,7 @@ describe('ChatCommerceService.sendProductCard — 2 bubble idempotent', () => {
   // แต่ roomManager เป็น in-memory store จริง (ไม่ใช่ mock เดี่ยว) เพื่อให้เห็นสถานะ
   // outboundSentAt ข้าม call ของ sendProductCard สองครั้ง
   it('retry หลัง bubble ข้อความล้มเหลว → resend เฉพาะข้อความ, ลูกค้าไม่ได้รูปซ้ำ (idempotent ที่ระดับ sendProductCard)', async () => {
-    const prisma = { product: { findFirst: jest.fn().mockResolvedValue(PRODUCT) } };
+    const prisma = { $queryRaw: jest.fn().mockResolvedValue([]), product: { findFirst: jest.fn().mockResolvedValue(PRODUCT) } };
     const productQuote = {
       getQuotes: jest.fn().mockResolvedValue([
         { cashPrice: 19500, installmentPrice: 20000, months: 12, monthlyPayment: 1926, downAmount: 4000 },

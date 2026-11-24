@@ -1,3 +1,5 @@
+import { listingPhotoWhere } from '../../utils/product-listing-gallery.util';
+import { DEFAULT_RECEIPT_WARRANTY_TERMS, formatDefaultWarrantyTerms } from '@installment/shared';
 import { Test } from '@nestjs/testing';
 import { Prisma } from '@prisma/client';
 import { ShopCatalogService } from './shop-catalog.service';
@@ -9,7 +11,7 @@ describe('ShopCatalogService', () => {
   let prisma: any;
 
   beforeEach(async () => {
-    prisma = {
+    prisma = { $queryRaw: jest.fn().mockResolvedValue([]),
       product: {
         // Second-hand now lists one card per device, so listGroupedByModel
         // always issues a findMany for PHONE_USED alongside the NEW groupBy.
@@ -90,7 +92,7 @@ describe('ShopCatalogService', () => {
           { status: 'IN_STOCK' },
           { deletedAt: null },
           { cashPrice: { gt: 0 } },
-          { gallery: { isEmpty: false } },
+          listingPhotoWhere(),
           { NOT: { name: { startsWith: '[DEMO]' } } },
         ]),
       );
@@ -110,7 +112,7 @@ describe('ShopCatalogService', () => {
           { status: 'IN_STOCK' },
           { deletedAt: null },
           { cashPrice: { gt: 0 } },
-          { gallery: { isEmpty: false } },
+          listingPhotoWhere(),
         ]),
       );
       expect(where.AND).not.toContainEqual({ NOT: { name: { startsWith: '[DEMO]' } } });
@@ -645,6 +647,25 @@ describe('ShopCatalogService', () => {
   });
 
   describe('getProductDetail', () => {
+    it.each([30, 0])('projects approved terms on the selected product only when covered (%s days)', async (days) => {
+      prisma.product.findFirst.mockResolvedValue({
+        id: 'p1', brand: 'Apple', model: 'iPhone 15', category: 'PHONE_USED',
+        shopWarrantyDays: days, warrantyTerms: null, cashPrice: 15000, installmentPrice: null,
+      });
+      const detail = await service.getProductDetail('p1');
+      expect(detail!.warrantyTerms).toBe(days ? formatDefaultWarrantyTerms(DEFAULT_RECEIPT_WARRANTY_TERMS, days) : undefined);
+    });
+
+    it('uses the same configured standard terms as product entry and receipts', async () => {
+      prisma.systemConfig.findFirst.mockImplementation(async ({ where }) =>
+        where.key === 'receipt_shop_warranty_terms' ? { value: 'เงื่อนไขที่ร้านกำหนด' } : null);
+      prisma.product.findFirst.mockResolvedValue({
+        id: 'p1', brand: 'Apple', model: 'iPhone 15', category: 'PHONE_USED',
+        shopWarrantyDays: 30, warrantyTerms: null, cashPrice: 15000, installmentPrice: null,
+      });
+      expect((await service.getProductDetail('p1'))!.warrantyTerms).toBe('เงื่อนไขที่ร้านกำหนด');
+    });
+
     it('returns warranty details per unit and preserves an explicit zero-day warranty', async () => {
       prisma.product.findFirst.mockResolvedValue({
         id: 'p1', brand: 'Apple', model: 'iPhone 15', category: 'PHONE_USED', deviceOrigin: 'IMPORTED',
@@ -658,7 +679,7 @@ describe('ShopCatalogService', () => {
       const detail = await service.getProductDetail('p1');
       expect(detail).toMatchObject({ shopWarrantyDays: 60, warrantyTerms: 'ประกันร้าน 60 วัน' });
       expect(detail!.tiers.A.units.map((u) => [u.shopWarrantyDays, u.warrantyTerms])).toEqual([
-        [60, 'ประกันร้าน 60 วัน'], [0, 'ไม่มีความคุ้มครองเพิ่มเติม'], [60, undefined],
+        [60, 'ประกันร้าน 60 วัน'], [0, 'ไม่มีความคุ้มครองเพิ่มเติม'], [60, formatDefaultWarrantyTerms(DEFAULT_RECEIPT_WARRANTY_TERMS, 60)],
       ]);
     });
 

@@ -1,3 +1,4 @@
+import { hydratePublicListingGalleries } from '../../../utils/public-listing-gallery.util';
 import { Injectable } from '@nestjs/common';
 import Decimal from 'decimal.js';
 import { displayInstallment } from '@installment/shared';
@@ -33,7 +34,7 @@ export class CalculateInstallmentTool {
   constructor(private readonly prisma: PrismaService) {}
 
   async run(input: { productId: string; downPct?: number; tenureMonths: number }, scope?: { branchId: string }, inStockOnly = false) {
-    const product = await this.prisma.product.findFirst({
+    const rawProduct = await this.prisma.product.findFirst({
       where: { id: input.productId, deletedAt: null, ...(scope ? { branchId: scope.branchId } : {}), ...(inStockOnly ? { status: 'IN_STOCK' as const } : {}) },
       select: {
         id: true,
@@ -45,7 +46,8 @@ export class CalculateInstallmentTool {
         prices: { where: { deletedAt: null }, select: { label: true, amount: true } },
       },
     });
-    if (!product) return { error: 'product_not_found' };
+    if (!rawProduct) return { error: 'product_not_found' };
+    const [product] = await hydratePublicListingGalleries(this.prisma, [rawProduct]);
 
     // ลำดับเดียวกับ installment-preview.service.ts:39-43 เป๊ะ — คอลัมน์ก่อน
     // แล้วค่อย fallback label (ระหว่างที่ B0 ยังไล่ backfill ราคาไม่ครบ)

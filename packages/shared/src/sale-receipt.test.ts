@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_RECEIPT_WARRANTY_TERMS, formatDefaultWarrantyTerms } from './sale-receipt';
+import { DEFAULT_RECEIPT_WARRANTY_TERMS, formatDefaultWarrantyTerms, resolveListingWarrantyTerms } from './sale-receipt';
 
 describe('shop warranty terms', () => {
+  it('uses approved listing terms only for a covered device and preserves per-device terms', () => {
+    expect(resolveListingWarrantyTerms(null, 30)).toBe(formatDefaultWarrantyTerms(DEFAULT_RECEIPT_WARRANTY_TERMS, 30));
+    expect(resolveListingWarrantyTerms('  ', 60)).toContain('รับประกัน 60 วัน');
+    expect(resolveListingWarrantyTerms(null, 0)).toBeUndefined();
+    expect(resolveListingWarrantyTerms(null, null)).toBeUndefined();
+    expect(resolveListingWarrantyTerms('ประกันศูนย์', 0)).toBe('ประกันศูนย์');
+    expect(resolveListingWarrantyTerms(null, 60, 'เงื่อนไขมาตรฐานที่ร้านตั้งเอง')).toBe('เงื่อนไขมาตรฐานที่ร้านตั้งเอง');
+  });
   it('renders six approved clauses with the selected duration and separate seven-day cover', () => {
     const terms = formatDefaultWarrantyTerms(DEFAULT_RECEIPT_WARRANTY_TERMS, 60);
     expect(terms.split('\n')).toHaveLength(6);

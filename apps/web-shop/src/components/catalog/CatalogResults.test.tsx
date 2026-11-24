@@ -93,3 +93,10 @@ it('preserves existing cards, focus and photo selection when more results arrive
   expect(photo).toHaveAttribute('aria-pressed', 'true');
   expect(screen.getByRole('status')).toHaveTextContent('พบ 2 รายการ');
 });
+
+it.each([undefined, '', 'unknown', ' '])('renders an ungraded used phone without a grade placeholder (%s)', grade => {
+  render(<MemoryRouter><CatalogResults products={[{ ...product, conditionGrade: grade, conditionGrades: [] }]} total={1} loading={false} error={false} updating={false} resultKey="ungraded" priceMode="cash" onRetry={() => undefined} /></MemoryRouter>);
+  expect(screen.getByLabelText('เครื่องมือสอง')).toBeInTheDocument();
+  expect(screen.queryByText('·')).not.toBeInTheDocument();
+  expect(screen.queryByText(/GRADE/)).not.toBeInTheDocument();
+});

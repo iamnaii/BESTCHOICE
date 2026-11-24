@@ -62,6 +62,7 @@ function conditionVariant(g: string): 'condition-a' | 'condition-b' | 'condition
 }
 
 function conditionDescription(g: string): string {
+  if (g === 'D') return 'เกรด D';
   return g === 'A'
     ? copy.product.conditionAFull
     : g === 'B'
@@ -243,7 +244,7 @@ export default function ProductDetailPage() {
   const price = selectedUnit?.cashPrice ?? null;
   const monthlyFrom =
     preview?.available && preview.monthlyPayment ? Math.ceil(preview.monthlyPayment) : null;
-  const gradeKeys = Object.keys(data.tiers);
+  const gradeKeys = selectedUnit?.conditionGrade && ['A', 'B', 'C', 'D'].includes(selectedUnit.conditionGrade) ? [selectedUnit.conditionGrade] : [];
   const isNew = data.condition === 'NEW';
   const showGrades = !isNew && gradeKeys.length > 0;
   // รูปตามเครื่องที่เลือก — ถอยไปใช้รูประดับรุ่นเมื่อเครื่องนั้นยังไม่มีรูปของตัวเอง

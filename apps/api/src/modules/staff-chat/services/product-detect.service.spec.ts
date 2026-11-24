@@ -2,7 +2,7 @@ import { ProductDetectService } from './product-detect.service';
 
 function makeService(products: any[], counts: number[]) {
   let countCall = 0;
-  const prisma = {
+  const prisma = { $queryRaw: jest.fn().mockResolvedValue([]),
     product: {
       findMany: jest.fn().mockResolvedValue(products),
       count: jest.fn(async () => counts[countCall++] ?? 0),

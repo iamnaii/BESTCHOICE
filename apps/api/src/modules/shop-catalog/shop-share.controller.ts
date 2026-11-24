@@ -47,7 +47,7 @@ export class ShopShareController {
       buildShareDescription({
         title,
         condition: detail.condition,
-        conditionGrade: cheapest?.conditionGrade !== 'unknown' ? cheapest?.conditionGrade : undefined,
+        conditionGrade: cheapest?.conditionGrade && ['A', 'B', 'C', 'D'].includes(cheapest.conditionGrade) ? cheapest.conditionGrade : undefined,
         batteryHealth: cheapest?.batteryHealth,
         shopWarrantyDays: cheapest?.shopWarrantyDays,
         price,

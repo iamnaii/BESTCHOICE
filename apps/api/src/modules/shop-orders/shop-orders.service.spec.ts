@@ -48,7 +48,7 @@ describe('ShopOrdersService.confirmBankTransfer', () => {
         update: jest.fn().mockResolvedValue({ ...baseOrder, status: 'PAID' }),
       },
     };
-    prisma = {
+    prisma = { $queryRaw: jest.fn().mockResolvedValue([]),
       onlineOrder: {
         findUnique: jest.fn().mockResolvedValue(baseOrder),
         count: jest.fn().mockResolvedValue(0),
@@ -242,7 +242,7 @@ describe('ShopOrdersService.getPendingCount / markRefunded', () => {
   let prisma: any;
 
   beforeEach(async () => {
-    prisma = {
+    prisma = { $queryRaw: jest.fn().mockResolvedValue([]),
       onlineOrder: {
         count: jest.fn(),
         update: jest.fn().mockResolvedValue({ id: 'oo-1', status: 'REFUNDED' }),

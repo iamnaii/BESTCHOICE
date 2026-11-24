@@ -63,18 +63,14 @@ describe('InspectionsService — เขียนเกรดลง Product (B0)'
       expect.objectContaining({ data: expect.objectContaining({ conditionGrade: 'C' }) }),
     );
     expect(prisma.product.update).toHaveBeenCalledTimes(2);
-    // override เกิดหลัง complete เสมอ — รูปถูกดันไปแล้ว ห้ามดันซ้ำ
+    // การเปลี่ยนเกรดไม่สร้างสำเนารูป
     expect(onlineListing.promotePhoto).not.toHaveBeenCalled();
   });
 
-  it('completeInspection: gallery ว่าง → ดันรูป front + back จาก QC ขึ้นเว็บให้เอง', async () => {
+  it('completeInspection: gallery ว่าง → ใช้รูปเดิมอัตโนมัติ ไม่คัดลอกขึ้นเว็บ', async () => {
     await service.completeInspection('i1');
-    // 2 เครื่อง × 2 มุม
-    expect(onlineListing.promotePhoto).toHaveBeenCalledTimes(4);
-    expect(onlineListing.promotePhoto).toHaveBeenCalledWith('p1', {
-      source: 'ANGLE',
-      angle: 'front',
-    });
+    // รูป 6 ด้านอ่านจากต้นฉบับ ไม่สร้างสำเนา fallback
+    expect(onlineListing.promotePhoto).not.toHaveBeenCalled();
   });
 
   it('completeInspection: มีรูปขึ้นเว็บอยู่แล้ว → ไม่แตะ gallery (คนเลือกไว้เอง)', async () => {

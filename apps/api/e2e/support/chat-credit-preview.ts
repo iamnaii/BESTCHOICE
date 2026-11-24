@@ -1,3 +1,8 @@
+import { ProductsOnlineListingService } from '../../src/modules/products/products-online-listing.service';
+import { UpdateOnlineListingDto, PromoteListingPhotoDto } from '../../src/modules/products/dto/online-listing.dto';
+import { ShopCatalogService } from '../../src/modules/shop-catalog/shop-catalog.service';
+import { ShopProductPhotoController } from '../../src/modules/shop-catalog/shop-product-photo.controller';
+import { ListProductsDto } from '../../src/modules/shop-catalog/dto/list-products.dto';
 import { UseGuards, UseInterceptors } from '@nestjs/common';
 import { EmployeeAccessController } from '../../src/modules/employee-access/employee-access.controller';
 import { EmployeeAccessService } from '../../src/modules/employee-access/employee-access.service';
@@ -105,14 +110,14 @@ import { PromotionsService } from '../../src/modules/promotions/promotions.servi
 import { GfinConfigService } from '../../src/modules/gfin-config/gfin-config.service';
 import { AuditService } from '../../src/modules/audit/audit.service';
 import { randomUUID } from 'node:crypto';
-import { json } from 'express';
+import { json, type Response } from 'express';
 import { ContractLifecycleService } from '../../src/modules/contracts/services/contract-lifecycle.service';
 import { ContractQueryService } from '../../src/modules/contracts/services/contract-query.service';
 import { CreateContractDto } from '../../src/modules/contracts/dto/contract.dto';
 import { loadInstallmentConfig } from '../../src/utils/config.util';
 /** Isolated manual preview. Never imported by AppModule or deployed with API source. */
 import 'reflect-metadata';
-import { BadRequestException, Logger, Body, Controller, Get, Param, Patch, Post, Query, ValidationPipe } from '@nestjs/common';
+import { BadRequestException, Logger, Body, Controller, Get, Param, Patch, Post, Query, Res, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { createReadStream, existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -212,6 +217,7 @@ const revenueReports = new RevenueReportService(db);
 const transactionalReports = new TransactionalReportService(db, new CompanyResolverService(db));
 const companies = new CompanyService(db);
 const shopHome = previewShopHome(db);
+process.env.SHOP_BASE_URL = `http://localhost:${process.env.CREDIT_PREVIEW_PORT || 5187}`;
 const products = new ProductsService(db);
 const stockOverview = new ProductsStockService(db);
 const importedSales = new ImportedSalesService(db);
@@ -376,9 +382,24 @@ class PreviewController {
     return stockOverview.getPendingTransfers(branchId,scope.inventoryScope);
   }
   @Post('products') createProduct(@Body() dto: CreateProductDto) { return products.create(dto); }
-  @Get('products/:id') product(@Param('id') id: string) { return products.findOne(id); }
+  @Get('products/:id') product(@Param('id') id: string) { return products.findOneDetail(id); }
   @Patch('products/:id') updateProduct(@Param('id') id: string, @Body() dto: UpdateProductDto) {
     return products.update(id, dto, actor.id);
+  }
+  @Patch('products/:id/online-listing') onlineListing(@Param('id') id: string, @Body() dto: UpdateOnlineListingDto) {
+    return new ProductsOnlineListingService(db, storage as StorageService).updateOnlineListing(id, dto);
+  }
+  @Post('products/:id/online-listing/photos') promoteListingPhoto(@Param('id') id: string, @Body() dto: PromoteListingPhotoDto) {
+    return new ProductsOnlineListingService(db, storage as StorageService).promotePhoto(id, dto);
+  }
+  @Get('shop/products') async catalog(@Query() query: ListProductsDto) {
+    const service = new ShopCatalogService(db);
+    const result = await service.listGroupedByModel(query);
+    return { ...result, data: result.data.map(p => ({ ...p, stock: service.stockLabelFor(p) })) };
+  }
+  @Get('shop/products/:id') shopProduct(@Param('id') id: string) { return new ShopCatalogService(db).getProductDetail(id); }
+  @Get('shop/products/:id/photos/:angle') shopPhoto(@Param('id') id: string, @Param('angle') angle: string, @Res() res: Response) {
+    return new ShopProductPhotoController(db).photo(id, angle, res);
   }
   @Get('products/:id/readiness') readiness(@Param('id') id: string) { return products.getReadiness(id); }
   @Get('purchase-orders/qc-pending') qcPending(@Query() query: Record<string, string>) {
@@ -740,6 +761,7 @@ async function main() {
     )
       return res.json({ data: [], total: 0 });
     if (
+      path.startsWith('/api/shop/products') ||
       (req.method === 'GET' && ['/api/imported-sales', '/api/imported-sales/summary'].includes(path)) ||
       /^\/api\/employee-access(?:\/|$)/.test(path) ||
       /^\/api\/(store-appointments|store-appointment-links|store-appointments-public)(\/|$)/.test(path) ||

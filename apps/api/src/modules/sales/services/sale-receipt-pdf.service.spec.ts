@@ -1,13 +1,15 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { DEFAULT_RECEIPT_WARRANTY_TERMS } from '@installment/shared';
+import { DEFAULT_RECEIPT_WARRANTY_TERMS, formatDefaultWarrantyTerms } from '@installment/shared';
 import * as puppeteer from 'puppeteer';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { SaleReceiptPdfService } from './sale-receipt-pdf.service';
 import { SaleReceiptTokenService } from './sale-receipt-token.service';
 
 jest.mock('puppeteer', () => ({ launch: jest.fn() }));
-jest.mock('../../../assets/fonts/document-fonts', () => ({ embeddedDocumentFonts: () => '/* fonts */' }));
+jest.mock('../../../assets/fonts/document-fonts', () => ({
+  embeddedDocumentFonts: () => '/* fonts */',
+}));
 
 /**
  * PDF ใบเสร็จขายสด — ขอบเขตสาขาตามผู้เรียก, ใบยกเลิกดูได้เฉพาะพนักงาน (ลายน้ำ), ผ่อนชำระไม่เข้า,
@@ -20,12 +22,32 @@ describe('SaleReceiptPdfService.generate', () => {
     saleNumber: 'SL-20261022-0001',
     saleType: 'CASH',
     createdAt: new Date('2026-10-22T07:32:00Z'),
-    sellingPrice: D('9000'), discount: D('0'), netAmount: D('9000'), paymentMethod: 'CASH', amountReceived: D('9000'),
-    financeCompany: null, financeRefNumber: null, financeAmount: null, downPaymentAmount: null,
-    bundleProductIds: [], shopWarrantyStartDate: null, shopWarrantyEndDate: null,
-    productDisclosure: null, tradeInCreditSnapshot: null, deletedAt: null, voidReason: null,
+    sellingPrice: D('9000'),
+    discount: D('0'),
+    netAmount: D('9000'),
+    paymentMethod: 'CASH',
+    amountReceived: D('9000'),
+    financeCompany: null,
+    financeRefNumber: null,
+    financeAmount: null,
+    downPaymentAmount: null,
+    bundleProductIds: [],
+    shopWarrantyStartDate: null,
+    shopWarrantyEndDate: null,
+    productDisclosure: null,
+    tradeInCreditSnapshot: null,
+    deletedAt: null,
+    voidReason: null,
     customer: { name: 'ลูกค้า', phone: '0', legacyMemberCode: null },
-    product: { name: 'iPhone', brand: 'Apple', model: 'iPhone', storage: null, imeiSerial: '1', serialNumber: null, category: 'PHONE_NEW' },
+    product: {
+      name: 'iPhone',
+      brand: 'Apple',
+      model: 'iPhone',
+      storage: null,
+      imeiSerial: '1',
+      serialNumber: null,
+      category: 'PHONE_NEW',
+    },
     branch: { name: 'ลพบุรี' },
     salesperson: { name: 'สมชาย' },
     shopTenders: [],
@@ -46,20 +68,38 @@ describe('SaleReceiptPdfService.generate', () => {
   beforeEach(() => {
     setContent = jest.fn();
     (puppeteer.launch as jest.Mock).mockResolvedValue({
-      newPage: async () => ({ setContent, evaluate: jest.fn(), pdf: async () => Buffer.from('%PDF-1.4 test') }),
+      newPage: async () => ({
+        setContent,
+        evaluate: jest.fn(),
+        pdf: async () => Buffer.from('%PDF-1.4 test'),
+      }),
       close: jest.fn(),
     });
     prisma = {
       sale: { findFirst: jest.fn() },
       product: { findMany: jest.fn().mockResolvedValue([]) },
-      companyInfo: { findFirst: jest.fn().mockResolvedValue({ nameTh: 'บริษัท เบสท์ช้อยส์โฟน จำกัด', address: 'ลพบุรี', taxId: '0165568000050', phone: '036-411-999' }) },
+      companyInfo: {
+        findFirst: jest
+          .fn()
+          .mockResolvedValue({
+            nameTh: 'บริษัท เบสท์ช้อยส์โฟน จำกัด',
+            address: 'ลพบุรี',
+            taxId: '0165568000050',
+            phone: '036-411-999',
+          }),
+      },
       systemConfig: { findUnique: jest.fn().mockResolvedValue(null) },
     };
     tokens = {
-      ensureToken: jest.fn().mockResolvedValue({ token: 'tok', expiresAt: new Date(Date.now() + 1000) }),
+      ensureToken: jest
+        .fn()
+        .mockResolvedValue({ token: 'tok', expiresAt: new Date(Date.now() + 1000) }),
       publicUrl: jest.fn((t: string) => `http://localhost:5173/r/${t}`),
     };
-    service = new SaleReceiptPdfService(prisma as unknown as PrismaService, tokens as unknown as SaleReceiptTokenService);
+    service = new SaleReceiptPdfService(
+      prisma as unknown as PrismaService,
+      tokens as unknown as SaleReceiptTokenService,
+    );
   });
 
   const owner = { id: 'u1', role: 'OWNER', branchId: null };
@@ -72,7 +112,9 @@ describe('SaleReceiptPdfService.generate', () => {
 
   it('scopes a SALES actor to their own branch and returns 404 when the sale is elsewhere', async () => {
     prisma.sale.findFirst.mockResolvedValue(null);
-    await expect(service.generate('s1', { id: 'u2', role: 'SALES', branchId: 'A' })).rejects.toBeInstanceOf(NotFoundException);
+    await expect(
+      service.generate('s1', { id: 'u2', role: 'SALES', branchId: 'A' }),
+    ).rejects.toBeInstanceOf(NotFoundException);
     const where = prisma.sale.findFirst.mock.calls[0][0].where;
     expect(JSON.stringify(where)).toContain('"branchId":"A"');
   });
@@ -86,7 +128,13 @@ describe('SaleReceiptPdfService.generate', () => {
   });
 
   it('staff path renders a voided sale with the watermark, keeps the old token and never mints a new one', async () => {
-    prisma.sale.findFirst.mockResolvedValue(baseSale({ deletedAt: new Date('2026-10-23T01:00:00Z'), voidReason: 'คีย์ผิด', receiptToken: 'old-token' }));
+    prisma.sale.findFirst.mockResolvedValue(
+      baseSale({
+        deletedAt: new Date('2026-10-23T01:00:00Z'),
+        voidReason: 'คีย์ผิด',
+        receiptToken: 'old-token',
+      }),
+    );
     tokens.ensureToken.mockRejectedValue(new NotFoundException('ไม่พบใบขาย')); // ของจริง: ensureToken กรอง deletedAt
     const result = await service.generate('s1', owner);
     expect(result.voided).toBe(true);
@@ -98,7 +146,13 @@ describe('SaleReceiptPdfService.generate', () => {
   });
 
   it('staff path on a voided sale that never had a token prints no QR block', async () => {
-    prisma.sale.findFirst.mockResolvedValue(baseSale({ deletedAt: new Date('2026-10-23T01:00:00Z'), voidReason: 'คีย์ผิด', receiptToken: null }));
+    prisma.sale.findFirst.mockResolvedValue(
+      baseSale({
+        deletedAt: new Date('2026-10-23T01:00:00Z'),
+        voidReason: 'คีย์ผิด',
+        receiptToken: null,
+      }),
+    );
     tokens.ensureToken.mockRejectedValue(new NotFoundException('ไม่พบใบขาย'));
     const result = await service.generate('s1', owner);
     expect(result.voided).toBe(true);
@@ -107,7 +161,12 @@ describe('SaleReceiptPdfService.generate', () => {
   });
 
   it('public path reads the existing token and does not extend its expiry', async () => {
-    prisma.sale.findFirst.mockResolvedValue(baseSale({ receiptToken: 'live-token', receiptTokenExpiresAt: new Date(Date.now() + 86_400_000) }));
+    prisma.sale.findFirst.mockResolvedValue(
+      baseSale({
+        receiptToken: 'live-token',
+        receiptTokenExpiresAt: new Date(Date.now() + 86_400_000),
+      }),
+    );
     const result = await service.generate('s1', null);
     expect(result.voided).toBe(false);
     expect(tokens.ensureToken).not.toHaveBeenCalled();
@@ -116,23 +175,37 @@ describe('SaleReceiptPdfService.generate', () => {
   });
 
   it('reads the SHOP company, default warranty terms and refreshes the public token once', async () => {
-    prisma.sale.findFirst.mockResolvedValue(baseSale());
+    prisma.sale.findFirst.mockResolvedValue(
+      baseSale({
+        shopWarrantyStartDate: new Date('2026-11-24'),
+        shopWarrantyEndDate: new Date('2027-01-23'),
+      }),
+    );
     const result = await service.generate('s1', owner);
     expect(result.voided).toBe(false);
-    expect(prisma.companyInfo.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ companyCode: 'SHOP' }) }));
+    expect(prisma.companyInfo.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ companyCode: 'SHOP' }) }),
+    );
     expect(tokens.ensureToken).toHaveBeenCalledTimes(1);
     expect(tokens.ensureToken).toHaveBeenCalledWith('s1');
     const html = setContent.mock.calls[0][0] as string;
-    expect(html).toContain(DEFAULT_RECEIPT_WARRANTY_TERMS);
+    expect(html).toContain(formatDefaultWarrantyTerms(DEFAULT_RECEIPT_WARRANTY_TERMS, 60));
     expect(html).toContain('data:image/png;base64,');
     expect(html).toContain('/* fonts */');
   });
 
   it('uses the configured warranty terms when the setting row exists', async () => {
-    prisma.sale.findFirst.mockResolvedValue(baseSale());
-    prisma.systemConfig.findUnique.mockResolvedValue({ key: 'receipt_shop_warranty_terms', value: ' ประกันร้านตามใบรับประกันแนบ ' });
+    prisma.sale.findFirst.mockResolvedValue(
+      baseSale({ shopWarrantyEndDate: new Date('2027-01-23') }),
+    );
+    prisma.systemConfig.findUnique.mockResolvedValue({
+      key: 'receipt_shop_warranty_terms',
+      value: ' ประกันร้านตามใบรับประกันแนบ ',
+    });
     await service.generate('s1', owner);
-    expect(prisma.systemConfig.findUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { key: 'receipt_shop_warranty_terms' } }));
+    expect(prisma.systemConfig.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { key: 'receipt_shop_warranty_terms' } }),
+    );
     const html = setContent.mock.calls[0][0] as string;
     expect(html).toContain('ประกันร้านตามใบรับประกันแนบ');
     expect(html).not.toContain(DEFAULT_RECEIPT_WARRANTY_TERMS);
@@ -140,9 +213,13 @@ describe('SaleReceiptPdfService.generate', () => {
 
   it('loads bundle products for the freebie rows', async () => {
     prisma.sale.findFirst.mockResolvedValue(baseSale({ bundleProductIds: ['b1'] }));
-    prisma.product.findMany.mockResolvedValue([{ id: 'b1', name: 'เคสใส', imeiSerial: null, legacyProductCode: 'ACC-1' }]);
+    prisma.product.findMany.mockResolvedValue([
+      { id: 'b1', name: 'เคสใส', imeiSerial: null, legacyProductCode: 'ACC-1' },
+    ]);
     await service.generate('s1', owner);
-    expect(prisma.product.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ id: { in: ['b1'] } }) }));
+    expect(prisma.product.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ id: { in: ['b1'] } }) }),
+    );
     expect(setContent.mock.calls[0][0]).toContain('เคสใส');
   });
 });

@@ -51,6 +51,16 @@ describe('UX/UI mobile controls on the real isolated API', () => {
         const tabBounds = await finalTab.boundingBox();
         expect(tabBounds!.x).toBeGreaterThanOrEqual(0);
         expect(tabBounds!.x + tabBounds!.width).toBeLessThanOrEqual(320);
+        for (const [key, index, query] of [['Home', 0, 'terms'], ['ArrowRight', 1, 'calc'], ['ArrowLeft', 0, 'terms'], ['ArrowLeft', 2, 'line']] as const) {
+          await page.keyboard.press(key);
+          const focusedTab = tabs.getByRole('tab').nth(index);
+          await focusedTab.locator(':scope[data-state="active"]').waitFor();
+          expect(await focusedTab.evaluate(node => node === document.activeElement)).toBe(true);
+          expect(new URL(page.url()).searchParams.get('tab')).toBe(query);
+          const focusedBounds = await focusedTab.boundingBox();
+          expect(focusedBounds!.x).toBeGreaterThanOrEqual(0);
+          expect(focusedBounds!.x + focusedBounds!.width).toBeLessThanOrEqual(320);
+        }
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
         saveArtifact('uxui-interactions', `gfin-keyboard-tab-320-${dark ? 'dark' : 'light'}.png`, await page.screenshot());
         expect(errors.filter(e => e.startsWith('pageerror:'))).toEqual([]);

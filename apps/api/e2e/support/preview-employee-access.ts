@@ -1,5 +1,6 @@
 import { PrismaService } from '../../src/prisma/prisma.service';
 import { isIsolatedPreview } from './preview-database';
+import { randomUUID } from 'node:crypto';
 
 /** Synthetic staff only. Never imported by the production module. */
 export async function seedPreviewEmployeeAccess(db: PrismaService) {
@@ -23,4 +24,21 @@ export async function seedPreviewEmployeeAccess(db: PrismaService) {
       create: { ...person, password: 'not-a-login', accessibleCompanies: ['SHOP'], primaryCompany: 'SHOP', canReverseOverride: true },
     });
   }
+  return { branchIds };
+}
+
+/** Each browser run needs a new legacy account so conversion remains reproducible. */
+export async function createPreviewEmployeeAccess(db: PrismaService) {
+  const { branchIds } = await seedPreviewEmployeeAccess(db);
+  const key = randomUUID();
+  const employee = await db.user.create({
+    data: {
+      email: `preview-access-${key}@test.invalid`, password: 'not-a-login',
+      name: `พนักงานทดสอบ ${key.slice(0, 8)}`, role: 'BRANCH_MANAGER',
+      accessibleCompanies: ['SHOP'], primaryCompany: 'SHOP',
+      branchId: branchIds[0], canReverseOverride: true,
+    },
+    select: { id: true, name: true, email: true, branchId: true },
+  });
+  return { employee, branchIds };
 }

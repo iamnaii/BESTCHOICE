@@ -35,7 +35,7 @@ Inspect stale or deleted positions and branches, concurrent editor changes, inac
 
 ## Task 2: Owner-facing three-tab console
 
-**Files:** `apps/web/src/pages/EmployeeAccessPage/` index, API hook/types adapter, PositionsTab, EmployeesTab, HistoryTab, PermissionPicker, AccessReviewDialog, pure preview helpers and tests as needed; route `App.tsx`, actual settings registry discovered via rg, associated registry tests.
+**Files:** `apps/web/src/pages/EmployeeAccessPage/` index, API hook/types adapter, PositionsTab, EmployeesTab, HistoryTab, PermissionPicker, AccessReviewDialog, pure preview helpers and tests as needed; `config/settings-registry.tsx` and associated registry tests. Reuse existing `SettingsItemRoute` registration in `App.tsx`; add a direct App route only if needed.
 
 **Interfaces:** Consume Task 1 shared API contract and current existing service DTOs. Route `/settings/access/employee-permissions`, owner-only, link from access settings. Cache prefix `employee-access`; invalidate all affected queries after successful write. All mutations retain expectedRevision captured when editor opened. On 409 preserve draft and require explicit reload; do not silently rebase. Effective snapshot from server for existing managed users; pending edits distinctly labelled proposed.
 
@@ -44,6 +44,19 @@ Inspect stale or deleted positions and branches, concurrent editor changes, inac
 - [ ] Employee detail uses authoritative snapshot plus source tuples; assignments editable independently with active work/branch options, before/after scope and permission review and legacy override warning. Empty grants and COMPANY choices need visible warning; save only after review. Owner authority locked. Do not claim this activates every legacy page.
 - [ ] Add safe paginated history with loading/empty/error/retry and labelled before/after detail. No arbitrary JSON rendering.
 - [ ] Run focused Vitest suite and web type check, existing settings/navigation tests; fix issues and commit task files. Record test evidence and self-review.
+
+## Task 2.1: Bind confirmation to reviewed position revisions and affected count
+
+**Files:** `apps/api/src/modules/employee-access/employee-access.dto.ts`, `.service.ts`, `.service.spec.ts`, `.integration.spec.ts`; `apps/web/src/pages/EmployeeAccessPage/api.ts`, `AssignmentEditor.tsx`, `PositionEditor.tsx`, `MigrationReview.tsx`, `EmployeeAccessPage.test.tsx`.
+
+**Interfaces:** Add optional integer >=0 `expectedPositionRevision` to each `AccessAssignmentDto`. The console always supplies it from the exact position set shown at review. Existing API callers without it keep current behavior. Inside the serialized owner transaction, compare with persisted position revision before any legacy cleanup or assignment write; mismatch returns409. This metadata is neither persisted as an assignment field nor shown in audit tuples. Client409 handling retains draft and explicit reload.
+
+Add optional integer >=0 `expectedAffectedEmployeeCount` to UpdateAccessPositionDto. Console position edits/status changes always send the count shown in review. Compare against affectedCount inside the serialized transaction before any writes; mismatch409. Also fix Task2 review: review legacy-override removal for managed accounts as well, preserving distinct first-time conversion wording and requiring renewed acknowledgement if the pre-save summary changes. Execute these together with Task2 fix round1; one scoped review covers the complete confirmation fix.
+
+- [ ] RED: a newly selected position changes after review, employee revision stays unchanged; console save must fail409 with no account/override/assignment/audit mutation. Prove on isolated PostgreSQL. Add UI assertion that each reviewed tuple sends its position revision, not a guessed employee revision.
+- [ ] RED: new assignment changes position affected count without changing position revision; stale impact edit fails409 with no mutation. UI sends reviewed count. Managed override review includes false reversal override and resets acknowledgement on changes.
+- [ ] GREEN: DTO validation and lock-protected comparison, console payload revision binding. A matching revision succeeds and omitted field remains compatible. Shared snapshot/history types remain unchanged.
+- [ ] Run targeted API and web tests plus isolated persistence; self-review, commit scoped changes and task review. Subsequent full localcheck and browser rerun verify integration.
 
 ## Task 3: Local live-service verification and handoff
 

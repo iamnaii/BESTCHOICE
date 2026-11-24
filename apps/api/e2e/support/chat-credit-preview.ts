@@ -2,7 +2,7 @@ import { UseGuards, UseInterceptors } from '@nestjs/common';
 import { EmployeeAccessController } from '../../src/modules/employee-access/employee-access.controller';
 import { EmployeeAccessService } from '../../src/modules/employee-access/employee-access.service';
 import { EmployeeAccessConsoleService } from '../../src/modules/employee-access/employee-access-console.service';
-import { seedPreviewEmployeeAccess } from './preview-employee-access';
+import { createPreviewEmployeeAccess, seedPreviewEmployeeAccess } from './preview-employee-access';
 import { ContractEvidenceCaptureInterceptor, registerContractEvidenceCapture } from '../../src/modules/contracts/services/contract-evidence-capture-context';
 import { ImportedSalesService } from '../../src/modules/imported-sales/imported-sales.service';
 import { QueryImportedSalesDto } from '../../src/modules/imported-sales/dto/query-imported-sales.dto';
@@ -315,6 +315,9 @@ async function fixture(name: string) {
 
 @Controller()
 class PreviewController {
+  @Post('preview/employee-access-fixture') accessFixture() {
+    return createPreviewEmployeeAccess(db);
+  }
   @Get('reports/finance-portfolio') portfolio(
     @Query('status') status?: string,
     @Query('page') page?: string,

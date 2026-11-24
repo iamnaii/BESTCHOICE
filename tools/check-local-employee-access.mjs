@@ -22,11 +22,12 @@ export async function checkEmployeeAccessApi(origin) {
   await call('preview/actor/owner', 'POST', {}, 201);
   const base = 'employee-access';
   try {
+    const fixture = await call('preview/employee-access-fixture', 'POST', {}, 201);
     const context = await call(`${base}/context`);
     const branch = context.branches.find(b => b.name === 'สาขาทดสอบสิทธิ์ A');
     assert.ok(branch, 'Dedicated access fixture required');
     const employees = await call(`${base}/employees`);
-    const employee = employees.find(e => e.email === 'preview-access-manager@test.invalid');
+    const employee = employees.find(e => e.id === fixture.employee.id);
     assert.ok(employee);
     const code = `LOCAL_ACCESS_${Date.now()}`;
     const position = await call(`${base}/positions`, 'POST', {
@@ -37,6 +38,9 @@ export async function checkEmployeeAccessApi(origin) {
     }] };
     const changed = await call(`${base}/employees/${employee.id}/assignments`, 'PUT', payload);
     assert.equal(changed.managed, true);
+    assert.equal(changed.removedLegacyGrants.canReverseOverride, true);
+    const savedEmployee = (await call(`${base}/employees`)).find(e => e.id === employee.id);
+    assert.equal(savedEmployee.canReverseOverride, null);
     assert.equal(changed.grants.length, 1);
     assert.deepEqual(changed.grants[0].branchIds, [branch.id]);
     assert.ok(changed.grants[0].permissions.includes('products.update'));

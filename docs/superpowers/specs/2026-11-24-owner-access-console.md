@@ -20,6 +20,10 @@ History: owner-only bounded paginated access configuration events with actor/tim
 
 Owner-rechecked read endpoints under `/employee-access`: `context` (active branch options with company codes), `employees/:id/effective-access` (current snapshot), `history?page=1&limit=20` (max 50). Follow existing guards and manifest. Shared DTO response types for these additions. Reject owner assignment mutation server-side as well as UI to protect implicit owner authority.
 
+Console assignment saves also carry the position revision that the owner reviewed. Check it under the existing access mutation lock before any writes; a concurrent position edit returns 409 and preserves the draft for explicit reload. This closes the case where the employee does not yet hold the selected position, so editing that position would not increment the employee revision. The revision field is optional for existing API callers; the new console always supplies it.
+
+Position edits and status changes similarly carry the affected employee count displayed in review; the server compares the actual count inside the same lock before mutation and returns 409 if it changed. Assignment replacement clears legacy overrides even for already-managed accounts, so all accounts need the override summary/removal review; first-time conversion wording applies only to legacy accounts. A false reversal override is still an override whose removal must be shown.
+
 ## Acceptance and verification
 
 Test unauthorized reads/mutations, stale revisions, invalid scope/branch, reserved grants, template non-overwrite, immediate revocation, owner-target protection, access-only safe history projection, pagination bounds; real isolated PostgreSQL persistence. UI tests exercise searching/editing/confirmation/error/conflict, tuple independence, owner locks and history. Browser run against the actual Nest employee-access service using isolated synthetic PostgreSQL data, with mutations persisted and read back; separate standard `local:check` preview remains limited to its documented domains. No real database credentials or accounts, no external side effects, no merge/push/deploy.

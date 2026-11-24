@@ -36,6 +36,8 @@ export async function checkEmployeeAccessUi(origin) {
         assert.ok(saved.ok(), `${method} ${suffix}: ${await saved.text()}`);
         const submitted = saved.request().postDataJSON();
         if (method === 'PUT') {
+          assert.match(submitted.expectedLegacyGrantsFingerprint, /^[a-f0-9]{64}$/,
+            'Console must bind the save to the reviewed personal overrides');
           assert.ok(submitted.assignments.every(a => Number.isInteger(a.expectedPositionRevision)),
             'Console must bind each assignment to the reviewed position revision');
         }

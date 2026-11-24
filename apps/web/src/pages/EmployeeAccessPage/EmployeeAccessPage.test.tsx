@@ -66,6 +66,7 @@ const managed: AccessEmployee = {
 };
 const migration: MigrationPreview = {
   ...legacy,
+  legacyGrantsFingerprint: 'a'.repeat(64),
   managed: false,
   isOwner: false,
   proposedPositionCode: 'SALES',
@@ -84,6 +85,7 @@ const migration: MigrationPreview = {
 const managedPreview: MigrationPreview = {
   ...migration,
   ...managed,
+  legacyGrantsFingerprint: 'b'.repeat(64),
   managed: true,
   personalGrants: { canReverseOverride: null, accounting_permissions: [], payment_approval_permissions: [] },
 };
@@ -333,6 +335,7 @@ describe('EmployeeAccessPage', () => {
     await user.click(editor.getByRole('checkbox', { name: /รับทราบ/ }));
     await user.click(button('ยืนยันบันทึก'));
     expect(put).toHaveBeenCalledWith('/employee-access/employees/legacy/assignments', {
+      expectedLegacyGrantsFingerprint: 'a'.repeat(64),
       expectedRevision: 3,
       assignments: [
         {
@@ -357,6 +360,7 @@ describe('EmployeeAccessPage', () => {
     data.migration = [
       {
         ...migration,
+        legacyGrantsFingerprint: 'c'.repeat(64),
         personalGrants: { ...migration.personalGrants, accounting_permissions: ['EXPENSE_CANCEL'] },
       },
     ];
@@ -364,6 +368,41 @@ describe('EmployeeAccessPage', () => {
     expect(await screen.findByText(/รายจ่าย: ยกเลิก/)).toBeVisible();
     expect(put).not.toHaveBeenCalled();
     expect(button('ยืนยันบันทึก')).toBeDisabled();
+    await user.click(screen.getByRole('checkbox', { name: /รับทราบ/ }));
+    await user.click(button('ยืนยันบันทึก'));
+    expect(put).toHaveBeenCalledWith('/employee-access/employees/legacy/assignments', expect.objectContaining({
+      expectedLegacyGrantsFingerprint: 'c'.repeat(64),
+    }));
+  });
+
+  it.each([undefined, null, 'invalid'])('blocks confirmation when the preview fingerprint is %s', async (value) => {
+    const { data, user } = renderPage();
+    data.migration = [{ ...migration, legacyGrantsFingerprint: value }];
+    await user.click(await screen.findByRole('button', { name: /พนักงานเดิม/ }));
+    await user.click(await screen.findByRole('button', { name: 'แก้ไขการมอบหมาย' }));
+    await user.click(review());
+    expect(await screen.findByRole('alert')).toBeVisible();
+    expect(button('ยืนยันบันทึก')).toBeDisabled();
+  });
+
+  it('keeps the assignment draft when the server detects a changed legacy fingerprint', async () => {
+    const put = vi.spyOn(api, 'put').mockRejectedValue(httpError(409));
+    const { user } = renderPage();
+    await user.click(await screen.findByRole('button', { name: /พนักงานเดิม/ }));
+    await user.click(await screen.findByRole('button', { name: 'แก้ไขการมอบหมาย' }));
+    await user.click(button('เพิ่มตำแหน่งที่มอบหมาย'));
+    await user.selectOptions(screen.getByRole('combobox', { name: 'ตำแหน่ง' }), position.id);
+    await user.click(screen.getByRole('checkbox', { name: /สาขาเหนือ/ }));
+    await user.click(review());
+    await user.click(await screen.findByRole('checkbox', { name: /รับทราบ/ }));
+    await user.click(button('ยืนยันบันทึก'));
+    expect(await screen.findByText(/ร่างยังอยู่/)).toBeVisible();
+    expect(put).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({
+      expectedLegacyGrantsFingerprint: 'a'.repeat(64),
+    }));
+    await user.click(button('กลับไปแก้ไข'));
+    expect(screen.getByRole('combobox', { name: 'ตำแหน่ง' })).toHaveValue(position.id);
+    expect(review()).toBeDisabled();
   });
 
   it('requires acknowledgement before removing a managed employee’s explicit deny override', async () => {
@@ -385,6 +424,7 @@ describe('EmployeeAccessPage', () => {
     await user.click(screen.getByRole('checkbox', { name: /รับทราบ/ }));
     await user.click(button('ยืนยันบันทึก'));
     expect(put).toHaveBeenCalledWith('/employee-access/employees/managed/assignments', {
+      expectedLegacyGrantsFingerprint: 'b'.repeat(64),
       expectedRevision: 3,
       assignments: [],
     });

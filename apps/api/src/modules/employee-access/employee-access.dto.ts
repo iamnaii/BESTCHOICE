@@ -70,6 +70,10 @@ export class AccessAssignmentDto {
   branchIds!: string[];
 }
 export class ReplaceAccessAssignmentsDto {
+  @Transform(({ obj, key }) => obj[key], { toClassOnly: true })
+  @ValidateIf((_, value) => value !== undefined)
+  @Matches(/^[a-f0-9]{64}$/, { message: 'ข้อมูลยืนยันสิทธิ์รายบุคคลไม่ถูกต้อง' })
+  expectedLegacyGrantsFingerprint?: string;
   @IsInt() @Min(0, { message: 'กรุณาระบุรุ่นข้อมูลที่กำลังแก้ไข' }) expectedRevision!: number;
   @IsArray()
   @ArrayMaxSize(100)

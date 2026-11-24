@@ -1,3 +1,4 @@
+import type { PrismaService } from '../../prisma/prisma.service';
 import { PrismaClient } from '@prisma/client';
 import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { canAccess, EmployeeAccessHistoryAssignment } from '@installment/shared';
@@ -5,6 +6,8 @@ import { randomUUID } from 'crypto';
 import { AccessSnapshotService } from './access-snapshot.service';
 import { EmployeeAccessService } from './employee-access.service';
 import { EmployeeAccessConsoleService } from './employee-access-console.service';
+import { AccountingPermissionsService } from '../settings/services/accounting-permissions.service';
+import { PaymentApprovalSettingsService } from '../payments/services/payment-approval-settings.service';
 import { UsersService } from '../users/users.service';
 
 // Run only with the explicit isolated test database URL, never inherited DATABASE_URL.
@@ -370,6 +373,99 @@ test('changed position revision rejects a newly reviewed assignment before touch
   expect(result.grants).toEqual([{ ...assignment, permissions: ['sensitive.cost.read'] }]);
   const audit = await db.auditLog.findFirstOrThrow({ where: { entityId: target.id, action: 'ACCESS_ASSIGNMENTS_REPLACED' } });
   expect(audit.newValue).toHaveProperty('assignments', [assignment]);
+});
+
+async function reviewTarget() {
+  return db.user.create({
+    data: { name: 'TEST Legacy Review', email: `${randomUUID()}@test.invalid`, password: 'unused', role: 'ACCOUNTANT' },
+  });
+}
+
+async function previewFor(userId: string) {
+  return (await service.migrationPreview(owner)).find((entry) => entry.id === userId)!;
+}
+
+test.each(['reversal', 'accounting_permissions', 'payment_approval_permissions'] as const)(
+  'requires renewed review when %s changes after preview', async (source) => {
+    const target = await reviewTarget();
+    const retained = await reviewTarget();
+    // Exercise creation of a policy row that was absent at the time of review.
+    if (source !== 'reversal') await db.systemConfig.deleteMany({ where: { key: source } });
+    const preview = await previewFor(target.id);
+    const dto = { expectedRevision: 0, assignments: [], expectedLegacyGrantsFingerprint: preview.legacyGrantsFingerprint! };
+    if (source === 'reversal') {
+      await users.setReverseOverride(target.id, false, owner);
+    } else if (source === 'accounting_permissions') {
+      await new AccountingPermissionsService(db as PrismaService).updateSettings({ users: [
+        { userId: target.id, permissions: ['EXPENSE_POST'] },
+        { userId: retained.id, permissions: ['INCOME_POST'] },
+      ] }, owner);
+    } else {
+      await new PaymentApprovalSettingsService(db as PrismaService).updateSettings({ users: [
+        { userId: target.id, permissions: ['REFUND'] },
+        { userId: retained.id, permissions: ['VOID_RECEIPT'] },
+      ] }, owner);
+    }
+    const fresh = await previewFor(target.id);
+    const otherAccount = await previewFor(retained.id);
+    await expect(service.replaceAssignments(owner, target.id, dto)).rejects.toBeInstanceOf(ConflictException);
+    expect(await previewFor(target.id)).toEqual(fresh);
+    expect(await snapshot.forUser(target.id)).toMatchObject({ managed: false, revision: 0, grants: [] });
+    expect(await db.employeeAccessAssignment.count({ where: { userId: target.id } })).toBe(0);
+    expect(await db.auditLog.count({ where: { action: 'ACCESS_ASSIGNMENTS_REPLACED', entityId: target.id } })).toBe(0);
+
+    expect(fresh.legacyGrantsFingerprint).toMatch(/^[a-f0-9]{64}$/);
+    expect(fresh.legacyGrantsFingerprint).not.toBe(preview.legacyGrantsFingerprint);
+    const renewed = { ...dto, expectedLegacyGrantsFingerprint: fresh.legacyGrantsFingerprint! };
+    await expect(service.replaceAssignments(owner, target.id, renewed)).resolves.toMatchObject({ managed: true, revision: 1 });
+    expect((await previewFor(target.id)).legacyGrantsFingerprint).toBe(preview.legacyGrantsFingerprint);
+    expect(await previewFor(retained.id)).toEqual(otherAccount);
+  },
+);
+
+test('holds the target and both policy writer locks when reading the reviewed state', async () => {
+  const target = await reviewTarget();
+  await db.systemConfig.deleteMany({ where: { key: { in: ['accounting_permissions', 'payment_approval_permissions'] } } });
+  const observed = db.$extends({ query: {
+    user: { async findUnique({ args, query }) {
+      if (args.where.id === target.id) {
+        // A separate connection cannot take the writer's row lock during this read.
+        await expect(db.$queryRaw`SELECT id FROM users WHERE id = ${target.id} FOR NO KEY UPDATE NOWAIT`)
+          .rejects.toMatchObject({ meta: { code: '55P03' } });
+      }
+      return query(args);
+    } },
+    systemConfig: { async findMany({ args, query }) {
+      const locks = await db.$queryRaw`SELECT
+        pg_try_advisory_xact_lock(hashtext('accounting_permissions')) AS accounting,
+        pg_try_advisory_xact_lock(hashtext('payment_approval_permissions')) AS payment`;
+      expect(locks).toEqual([{ accounting: false, payment: false }]);
+      return query(args);
+    } },
+  } });
+  const reviewed = await previewFor(target.id);
+  const guarded = new EmployeeAccessService(observed as unknown as PrismaService, snapshot);
+  const dto = { expectedRevision: 0, expectedLegacyGrantsFingerprint: reviewed.legacyGrantsFingerprint!, assignments: [] };
+  await expect(guarded.replaceAssignments(owner, target.id, dto)).resolves.toMatchObject({ managed: true, revision: 1 });
+});
+
+test('an unreadable policy produces no review token and prevents cleanup', async () => {
+  const target = await reviewTarget();
+  const config = await db.systemConfig.upsert({
+    where: { key: 'accounting_permissions' },
+    create: { key: 'accounting_permissions', value: '[' },
+    update: { value: '[' },
+  });
+  try {
+    const preview = await previewFor(target.id);
+    expect(preview.legacyGrantsFingerprint).toBeNull();
+    expect(preview.personalGrants.accounting_permissions).toBeNull();
+    await expect(service.replaceAssignments(owner, target.id, { expectedRevision: 0, assignments: [] }))
+      .rejects.toBeInstanceOf(ConflictException);
+    expect(await snapshot.forUser(target.id)).toMatchObject({ managed: false, revision: 0 });
+  } finally {
+    await db.systemConfig.update({ where: { id: config.id }, data: { value: '{}' } });
+  }
 });
 
 test('a newly assigned employee invalidates the reviewed affected count without changing position revision', async () => {

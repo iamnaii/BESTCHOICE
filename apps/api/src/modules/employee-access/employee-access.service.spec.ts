@@ -134,6 +134,16 @@ describe('employee access review request validation', () => {
     await expect(pipe.transform({ expectedRevision: 3 }, { type: 'body', metatype: UpdateAccessPositionDto })).resolves.toEqual({ expectedRevision: 3 });
   });
 
+  it('retains a valid fingerprint and rejects malformed or coerced request values', async () => {
+    const request = { expectedRevision: 4, assignments: [assignment], expectedLegacyGrantsFingerprint: 'a'.repeat(64) };
+    const metadata = { type: 'body' as const, metatype: ReplaceAccessAssignmentsDto };
+    await expect(pipe.transform(request, metadata)).resolves.toEqual(request);
+    for (const value of [null, false, 123, ['a'.repeat(64)], 'a'.repeat(63), 'g'.repeat(64), 'a'.repeat(65)]) {
+      await expect(pipe.transform({ ...request, expectedLegacyGrantsFingerprint: value }, metadata))
+        .rejects.toBeInstanceOf(BadRequestException);
+    }
+  });
+
   it.each([-1, 1.5, '3', '', false, null])('rejects an invalid review expectation %j', async (value) => {
     await expect(pipe.transform(
       { expectedRevision: 3, expectedAffectedEmployeeCount: value },

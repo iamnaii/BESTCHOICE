@@ -58,13 +58,14 @@ function overrideReviewKey(preview: MigrationPreview | undefined) {
   if (!preview) return null;
   const { canReverseOverride, accounting_permissions, payment_approval_permissions } = preview.personalGrants;
   return JSON.stringify([
+    preview.legacyGrantsFingerprint,
     preview.accessRevision,
     preview.managed,
     preview.isActive,
     preview.isOwner,
     canReverseOverride,
-    accounting_permissions,
-    payment_approval_permissions,
+    accounting_permissions ?? [],
+    payment_approval_permissions ?? [],
     preview.managed ? null : [preview.role, preview.branchId, preview.proposedCompanies, preview.warnings],
   ]);
 }
@@ -99,8 +100,10 @@ export function AssignmentEditor({
   const migration = useQuery({ ...accessQueries.migration, staleTime: 0 });
   const overridePreview = migration.data?.find(({ id }) => employee.id === id);
   const summaryKey = overrideReviewKey(overridePreview);
+  const reviewedFingerprint = overridePreview?.legacyGrantsFingerprint;
   const freshPreview =
     overridePreview &&
+    typeof reviewedFingerprint === 'string' && /^[a-f0-9]{64}$/.test(reviewedFingerprint) &&
     overridePreview.accessRevision === snapshot.revision &&
     overridePreview.managed === snapshot.managed &&
     overridePreview.isActive &&
@@ -187,6 +190,7 @@ export function AssignmentEditor({
       await replace.mutateAsync({
         id: employee.id,
         expectedRevision: snapshot.revision,
+        expectedLegacyGrantsFingerprint: reviewedFingerprint,
         assignments: reviewed.assignments,
       });
       toast.success('บันทึกการมอบหมายแล้ว');

@@ -51,6 +51,7 @@ export interface AccessEmployee extends StaffAccount {
 }
 
 export interface MigrationPreview extends StaffAccount {
+  legacyGrantsFingerprint?: string | null;
   managed: boolean;
   isOwner: boolean;
   proposedPositionCode: string | null;
@@ -126,15 +127,18 @@ export const accessWrites = {
   replaceAssignments: async ({
     id,
     expectedRevision,
+    expectedLegacyGrantsFingerprint,
     assignments,
   }: {
     id: string;
     expectedRevision: number;
+    expectedLegacyGrantsFingerprint: string;
     assignments: ReviewedAssignment[];
   }) =>
     (
       await api.put<AccessSnapshot>(`${endpoint}/employees/${id}/assignments`, {
         expectedRevision,
+        expectedLegacyGrantsFingerprint,
         assignments,
       })
     ).data,

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent, { type UserEvent } from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
@@ -6,7 +6,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { toast } from 'sonner';
 import api from '@/lib/api';
 import { pickComboOption } from '@/test/combobox';
-import { DEFAULT_RECEIPT_WARRANTY_TERMS, RECEIPT_WARRANTY_TERMS_KEY } from '@installment/shared';
+import {
+  DEFAULT_RECEIPT_WARRANTY_TERMS,
+  formatDefaultWarrantyTerms,
+  RECEIPT_WARRANTY_TERMS_KEY,
+} from '@installment/shared';
 import ProductCreatePage from '../index';
 
 vi.mock('@/lib/api', () => ({
@@ -25,8 +29,20 @@ const TEMPLATE = {
 };
 let template: unknown = TEMPLATE;
 type Get = (url: string) => Promise<{ data: unknown }>;
-const BC_CONFIG = { minDownPct: 0.15, commissionPct: 0.1, vatPct: 0.07, ratePctByMonths: { 10: 0.5, 12: 0.5 }, allowedMonths: [10, 12] };
-const GFIN_SETTINGS = { minDownPct: 25, maxDownPct: 80, downStepPct: 5, contractFee: 100, commissionPctByCategory: { PHONE: 15, TABLET: 5 } };
+const BC_CONFIG = {
+  minDownPct: 0.15,
+  commissionPct: 0.1,
+  vatPct: 0.07,
+  ratePctByMonths: { 10: 0.5, 12: 0.5 },
+  allowedMonths: [10, 12],
+};
+const GFIN_SETTINGS = {
+  minDownPct: 25,
+  maxDownPct: 80,
+  downStepPct: 5,
+  contractFee: 100,
+  commissionPctByCategory: { PHONE: 15, TABLET: 5 },
+};
 let lookup: Get;
 let bcConfig: Get;
 let gfinSettings: Get;
@@ -43,13 +59,50 @@ beforeEach(() => {
     if (url.startsWith('/pricing-templates/lookup?')) return lookup(url);
     if (url.startsWith('/interest-configs/resolved?')) return bcConfig(url);
     if (url === '/gfin-config/max-prices') {
-      return { data: [{ id: 'm15', gfinSeries: 'iPhone 15', gfinVariant: null, storage: '128GB', condition: 'HAND_1', maxPrice: '24900', modelMatchPattern: 'iPhone 15', isActive: true }] };
+      return {
+        data: [
+          {
+            id: 'm15',
+            gfinSeries: 'iPhone 15',
+            gfinVariant: null,
+            storage: '128GB',
+            condition: 'HAND_1',
+            maxPrice: '24900',
+            modelMatchPattern: 'iPhone 15',
+            isActive: true,
+          },
+        ],
+      };
     }
     if (url === '/gfin-config/overprice-rules') {
-      return { data: [{ id: 'r15', label: 'iPhone 15 มือ 1', seriesPattern: 'iPhone 15', condition: 'HAND_1', allowance: '1000', maxMonths: 12, minDownPct: null, isActive: true }] };
+      return {
+        data: [
+          {
+            id: 'r15',
+            label: 'iPhone 15 มือ 1',
+            seriesPattern: 'iPhone 15',
+            condition: 'HAND_1',
+            allowance: '1000',
+            maxMonths: 12,
+            minDownPct: null,
+            isActive: true,
+          },
+        ],
+      };
     }
     if (url === '/gfin-config/rate-factors') {
-      return { data: [{ id: 'f12', months: 12, shopCommissionPct: 15, factor: '0.17', feePerInstallment: '100', isActive: true }] };
+      return {
+        data: [
+          {
+            id: 'f12',
+            months: 12,
+            shopCommissionPct: 15,
+            factor: '0.17',
+            feePerInstallment: '100',
+            isActive: true,
+          },
+        ],
+      };
     }
     if (url === '/gfin-config/settings') return gfinSettings(url);
     throw new Error(`unexpected GET ${url}`);
@@ -58,7 +111,9 @@ beforeEach(() => {
 });
 
 function renderPage() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
   return render(
     <MemoryRouter>
       <QueryClientProvider client={client}>
@@ -78,7 +133,8 @@ async function fillIphone15(user: UserEvent, storage = '128GB') {
   await user.type(screen.getByLabelText('ราคาทุน (บาท) *'), '25800');
 }
 
-const paragraph = (text: string) => (_: string, el: Element | null) => el?.tagName === 'P' && el.textContent === text;
+const paragraph = (text: string) => (_: string, el: Element | null) =>
+  el?.tagName === 'P' && el.textContent === text;
 const BADGE = 'ตามตารางราคากลาง · iPhone 15 128GB มือ 1';
 
 describe('ProductCreatePage — การ์ดราคาขาย (แบบ D)', () => {
@@ -90,9 +146,12 @@ describe('ProductCreatePage — การ์ดราคาขาย (แบบ 
     expect(screen.getByLabelText('เงินสด')).toHaveValue('25,900');
     expect(screen.getByLabelText('ผ่อน BESTCHOICE')).toHaveValue('25,900');
     expect(screen.getByLabelText('ผ่อน GFIN ราคาขาย')).toHaveValue('25,900');
-    expect(await screen.findByText(paragraph('ดาวน์ 3,900 · ผ่อน 3,137 × 12 งวด'))).toBeInTheDocument();
+    expect(
+      await screen.findByText(paragraph('ดาวน์ 3,900 · ผ่อน 3,137 × 12 งวด')),
+    ).toBeInTheDocument();
     expect(screen.getByText(paragraph('ดาวน์ 6,500 · ผ่อน 3,403 × 12 งวด'))).toBeInTheDocument();
-    for (const t of ['กำไร 100', 'กำไร 2,300', 'กำไร 2,938']) expect(screen.getByText(t)).toBeInTheDocument();
+    for (const t of ['กำไร 100', 'กำไร 2,300', 'กำไร 2,938'])
+      expect(screen.getByText(t)).toBeInTheDocument();
     expect(screen.queryByText('+ เพิ่มราคา')).not.toBeInTheDocument();
     expect(screen.queryByText('ค่าเริ่มต้น')).not.toBeInTheDocument();
   });
@@ -106,7 +165,12 @@ describe('ProductCreatePage — การ์ดราคาขาย (แบบ 
     await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
     const [url, payload] = vi.mocked(api.post).mock.calls[0];
     expect(url).toBe('/products');
-    expect(payload).toMatchObject({ cashPrice: 25900, installmentPrice: 25900, financePrice: 25900, deviceOrigin: 'THAI' });
+    expect(payload).toMatchObject({
+      cashPrice: 25900,
+      installmentPrice: 25900,
+      financePrice: 25900,
+      deviceOrigin: 'THAI',
+    });
     expect(payload).not.toHaveProperty('prices');
   });
 
@@ -134,10 +198,14 @@ describe('ProductCreatePage — การ์ดราคาขาย (แบบ 
     const user = userEvent.setup();
     renderPage();
     await fillIphone15(user);
-    expect(await screen.findByText('ไม่พบรุ่นนี้ในตารางราคากลาง — กรอกราคาเอง')).toBeInTheDocument();
+    expect(
+      await screen.findByText('ไม่พบรุ่นนี้ในตารางราคากลาง — กรอกราคาเอง'),
+    ).toBeInTheDocument();
     expect(screen.getByLabelText('เงินสด')).toHaveValue('');
     await user.click(screen.getByRole('button', { name: 'บันทึกสินค้า' }));
-    expect(toast.error).toHaveBeenCalledWith('กรุณากรอกราคาเงินสดหรือราคาผ่อน BESTCHOICE อย่างน้อย 1 ราคา');
+    expect(toast.error).toHaveBeenCalledWith(
+      'กรุณากรอกราคาเงินสดหรือราคาผ่อน BESTCHOICE อย่างน้อย 1 ราคา',
+    );
     expect(api.post).not.toHaveBeenCalled();
   });
 
@@ -150,16 +218,26 @@ describe('ProductCreatePage — การ์ดราคาขาย (แบบ 
     await pickComboOption(user, 'รุ่น *', 'iPhone 15');
     // ให้ตาราง GFIN มาครบก่อนตรวจ (ไม่งั้น "GFIN ไม่รับ" ยังไม่มีโอกาสขึ้นอยู่แล้ว)
     await waitFor(() =>
-      expect(vi.mocked(api.get).mock.calls.some(([url]) => url === '/gfin-config/settings')).toBe(true),
+      expect(vi.mocked(api.get).mock.calls.some(([url]) => url === '/gfin-config/settings')).toBe(
+        true,
+      ),
     );
     await new Promise((r) => setTimeout(r, 50));
     expect(screen.queryByText('ไม่พบรุ่นนี้ในตารางราคากลาง — กรอกราคาเอง')).not.toBeInTheDocument();
-    expect(screen.queryByText('GFIN ไม่รับรุ่นนี้ — ขายได้แค่เงินสดและผ่อน BESTCHOICE')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('GFIN ไม่รับรุ่นนี้ — ขายได้แค่เงินสดและผ่อน BESTCHOICE'),
+    ).not.toBeInTheDocument();
     expect(screen.getByText('เลือกความจุก่อน ระบบจะบอกว่า GFIN รับรุ่นนี้ไหม')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '256GB' }));
-    expect(await screen.findByText('ไม่พบรุ่นนี้ในตารางราคากลาง — กรอกราคาเอง')).toBeInTheDocument();
-    expect(screen.getByText('GFIN ไม่รับรุ่นนี้ — ขายได้แค่เงินสดและผ่อน BESTCHOICE')).toBeInTheDocument();
-    expect(screen.queryByText('เลือกความจุก่อน ระบบจะบอกว่า GFIN รับรุ่นนี้ไหม')).not.toBeInTheDocument();
+    expect(
+      await screen.findByText('ไม่พบรุ่นนี้ในตารางราคากลาง — กรอกราคาเอง'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('GFIN ไม่รับรุ่นนี้ — ขายได้แค่เงินสดและผ่อน BESTCHOICE'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('เลือกความจุก่อน ระบบจะบอกว่า GFIN รับรุ่นนี้ไหม'),
+    ).not.toBeInTheDocument();
   });
 
   it('รุ่นที่ไม่มีในใบราคา GFIN → ช่อง GFIN ปิด + ข้อความ · บันทึก financePrice เป็น null', async () => {
@@ -170,10 +248,16 @@ describe('ProductCreatePage — การ์ดราคาขาย (แบบ 
     const finance = screen.getByLabelText('ผ่อน GFIN ราคาขาย');
     expect(finance).toBeDisabled();
     expect(finance).toHaveValue('');
-    expect(screen.getByText('GFIN ไม่รับรุ่นนี้ — ขายได้แค่เงินสดและผ่อน BESTCHOICE')).toBeInTheDocument();
+    expect(
+      screen.getByText('GFIN ไม่รับรุ่นนี้ — ขายได้แค่เงินสดและผ่อน BESTCHOICE'),
+    ).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'บันทึกสินค้า' }));
     await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
-    expect(vi.mocked(api.post).mock.calls[0][1]).toMatchObject({ cashPrice: 25900, installmentPrice: 25900, financePrice: null });
+    expect(vi.mocked(api.post).mock.calls[0][1]).toMatchObject({
+      cashPrice: 25900,
+      installmentPrice: 25900,
+      financePrice: null,
+    });
   });
 
   it('อุปกรณ์เสริม → ช่องเดียว "ราคาขาย" ส่งเฉพาะ cashPrice', async () => {
@@ -196,7 +280,12 @@ describe('ProductCreatePage — การ์ดราคาขาย (แบบ 
 
   it('เปลี่ยนความจุ → ล้างราคาอัตโนมัติเดิมทันที (ช่องที่แก้เองคงไว้) · รอราคากลางชุดใหม่ → บันทึกไม่ได้', async () => {
     let release!: () => void;
-    const TPL_256 = { ...TEMPLATE, cashPrice: '29900.00', installmentBestchoicePrice: '29900.00', installmentFinancePrice: '29900.00' };
+    const TPL_256 = {
+      ...TEMPLATE,
+      cashPrice: '29900.00',
+      installmentBestchoicePrice: '29900.00',
+      installmentFinancePrice: '29900.00',
+    };
     lookup = (url) =>
       url.includes('256GB')
         ? new Promise((resolve) => {
@@ -245,7 +334,9 @@ describe('ProductCreatePage — การ์ดราคาขาย (แบบ 
     await user.click(await screen.findByRole('button', { name: 'แท็บเล็ต' }));
     await user.selectOptions(screen.getByLabelText('ยี่ห้อ *'), 'Apple');
     await pickComboOption(user, 'รุ่น *', 'iPad Pro 11" (M4)', { search: 'iPad Pro 11' });
-    expect(await screen.findByText(paragraph('ดาวน์ 3,900 · ผ่อน 3,137 × 12 งวด'))).toBeInTheDocument();
+    expect(
+      await screen.findByText(paragraph('ดาวน์ 3,900 · ผ่อน 3,137 × 12 งวด')),
+    ).toBeInTheDocument();
     expect(api.get).toHaveBeenCalledWith('/interest-configs/resolved?category=TABLET');
     expect(screen.queryByText(/ยังไม่มีตั้งค่าดอกเบี้ย/)).not.toBeInTheDocument();
   });
@@ -259,7 +350,9 @@ describe('ProductCreatePage — การ์ดราคาขาย (แบบ 
     const user = userEvent.setup();
     renderPage();
     await fillIphone15(user);
-    expect(await screen.findByText(paragraph('โหลดราคากลางไม่สำเร็จ — ลองใหม่'))).toBeInTheDocument();
+    expect(
+      await screen.findByText(paragraph('โหลดราคากลางไม่สำเร็จ — ลองใหม่')),
+    ).toBeInTheDocument();
     expect(screen.queryByText('ไม่พบรุ่นนี้ในตารางราคากลาง — กรอกราคาเอง')).not.toBeInTheDocument();
     await user.type(screen.getByLabelText('เงินสด'), '30000');
     expect(screen.getByRole('button', { name: 'บันทึกสินค้า' })).toBeEnabled();
@@ -267,7 +360,9 @@ describe('ProductCreatePage — การ์ดราคาขาย (แบบ 
     await user.click(screen.getByRole('button', { name: 'ลองใหม่' }));
     await waitFor(() => expect(screen.getByLabelText('ผ่อน BESTCHOICE')).toHaveValue('25,900'));
     expect(screen.getByLabelText('เงินสด')).toHaveValue('30,000');
-    expect(screen.queryByText(paragraph('โหลดราคากลางไม่สำเร็จ — ลองใหม่'))).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(paragraph('โหลดราคากลางไม่สำเร็จ — ลองใหม่')),
+    ).not.toBeInTheDocument();
   });
 
   it('โหลดตั้งค่าดอกเบี้ยไม่สำเร็จ → บอกโหลดไม่สำเร็จ ไม่ใช่ "ยังไม่มีตั้งค่าดอกเบี้ย"', async () => {
@@ -278,7 +373,9 @@ describe('ProductCreatePage — การ์ดราคาขาย (แบบ 
     renderPage();
     await fillIphone15(user);
     await screen.findByText(BADGE);
-    expect(await screen.findByText(paragraph('โหลดตั้งค่าดอกเบี้ยไม่สำเร็จ — ลองใหม่'))).toBeInTheDocument();
+    expect(
+      await screen.findByText(paragraph('โหลดตั้งค่าดอกเบี้ยไม่สำเร็จ — ลองใหม่')),
+    ).toBeInTheDocument();
     expect(screen.queryByText(/ยังไม่มีตั้งค่าดอกเบี้ย/)).not.toBeInTheDocument();
   });
 
@@ -288,7 +385,9 @@ describe('ProductCreatePage — การ์ดราคาขาย (แบบ 
     renderPage();
     await fillIphone15(user);
     await screen.findByText(BADGE);
-    expect(await screen.findByText('ยังไม่มีตั้งค่าดอกเบี้ยของหมวดนี้ — คิดค่างวดไม่ได้')).toBeInTheDocument();
+    expect(
+      await screen.findByText('ยังไม่มีตั้งค่าดอกเบี้ยของหมวดนี้ — คิดค่างวดไม่ได้'),
+    ).toBeInTheDocument();
     expect(screen.queryByText('กรอกราคาเพื่อดูดาวน์และค่างวด')).not.toBeInTheDocument();
   });
 
@@ -302,7 +401,9 @@ describe('ProductCreatePage — การ์ดราคาขาย (แบบ 
     renderPage();
     await fillIphone15(user);
     await screen.findByText(BADGE);
-    expect(await screen.findByText(paragraph('โหลดตาราง GFIN ไม่สำเร็จ — ลองใหม่'))).toBeInTheDocument();
+    expect(
+      await screen.findByText(paragraph('โหลดตาราง GFIN ไม่สำเร็จ — ลองใหม่')),
+    ).toBeInTheDocument();
     const finance = screen.getByLabelText('ผ่อน GFIN ราคาขาย');
     expect(finance).toBeDisabled();
     const save = screen.getByRole('button', { name: 'บันทึกสินค้า' });
@@ -311,7 +412,9 @@ describe('ProductCreatePage — การ์ดราคาขาย (แบบ 
     await user.click(screen.getByRole('button', { name: 'ลองใหม่' }));
     await waitFor(() => expect(screen.getByLabelText('ผ่อน GFIN ราคาขาย')).toBeEnabled());
     expect(screen.getByLabelText('ผ่อน GFIN ราคาขาย')).toHaveValue('25,900');
-    expect(screen.queryByText(paragraph('โหลดตาราง GFIN ไม่สำเร็จ — ลองใหม่'))).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(paragraph('โหลดตาราง GFIN ไม่สำเร็จ — ลองใหม่')),
+    ).not.toBeInTheDocument();
   });
 
   it('โหลดตาราง GFIN ไม่สำเร็จแล้วบันทึกเลย → ส่ง financePrice: null (ไม่ส่งราคากลางของรุ่นที่ GFIN อาจไม่รับ)', async () => {
@@ -325,7 +428,11 @@ describe('ProductCreatePage — การ์ดราคาขาย (แบบ 
     await screen.findByText(paragraph('โหลดตาราง GFIN ไม่สำเร็จ — ลองใหม่'));
     await user.click(screen.getByRole('button', { name: 'บันทึกสินค้า' }));
     await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
-    expect(vi.mocked(api.post).mock.calls[0][1]).toMatchObject({ cashPrice: 25900, installmentPrice: 25900, financePrice: null });
+    expect(vi.mocked(api.post).mock.calls[0][1]).toMatchObject({
+      cashPrice: 25900,
+      installmentPrice: 25900,
+      financePrice: null,
+    });
   });
 
   it('สลับเข้า/ออกอุปกรณ์เสริม → ล้างราคาที่กรอกไว้', async () => {
@@ -354,31 +461,65 @@ describe('ProductCreatePage — ประกันร้าน (เลือก 
     const user = userEvent.setup();
     renderPage();
     await fillIphone15(user);
-    expect(screen.getByRole('button', { name: /^ไม่มี/ })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByLabelText(TERMS_LABEL)).toHaveValue('');
+    expect(screen.queryByLabelText(TERMS_LABEL)).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'รูปสินค้า 6 มุม' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'หลักฐานประกอบสัญญา' })).not.toBeInTheDocument();
     const payload = await savedPayload(user);
     expect(payload).toMatchObject({ shopWarrantyDays: null, warrantyTerms: null });
+    expect(payload.anglePhotos).toBeUndefined();
+    expect(payload.evidencePhotos).toBeUndefined();
   });
 
-  it('เลือก 30 วัน → เติมเงื่อนไขมาตรฐานของร้านให้ และส่งไปกับสินค้า', async () => {
+  it('มือสอง: ติ๊ก 60 วัน พร้อมเงื่อนไขทั้ง 6 ข้อ และยกเลิกประกันได้', async () => {
     const user = userEvent.setup();
     renderPage();
+    await user.click(await screen.findByRole('button', { name: 'มือถือมือสอง' }));
+    const warranty = screen.getByRole('checkbox', { name: 'ประกันร้าน 60 วัน' });
+    expect(warranty).toBeChecked();
+    expect(screen.getByLabelText(TERMS_LABEL)).toHaveValue(
+      formatDefaultWarrantyTerms(DEFAULT_RECEIPT_WARRANTY_TERMS, 60),
+    );
+    expect(screen.getByRole('region', { name: 'รูปสินค้า 6 มุม' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'หลักฐานประกอบสัญญา' })).toBeInTheDocument();
+    await user.click(warranty);
+    expect(screen.queryByLabelText(TERMS_LABEL)).not.toBeInTheDocument();
     await fillIphone15(user);
-    await user.click(screen.getByRole('button', { name: /^30 วัน/ }));
-    expect(screen.getByLabelText(TERMS_LABEL)).toHaveValue(DEFAULT_RECEIPT_WARRANTY_TERMS);
     const payload = await savedPayload(user);
-    expect(payload).toMatchObject({ shopWarrantyDays: 30, warrantyTerms: DEFAULT_RECEIPT_WARRANTY_TERMS });
+    expect(payload).toMatchObject({ shopWarrantyDays: 0, warrantyTerms: null });
+  });
+
+  it('สลับมือสองที่แก้เงื่อนไขเป็นมือหนึ่ง ไม่ส่งเงื่อนไขค้าง และกลับมามือสองใช้มาตรฐาน', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: 'มือถือมือสอง' }));
+    await user.clear(screen.getByLabelText(TERMS_LABEL));
+    await user.type(screen.getByLabelText(TERMS_LABEL), 'เงื่อนไขเฉพาะเครื่องเก่า');
+    await user.click(screen.getByRole('button', { name: 'มือถือใหม่' }));
+    expect(screen.queryByLabelText(TERMS_LABEL)).not.toBeInTheDocument();
+    await fillIphone15(user);
+    const payload = await savedPayload(user);
+    expect(payload).toMatchObject({
+      category: 'PHONE_NEW',
+      shopWarrantyDays: null,
+      warrantyTerms: null,
+    });
+    await user.click(screen.getByRole('button', { name: 'มือถือมือสอง' }));
+    expect(screen.getByLabelText(TERMS_LABEL)).toHaveValue(
+      formatDefaultWarrantyTerms(DEFAULT_RECEIPT_WARRANTY_TERMS, 60),
+    );
   });
 
   it('มือสอง: ค่าเริ่มต้น 60 วัน + ข้อความจากตั้งค่าใบเสร็จ · แก้แล้วกด "ใช้ข้อความเริ่มต้น" กลับได้', async () => {
     const base = vi.mocked(api.get).getMockImplementation()!;
     vi.mocked(api.get).mockImplementation(async (url: string) =>
-      url === '/settings' ? { data: [{ key: RECEIPT_WARRANTY_TERMS_KEY, value: 'เงื่อนไขของร้านเรา' }] } : base(url),
+      url === '/settings'
+        ? { data: [{ key: RECEIPT_WARRANTY_TERMS_KEY, value: 'เงื่อนไขของร้านเรา' }] }
+        : base(url),
     );
     const user = userEvent.setup();
     renderPage();
     await user.click(await screen.findByRole('button', { name: 'มือถือมือสอง' }));
-    expect(screen.getByRole('button', { name: /^60 วัน/ })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('checkbox', { name: 'ประกันร้าน 60 วัน' })).toBeChecked();
     const terms = screen.getByLabelText(TERMS_LABEL);
     await waitFor(() => expect(terms).toHaveValue('เงื่อนไขของร้านเรา'));
     await user.clear(terms);
@@ -387,7 +528,71 @@ describe('ProductCreatePage — ประกันร้าน (เลือก 
     expect(terms).toHaveValue('เงื่อนไขของร้านเรา');
     await fillIphone15(user);
     const payload = await savedPayload(user);
-    expect(payload).toMatchObject({ category: 'PHONE_USED', shopWarrantyDays: 60, warrantyTerms: 'เงื่อนไขของร้านเรา' });
+    expect(payload).toMatchObject({
+      category: 'PHONE_USED',
+      shopWarrantyDays: 60,
+      warrantyTerms: 'เงื่อนไขของร้านเรา',
+    });
+  });
+
+  it('แท็บเล็ตยังกรอกประกันศูนย์ได้เมื่อไม่มีประกันร้าน', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: 'แท็บเล็ต' }));
+    const terms = screen.getByLabelText(TERMS_LABEL);
+    await user.type(terms, 'ประกันศูนย์ถึง 24/11/2570');
+    expect(terms).toHaveValue('ประกันศูนย์ถึง 24/11/2570');
+  });
+
+  it('การอ่านรูปที่เสร็จหลังสลับประเภท ไม่คืนรูปของเครื่องเดิมกลับเข้าฟอร์ม', async () => {
+    let finishImage: (() => void) | undefined;
+    vi.stubGlobal(
+      'Image',
+      class {
+        width = 1;
+        height = 1;
+        set src(_value: string) {
+          finishImage = () => this.onload();
+        }
+        onload = () => {};
+      },
+    );
+    vi.stubGlobal(
+      'URL',
+      class extends URL {
+        static createObjectURL() {
+          return 'blob:test';
+        }
+        static revokeObjectURL() {}
+      },
+    );
+    const context = vi
+      .spyOn(HTMLCanvasElement.prototype, 'getContext')
+      .mockReturnValue({ drawImage: vi.fn() } as unknown as CanvasRenderingContext2D);
+    const data = vi
+      .spyOn(HTMLCanvasElement.prototype, 'toDataURL')
+      .mockReturnValue('data:image/jpeg;base64,old');
+    try {
+      const user = userEvent.setup();
+      renderPage();
+      await user.click(await screen.findByRole('button', { name: 'มือถือมือสอง' }));
+      await user.upload(
+        screen.getByLabelText('อัปโหลดรูปหน้า IMEI'),
+        new File(['photo'], 'imei.jpg', { type: 'image/jpeg' }),
+      );
+      expect(finishImage).toBeDefined();
+      await user.click(screen.getByRole('button', { name: 'มือถือใหม่' }));
+      await user.click(screen.getByRole('button', { name: 'มือถือมือสอง' }));
+      await act(async () => finishImage!());
+      expect(screen.queryByRole('button', { name: 'ดูรูปหน้า IMEI' })).not.toBeInTheDocument();
+      await fillIphone15(user);
+      const payload = await savedPayload(user);
+      expect(payload.evidencePhotos).toEqual({});
+    } finally {
+      context.mockRestore();
+      data.mockRestore();
+      vi.unstubAllGlobals();
+    }
   });
 
   it('อุปกรณ์เสริม: ไม่มีส่วนประกันร้าน และไม่ส่งค่าประกัน', async () => {
@@ -402,9 +607,15 @@ describe('ProductCreatePage — เครื่องไทย/เครื่�
   it('ค่าเริ่มต้นเป็นเครื่องไทย และส่ง THAI โดยไม่ต้องกด · เปลี่ยนเป็นเครื่องนอกได้', async () => {
     const user = userEvent.setup();
     renderPage();
-    expect(await screen.findByRole('button', { name: 'เครื่องไทย' })).toHaveAttribute('aria-pressed', 'true');
+    expect(await screen.findByRole('button', { name: 'เครื่องไทย' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
     await user.click(screen.getByRole('button', { name: 'เครื่องนอก' }));
-    expect(screen.getByRole('button', { name: 'เครื่องนอก' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'เครื่องนอก' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
     await user.click(screen.getByRole('button', { name: 'เครื่องไทย' }));
     await user.selectOptions(screen.getByLabelText('ยี่ห้อ *'), 'Apple');
     await pickComboOption(user, 'รุ่น *', 'iPhone 15');

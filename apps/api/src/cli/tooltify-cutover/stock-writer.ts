@@ -38,6 +38,7 @@ export async function writeStockItem(
       color: payload.color,
       category: payload.category,
       deviceOrigin: payload.deviceOrigin,
+      ...(payload.batteryHealth !== undefined ? { batteryHealth: payload.batteryHealth } : {}),
       imeiSerial: payload.kind === 'DEVICE' ? payload.barcode : null,
       branchId: item.branchId,
       ownedByCompanyId: resolution.companyId,

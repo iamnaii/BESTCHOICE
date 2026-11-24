@@ -24,6 +24,12 @@
 
 /* Respect prefers-reduced-motion — kill all transitions + animations globally. */
 @media (prefers-reduced-motion: reduce) {
+  /* Apply immediately on a preference change, before GSAP's media cleanup. */
+  [data-product-card] {
+    transform: none !important;
+    opacity: 1 !important;
+  }
+
   *,
   *::before,
   *::after {

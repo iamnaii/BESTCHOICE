@@ -68,70 +68,87 @@ export default function ShopWarrantySection({
           <span id={`${id}-days`} className={formLabelClass}>
             ระยะประกันร้าน
           </span>
-          <div className="grid grid-cols-3 gap-2">
-            {options.map((opt) => {
-              const on = opt.value === days;
-              return (
-                <button
-                  key={opt.value || 'none'}
-                  type="button"
-                  aria-pressed={on}
-                  onClick={() => onDaysChange(opt.value)}
-                  className={cn(
-                    'flex min-h-16 flex-col items-start justify-center gap-0.5 rounded-lg border px-3 py-2 text-left transition-colors',
-                    on
-                      ? 'border-primary bg-primary/10 text-primary ring-1 ring-primary'
-                      : 'border-input bg-card text-foreground hover:border-primary/60',
-                  )}
-                >
-                  <span className="text-base font-semibold leading-snug">{opt.title}</span>
-                  <span
+          {category === 'PHONE_USED' ? (
+            <label className="flex min-h-14 cursor-pointer items-center gap-3 rounded-lg border border-input bg-card px-4 py-3 text-base font-medium">
+              <input
+                type="checkbox"
+                checked={days === '60'}
+                onChange={(event) => onDaysChange(event.target.checked ? '60' : '0')}
+                className="size-5 accent-primary"
+              />
+              ประกันร้าน 60 วัน
+            </label>
+          ) : (
+            <div className="grid grid-cols-3 gap-2">
+              {options.map((opt) => {
+                const on = opt.value === days;
+                return (
+                  <button
+                    key={opt.value || 'none'}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => onDaysChange(opt.value)}
                     className={cn(
-                      'text-xs leading-snug',
-                      on ? 'font-medium' : 'text-muted-foreground',
+                      'flex min-h-16 flex-col items-start justify-center gap-0.5 rounded-lg border px-3 py-2 text-left transition-colors',
+                      on
+                        ? 'border-primary bg-primary/10 text-primary ring-1 ring-primary'
+                        : 'border-input bg-card text-foreground hover:border-primary/60',
                     )}
                   >
-                    {opt.sub}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+                    <span className="text-base font-semibold leading-snug">{opt.title}</span>
+                    <span
+                      className={cn(
+                        'text-xs leading-snug',
+                        on ? 'font-medium' : 'text-muted-foreground',
+                      )}
+                    >
+                      {opt.sub}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
-        <div>
-          <label htmlFor={`${id}-terms`} className={formLabelClass}>
-            ผู้รับประกันและเงื่อนไขความคุ้มครอง
-          </label>
-          <textarea
-            id={`${id}-terms`}
-            rows={4}
-            maxLength={2000}
-            className={cn(formTextareaClass, 'leading-relaxed')}
-            value={terms}
-            placeholder={hasShopWarranty ? undefined : 'ไม่บังคับ — เช่น ประกันศูนย์ถึงวันที่ …'}
-            aria-describedby={`${id}-terms-hint`}
-            onChange={(e) => onTermsChange(e.target.value)}
-          />
-          <p id={`${id}-terms-hint`} className="mt-1.5 text-xs leading-snug text-muted-foreground">
-            {!hasShopWarranty ? (
-              'ไม่มีประกันร้าน — ใส่เงื่อนไขประกันศูนย์ได้ถ้ามี'
-            ) : termsEdited ? (
-              <>
-                แก้เฉพาะเครื่องนี้แล้ว ·{' '}
-                <button
-                  type="button"
-                  onClick={onUseDefaultTerms}
-                  className="inline-flex items-center font-medium text-primary underline-offset-2 hover:underline max-lg:min-h-11"
-                >
-                  ใช้ข้อความเริ่มต้น
-                </button>
-              </>
-            ) : (
-              'เติมจากข้อความมาตรฐานของร้าน (เจ้าของแก้ได้ที่ ตั้งค่า › สินค้า & การขาย › ใบเสร็จขายสด) · แก้เฉพาะเครื่องนี้ได้'
-            )}
-          </p>
-        </div>
+        {(hasShopWarranty || category !== 'PHONE_USED') && (
+          <div>
+            <label htmlFor={`${id}-terms`} className={formLabelClass}>
+              ผู้รับประกันและเงื่อนไขความคุ้มครอง
+            </label>
+            <textarea
+              id={`${id}-terms`}
+              rows={12}
+              maxLength={2000}
+              className={cn(formTextareaClass, 'leading-relaxed')}
+              value={terms}
+              placeholder={hasShopWarranty ? undefined : 'ไม่บังคับ — เช่น ประกันศูนย์ถึงวันที่ …'}
+              aria-describedby={`${id}-terms-hint`}
+              onChange={(e) => onTermsChange(e.target.value)}
+            />
+            <p
+              id={`${id}-terms-hint`}
+              className="mt-1.5 text-xs leading-snug text-muted-foreground"
+            >
+              {!hasShopWarranty ? (
+                'ไม่มีประกันร้าน — ใส่เงื่อนไขประกันศูนย์ได้ถ้ามี'
+              ) : termsEdited ? (
+                <>
+                  แก้เฉพาะเครื่องนี้แล้ว ·{' '}
+                  <button
+                    type="button"
+                    onClick={onUseDefaultTerms}
+                    className="inline-flex items-center font-medium text-primary underline-offset-2 hover:underline max-lg:min-h-11"
+                  >
+                    ใช้ข้อความเริ่มต้น
+                  </button>
+                </>
+              ) : (
+                'เติมจากข้อความมาตรฐานของร้าน (เจ้าของแก้ได้ที่ ตั้งค่า › สินค้า & การขาย › ใบเสร็จขายสด) · แก้เฉพาะเครื่องนี้ได้'
+              )}
+            </p>
+          </div>
+        )}
       </div>
     </FormSection>
   );

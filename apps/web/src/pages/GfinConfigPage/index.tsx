@@ -36,7 +36,17 @@ export default function GfinConfigPage() {
         </p>
       </div>
       <Tabs value={tab} onValueChange={onTab}>
-        <TabsList>
+        <TabsList
+          onFocusCapture={(event) => {
+            // Native keyboard focus can leave a partially visible tab clipped on mobile.
+            if (
+              event.target instanceof HTMLElement &&
+              event.target.getAttribute('role') === 'tab'
+            ) {
+              event.target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+            }
+          }}
+        >
           {isOwner && <TabsTrigger value="terms">เงื่อนไข &amp; ราคา</TabsTrigger>}
           {isOwner && <TabsTrigger value="calc">ทดลองคำนวณ</TabsTrigger>}
           <TabsTrigger value="line">กลุ่มไลน์ &amp; ข้อความ</TabsTrigger>

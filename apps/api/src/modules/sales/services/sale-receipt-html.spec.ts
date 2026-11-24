@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { DEFAULT_RECEIPT_WARRANTY_TERMS } from '@installment/shared';
+import { DEFAULT_RECEIPT_WARRANTY_TERMS, formatDefaultWarrantyTerms } from '@installment/shared';
 import { thaiBahtText } from '../../../utils/thai-baht-text.util';
 import { buildSaleReceiptHtml, toSaleReceiptModel, type SaleForReceipt } from './sale-receipt-html';
 
@@ -230,7 +230,8 @@ describe('toSaleReceiptModel', () => {
   it('builds the warranty headline from the real dates, and a no-warranty line otherwise', () => {
     const m = toSaleReceiptModel(cashSale(), ctx);
     expect(m.warranty.headline).toBe('ประกันร้าน 7 วัน · 22/10/2569 – 29/10/2569');
-    expect(m.warranty.terms).toBe(DEFAULT_RECEIPT_WARRANTY_TERMS);
+    expect(m.warranty.terms).toBe(formatDefaultWarrantyTerms(DEFAULT_RECEIPT_WARRANTY_TERMS, 7));
+    expect(toSaleReceiptModel(financeSale(), ctx).warranty.terms).toBe('');
     expect(toSaleReceiptModel(financeSale(), ctx).warranty.headline).toBe(
       'ไม่มีประกันร้าน · ประกันศูนย์ตามเงื่อนไขผู้ผลิต',
     );
@@ -247,6 +248,17 @@ describe('toSaleReceiptModel', () => {
     expect(same.warranty.productTerms).toBeNull();
     expect(same.mainItem.note).not.toContain(DEFAULT_RECEIPT_WARRANTY_TERMS);
     expect(same.mainItem.note).toContain('ประกันร้าน 7 วัน');
+    const filled = toSaleReceiptModel(
+      cashSale({
+        productDisclosure: {
+          ...disclosure,
+          warrantyTerms: formatDefaultWarrantyTerms(DEFAULT_RECEIPT_WARRANTY_TERMS, 7),
+        },
+      }),
+      ctx,
+    );
+    expect(filled.warranty.productTerms).toBeNull();
+    expect(filled.mainItem.note).not.toContain('1. ระยะเวลารับประกัน');
     const own = toSaleReceiptModel(
       cashSale({ productDisclosure: { ...disclosure, warrantyTerms: 'รับประกันจอ 30 วัน' } }),
       ctx,
@@ -282,7 +294,7 @@ describe('toSaleReceiptModel', () => {
 describe('buildSaleReceiptHtml', () => {
   const fontCss = '/* fonts */';
 
-  it('renders the cash receipt header, totals, bundle rows, QR, seller and VAT notice', () => {
+  it('renders the cash receipt header, totals, bundle rows, QR and seller without the removed VAT notice', () => {
     const html = buildSaleReceiptHtml(toSaleReceiptModel(cashSale(), ctx), fontCss);
     expect(html).toContain('ใบเสร็จรับเงิน');
     expect(html).toContain('RECEIPT · ต้นฉบับ');
@@ -303,22 +315,29 @@ describe('buildSaleReceiptHtml', () => {
     expect(tradeInAt).toBeGreaterThan(netAt);
     expect(receivedAt).toBeGreaterThan(tradeInAt);
     expect(html).toContain('ประกันร้าน 7 วัน');
-    expect(html).toContain(DEFAULT_RECEIPT_WARRANTY_TERMS);
-    expect(html).toContain('ไม่ใช่ใบกำกับภาษี');
+    expect(html).toContain(formatDefaultWarrantyTerms(DEFAULT_RECEIPT_WARRANTY_TERMS, 7));
+    expect(html).not.toContain('ไม่ใช่ใบกำกับภาษี');
+    expect(html).not.toContain('ไม่ได้จดทะเบียนภาษีมูลค่าเพิ่ม');
     expect(html).toContain('<img src="data:image/png;base64,QR"');
     expect(html).toContain('สมชาย ใจดี');
     expect(html).toContain(fontCss);
     expect(html).not.toContain('ยกเลิกเมื่อ');
+    expect(html).toContain('LINE <a href="https://line.me/R/ti/p/@bestchoice">@BESTCHOICE</a>');
+    expect(html).toContain('href="tel:0955678887">095-567-8887</a>');
+    expect(html).not.toContain(company.phone);
   });
 
-  it('renders the external-finance variant with the down-payment title and remainder sentence', () => {
+  it('renders the external-finance variant with the down-payment title without the removed remainder sentence', () => {
     const html = buildSaleReceiptHtml(toSaleReceiptModel(financeSale(), ctx), fontCss);
     expect(html).toContain('RECEIPT · ต้นฉบับ · เงินดาวน์');
-    expect(html).toContain('ส่วนที่เหลือ 36,900.00 บาท ชำระกับ GFIN');
+    expect(html).not.toContain('ส่วนที่เหลือ');
+    expect(html).not.toContain('ตามสัญญาของบริษัทไฟแนนซ์');
     expect(html).toContain('GF-7781');
     expect(html).toContain('เงินดาวน์ที่รับ');
     expect(html).toContain(thaiBahtText(5000));
     expect(html).not.toContain('ของแถม');
+    expect(html).not.toContain('ไม่ได้จดทะเบียนภาษีมูลค่าเพิ่ม');
+    expect(html).not.toContain('ไม่ใช่ใบกำกับภาษี');
   });
 
   it('escapes customer and product text', () => {

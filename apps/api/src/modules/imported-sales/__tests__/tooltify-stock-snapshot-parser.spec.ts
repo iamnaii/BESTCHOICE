@@ -44,6 +44,35 @@ function stockRows(...details: string[][]): string[][] {
 }
 
 describe('parseStockSnapshot', () => {
+  it('carries battery health from the device detail row without inferring missing values', () => {
+    const row = [...DEVICE];
+    row[4] = 'แบตเตอรี่ : 81%\nดาวน์ 1,400 ผ่อน 1,249 x 10 ด';
+    const parsed = parseStockSnapshot(stockRows(row), context);
+    expect(parsed.issues).toEqual([]);
+    expect(parsed.rows[0]).toMatchObject({ batteryHealth: 81, barcode: DEVICE[0] });
+    expect(parseStockSnapshot(stockRows(DEVICE), context).rows[0]).not.toHaveProperty(
+      'batteryHealth',
+    );
+  });
+
+  it.each([
+    '101%',
+    '-1%',
+    '81.5%',
+    '81%\nแบตเตอรี่ : 90%',
+    '81%\nแบตเตอรี่ : 90',
+    '81%\nแบตเตอรี่ : ไม่ระบุ',
+    'ไม่ระบุ',
+  ])('blocks invalid or conflicting battery evidence %s', (value) => {
+    const row = [...DEVICE];
+    row[4] = 'แบตเตอรี่ : ' + value;
+    const parsed = parseStockSnapshot(stockRows(row), context);
+    expect(parsed.rows).toEqual([]);
+    expect(parsed.issues).toContainEqual(
+      expect.objectContaining({ code: 'INVALID_BATTERY_HEALTH' }),
+    );
+  });
+
   it('preserves_device_identity_and_origin', () => {
     const snapshotRows = stockRows(DEVICE);
     const result = parseStockSnapshot(snapshotRows, context);

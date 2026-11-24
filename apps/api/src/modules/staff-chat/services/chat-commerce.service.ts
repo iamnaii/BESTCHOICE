@@ -1,3 +1,4 @@
+import { hydratePublicListingGalleries } from '../../../utils/public-listing-gallery.util';
 import {
   Injectable,
   Logger,
@@ -217,7 +218,7 @@ export class ChatCommerceService {
     }
     const searchTerm = query.trim();
 
-    const products = await this.prisma.product.findMany({
+    const rawProducts = await this.prisma.product.findMany({
       where: {
         deletedAt: null,
         status: { in: ['IN_STOCK', 'RESERVED'] },
@@ -256,6 +257,7 @@ export class ChatCommerceService {
       take: Math.min(limit, 20),
     });
 
+    const products = await hydratePublicListingGalleries(this.prisma, rawProducts);
     const quotes = await this.productQuote.getQuotes(
       products.map((p) => ({
         category: p.category,
@@ -299,7 +301,7 @@ export class ChatCommerceService {
     photoUrl: string | null;
     shareUrl: string | null;
   }> {
-    const product = await this.prisma.product.findFirst({
+    const rawProduct = await this.prisma.product.findFirst({
       where: { id: productId, deletedAt: null },
       select: {
         id: true,
@@ -323,10 +325,11 @@ export class ChatCommerceService {
         prices: { where: { deletedAt: null }, select: { label: true, amount: true } },
       },
     });
-    if (!product) {
+    if (!rawProduct) {
       throw new NotFoundException('ไม่พบสินค้าที่ระบุ');
     }
 
+    const [product] = await hydratePublicListingGalleries(this.prisma, [rawProduct]);
     const [quote] = await this.productQuote.getQuotes([
       {
         category: product.category,

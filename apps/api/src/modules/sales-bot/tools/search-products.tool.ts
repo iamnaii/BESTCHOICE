@@ -1,3 +1,4 @@
+import { hydratePublicListingGalleries } from '../../../utils/public-listing-gallery.util';
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -152,6 +153,7 @@ export class SearchProductsTool {
         // ซึ่งเก็บ IMEI+แบต% แต่ไม่มีช่องเกรด) ถูกซ่อนหมด ทั้งที่ตรวจแล้วและตั้งราคาขายแล้ว
         // เจ้าของสั่งไว้ตั้งแต่ 2026-08-17 ว่าห้ามพูดคำว่า "เกรด" กับลูกค้า ให้บอกแบต% แทน
         // ⇒ แบต% คือหลักฐาน QC ที่ใช้จริงในการขาย · เครื่องที่ไม่มีทั้งสองอย่างยังถูกกันไว้เหมือนเดิม
+
         {
           OR: [
             { category: { not: 'PHONE_USED' } },
@@ -165,7 +167,7 @@ export class SearchProductsTool {
     };
 
     if (input.deviceOrigin === 'THAI' || input.deviceOrigin === 'IMPORTED') where.deviceOrigin = input.deviceOrigin;
-    const rows = await this.prisma.product.findMany({
+    const rawRows = await this.prisma.product.findMany({
       where,
       take: CANDIDATE_TAKE,
       orderBy: [{ cashPrice: 'asc' }, { createdAt: 'desc' }],
@@ -194,6 +196,7 @@ export class SearchProductsTool {
       },
     });
 
+    const rows = await hydratePublicListingGalleries(this.prisma, rawRows);
     // narrowing hint แบบเดียวกับ get-installment-rates.tool: ถ้าลูกค้าระบุความจุ
     // และมีของตรงความจุนั้นจริง ค่อยแคบลง — ไม่งั้นคงชุดเดิมไว้ (ดีกว่าตอบว่าไม่มี)
     let candidates = rows;

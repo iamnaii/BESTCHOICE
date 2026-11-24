@@ -1,3 +1,4 @@
+import { ShopProductPhotoController } from './shop-product-photo.controller';
 import { Module } from '@nestjs/common';
 import { ShopCatalogController } from './shop-catalog.controller';
 import { ShopShareController } from './shop-share.controller';
@@ -8,7 +9,7 @@ import { ShopBotDefenseModule } from '../shop-bot-defense/shop-bot-defense.modul
 
 @Module({
   imports: [PrismaModule, ShopBotDefenseModule],
-  controllers: [ShopCatalogController, ShopShareController],
+  controllers: [ShopProductPhotoController, ShopCatalogController, ShopShareController],
   providers: [ShopCatalogService, InstallmentPreviewService],
   exports: [ShopCatalogService],
 })

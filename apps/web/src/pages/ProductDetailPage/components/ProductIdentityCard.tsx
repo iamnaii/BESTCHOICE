@@ -95,9 +95,11 @@ function Chip({ children }: { children: string }) {
 export default function ProductIdentityCard({
   product,
   onGoPhotos,
+  showPhotoStrip = true,
 }: {
   product: ProductForIdentity;
   onGoPhotos: () => void;
+  showPhotoStrip?: boolean;
 }) {
   const { copy } = useCopyToClipboard();
   const isUsed = product.category === 'PHONE_USED';
@@ -209,7 +211,7 @@ export default function ProductIdentityCard({
           </div>
         </div>
 
-        {!isAccessory && (
+        {!isAccessory && showPhotoStrip && (
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex flex-wrap gap-1.5">
               {ANGLES.map((angle) => {

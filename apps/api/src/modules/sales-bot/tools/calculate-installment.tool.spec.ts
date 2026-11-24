@@ -45,6 +45,7 @@ const financeFor = (cfg: unknown) => {
 };
 const makePrisma = (product: unknown, cfg: unknown) =>
   ({
+    $queryRaw: jest.fn().mockResolvedValue([]),
     product: { findFirst: jest.fn().mockResolvedValue(product) },
     interestConfig: { findFirst: jest.fn().mockResolvedValue(cfg) },
     companyInfo: { findFirst: jest.fn().mockResolvedValue(financeFor(cfg)) },

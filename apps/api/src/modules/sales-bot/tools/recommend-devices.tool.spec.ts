@@ -55,7 +55,7 @@ const makePrisma = (opts: {
   const tradeInValuation = { findMany: jest.fn().mockResolvedValue(opts.valuations ?? []) };
   const systemConfig = { findFirst: jest.fn().mockResolvedValue(null) };
   return {
-    prisma: { product, tradeInValuation, systemConfig } as unknown as PrismaService,
+    prisma: { $queryRaw: jest.fn().mockResolvedValue([]), product, tradeInValuation, systemConfig } as unknown as PrismaService,
     product,
     tradeInValuation,
   };

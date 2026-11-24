@@ -1,3 +1,4 @@
+import { hydratePublicListingGalleries } from '../../../utils/public-listing-gallery.util';
 import { Injectable } from '@nestjs/common';
 import { ProductCategory } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -41,7 +42,7 @@ export class ProductDetectService {
     const keywords = this.extractKeywords(text);
     if (keywords.length === 0) return [];
 
-    const products = await this.prisma.product.findMany({
+    const rawRows = await this.prisma.product.findMany({
       where: {
         deletedAt: null,
         status: 'IN_STOCK',
@@ -67,6 +68,7 @@ export class ProductDetectService {
       take: 3,
     });
 
+    const products = await hydratePublicListingGalleries(this.prisma, rawRows);
     return this.enrichProducts(products);
   }
 

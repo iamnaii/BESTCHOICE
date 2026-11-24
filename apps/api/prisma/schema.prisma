@@ -2363,6 +2363,7 @@ model Product {
   conditionGrade    String?              @map("condition_grade") // A, B, C for used phones
   gallery           String[]             @default([]) // catalog photo URLs
   gallery360        String[]             @default([]) // 360° frame URLs (24-36 frames)
+  onlineCoverAngle  String?             @map("online_cover_angle")
   isOnlineVisible   Boolean              @default(true) @map("is_online_visible")
   onlineDescription String?              @map("online_description") @db.Text
   reservations      ProductReservation[]

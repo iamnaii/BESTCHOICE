@@ -2,6 +2,9 @@ import { ArrayMaxSize, ArrayUnique, IsArray, IsBoolean, IsEnum, IsInt, IsOptiona
 import { DeviceOrigin } from '@prisma/client';
 
 export class UpdateOnlineListingDto {
+  @IsOptional() @IsEnum(['front', 'back', 'left', 'right', 'top', 'bottom'])
+  onlineCoverAngle?: 'front' | 'back' | 'left' | 'right' | 'top' | 'bottom' | null;
+
   /** Omitted = unchanged; null = not yet verified. */
   @IsOptional() @IsEnum(DeviceOrigin)
   deviceOrigin?: DeviceOrigin | null;

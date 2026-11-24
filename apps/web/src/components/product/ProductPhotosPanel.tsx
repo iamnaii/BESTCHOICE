@@ -1,3 +1,4 @@
+import { PRODUCT_READINESS_QUERY_KEY } from '@/pages/ProductDetailPage/hooks/useProductReadiness';
 import ProductPhotoFields, { type EvidencePhotos, type ProductPhotoKey } from './ProductPhotoFields';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -64,6 +65,7 @@ export default function ProductPhotosPanel({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['product-photos', productId] });
       queryClient.invalidateQueries({ queryKey: ['product', productId] });
+      queryClient.invalidateQueries({ queryKey: PRODUCT_READINESS_QUERY_KEY(productId) });
       toast.success('อัปโหลดรูปสำเร็จ');
     },
     onError: (err: unknown) => {
@@ -78,6 +80,7 @@ export default function ProductPhotosPanel({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['product-photos', productId] });
       queryClient.invalidateQueries({ queryKey: ['product', productId] });
+      queryClient.invalidateQueries({ queryKey: PRODUCT_READINESS_QUERY_KEY(productId) });
       toast.success('ลบรูปสำเร็จ');
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
@@ -100,6 +103,7 @@ export default function ProductPhotosPanel({
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['product-photos', productId] });
       queryClient.invalidateQueries({ queryKey: ['product', productId] });
+      queryClient.invalidateQueries({ queryKey: PRODUCT_READINESS_QUERY_KEY(productId) });
       const message = data?.message ?? 'ยืนยันรูปครบแล้ว';
       if (data?.needsPrice) toast.warning(message);
       else toast.success(message);

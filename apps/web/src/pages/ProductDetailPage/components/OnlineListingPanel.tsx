@@ -1,4 +1,5 @@
 import { NativeSelect } from '@/components/ui/native-select';
+import type { ReactNode } from 'react';
 import { useId as useUiFieldId, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -33,6 +34,8 @@ interface PhotoData {
 }
 
 interface OnlineListingProduct {
+  defaultShopWarrantyDays?: number;
+  defaultWarrantyTerms?: string;
   shopWarrantyDays?: number | null;
   warrantyTerms?: string | null;
   deviceOrigin?: DeviceOrigin | null;
@@ -43,6 +46,8 @@ interface OnlineListingProduct {
   isOnlineVisible: boolean;
   onlineDescription: string | null;
   conditionGrade: string | null;
+  onlineCoverAngle?: Angle | null;
+  usesAutomaticPhotos?: boolean;
 }
 
 type PromoteDto = { source: 'LEGACY'; index: number } | { source: 'ANGLE'; angle: Angle };
@@ -50,9 +55,21 @@ type PromoteDto = { source: 'LEGACY'; index: number } | { source: 'ANGLE'; angle
 export default function OnlineListingPanel({
   product,
   canEdit,
+  onGoPhotos,
+  onEditPrice,
+  productInfo,
+  pricing,
+  calculator,
+  additionalInfo,
 }: {
   product: OnlineListingProduct;
   canEdit: boolean;
+  onGoPhotos?: () => void;
+  onEditPrice?: () => void;
+  productInfo?: ReactNode;
+  pricing?: ReactNode;
+  calculator?: ReactNode;
+  additionalInfo?: ReactNode;
 }) {
   const uiFieldId = useUiFieldId();
   const queryClient = useQueryClient();
@@ -97,7 +114,7 @@ export default function OnlineListingPanel({
     setDescription(product.onlineDescription ?? '');
   }, [product.onlineDescription]);
 
-  const { data: photosData } = useQuery<PhotoData>({
+  const { data: photosData, isLoading: photosLoading, isError: photosError, refetch: retryPhotos } = useQuery<PhotoData>({
     queryKey: ['product-photos', product.id],
     queryFn: async () => {
       const { data } = await api.get(`/products/${product.id}/photos`);
@@ -131,6 +148,12 @@ export default function OnlineListingPanel({
       invalidateReadiness();
       toast.success('ส่งรูปขึ้นเว็บสำเร็จ');
     },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
+  const coverMutation = useMutation({
+    mutationFn: (angle: Angle) => api.patch(`/products/${product.id}/online-listing`, { onlineCoverAngle: angle }),
+    onSuccess: async () => { await invalidateProduct(); toast.success('เปลี่ยนรูปปกแล้ว'); },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
@@ -206,11 +229,64 @@ export default function OnlineListingPanel({
     setLocalGallery((prev) => prev.filter((_, i) => i !== idx));
   };
 
-  return (
-    <div className="space-y-4">
-      <ReadinessCard isLoading={readiness.isLoading} isError={readiness.isError} data={readiness.data} />
-      <ProductWarrantyForm product={product} canEdit={canEdit} />
+  const automaticPhotos = product.usesAutomaticPhotos || anglePhotos.length > 0;
+  const cover = anglePhotos.some(p => p.angle === product.onlineCoverAngle)
+    ? product.onlineCoverAngle : anglePhotos[0]?.angle;
 
+  return (
+    <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_420px]">
+      {productInfo && <div className="min-w-0 lg:col-start-1 lg:row-start-1">{productInfo}</div>}
+      <aside className="min-w-0 space-y-4 lg:sticky lg:top-[76px] lg:col-start-2 lg:row-start-1 lg:row-span-2">
+        {pricing}
+        <div className="rounded-xl border bg-card p-5 space-y-3">
+          <h2 className="font-semibold">การแสดงบนเว็บ</h2>
+          <div className="flex items-center justify-between gap-3">
+            <Label htmlFor="online-visible">เปิดแสดงบนเว็บ</Label>
+            <Switch id="online-visible" checked={product.isOnlineVisible}
+              disabled={!canEdit || toggleMutation.isPending}
+              onCheckedChange={checked => toggleMutation.mutate(checked)} />
+          </div>
+          <p className="text-sm text-muted-foreground leading-snug">มีผลทันที · สินค้าจะแสดงเมื่อข้อมูลครบและอยู่ในสต็อก</p>
+          {toggleMutation.isPending && <p role="status" className="text-sm">กำลังอัปเดต...</p>}
+        </div>
+        <ReadinessCard isLoading={readiness.isLoading} isError={readiness.isError} data={readiness.data}
+          availableActions={[...(onGoPhotos ? ['gallery'] : []), ...(onEditPrice ? ['cashPrice'] : []), ...(canEdit ? ['isOnlineVisible'] : [])]}
+          onRetry={() => void readiness.refetch()} onFix={key => {
+            if (key === 'gallery') onGoPhotos?.();
+            else if (key === 'cashPrice') onEditPrice?.();
+            else if (key === 'isOnlineVisible') document.getElementById('online-visible')?.focus();
+          }} />
+        {calculator}
+      </aside>
+      <div className={`min-w-0 space-y-4 lg:col-start-1 ${productInfo ? 'lg:row-start-2' : 'lg:row-start-1'}`}>
+        {product.category !== 'ACCESSORY' && <section className="rounded-xl border bg-card p-5 space-y-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="font-semibold">รูปสินค้า 6 ด้าน</h2>
+              <p className="mt-1 text-sm text-muted-foreground leading-snug">ใช้รูปที่บันทึกไว้อัตโนมัติ · ไม่ต้องส่งขึ้นเว็บซ้ำ</p>
+            </div>
+            {onGoPhotos && <button type="button" onClick={onGoPhotos} className="min-h-11 rounded-lg border px-3 text-sm hover:bg-accent">จัดการรูปถ่าย</button>}
+          </div>
+          {photosLoading && <p role="status" className="text-sm text-muted-foreground">กำลังโหลดรูปสินค้า...</p>}
+          {photosError && <div role="alert" className="text-sm">โหลดรูปไม่สำเร็จ <button type="button" className="min-h-11 underline" onClick={() => void retryPhotos()}>ลองใหม่</button></div>}
+          {!photosLoading && !photosError && anglePhotos.length === 0 && <p className="text-sm text-muted-foreground">ยังไม่มีรูป 6 ด้าน · เพิ่มได้ที่แท็บรูปถ่าย</p>}
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+            {anglePhotos.map(({ angle, url }) => <button key={angle}
+                  type="button" aria-label={`ใช้รูปด้าน${ANGLE_LABELS[angle]}เป็นปก`} aria-pressed={cover === angle}
+                  disabled={!canEdit || coverMutation.isPending || cover === angle}
+                  onClick={() => coverMutation.mutate(angle)}
+                  className={`min-w-0 overflow-hidden rounded-lg border text-left hover:bg-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-default ${cover === angle ? 'border-primary bg-primary/5' : 'border-border'}`}>
+              <div className="h-20 bg-muted sm:h-24"><img src={url} alt={`รูปด้าน${ANGLE_LABELS[angle]}`} className="h-full w-full object-contain" /></div>
+              <div className="flex min-h-11 flex-wrap items-center justify-between gap-1 px-2 py-1 text-xs leading-snug">
+                <span>{ANGLE_LABELS[angle]}</span>
+                {cover === angle && <span className="font-medium text-primary">ปก</span>}
+              </div>
+            </button>)}
+          </div>
+          {anglePhotos.length > 0 && <p className="text-xs text-muted-foreground leading-snug">{canEdit ? 'แตะรูปเพื่อเลือกปก · มีผลทันที' : 'รูปที่มีป้าย “ปก” จะแสดงเป็นรูปแรกบนเว็บ'} · เมื่อแก้รูปในแท็บรูปถ่าย รูปบนเว็บจะเปลี่ยนตาม</p>}
+        </section>}
+
+      {!automaticPhotos && !photosLoading && !photosError && <>
       {/* รูปที่ขึ้นเว็บ */}
       <div className="bg-card rounded-lg border p-4">
         <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
@@ -308,36 +384,12 @@ export default function OnlineListingPanel({
           </div>
         )}
 
-        {anglePhotos.length > 0 && (
-          <div>
-            <div className="text-xs font-medium text-muted-foreground mb-2 leading-snug">รูปถ่าย 6 มุม</div>
-            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-              {anglePhotos.map(({ angle, url }) => (
-                <div key={angle} className="relative">
-                  <div className="aspect-square rounded overflow-hidden border border-border">
-                    <img src={url} alt={ANGLE_LABELS[angle]} className="w-full h-full object-cover" />
-                  </div>
-                  <Badge
-                    variant="outline"
-                    className="absolute top-1 left-1 text-[10px] px-1.5 py-0 bg-background/90 leading-snug"
-                  >
-                    {ANGLE_LABELS[angle]}
-                  </Badge>
-                  <button data-ui-control="button"
-                    onClick={() => promoteMutation.mutate({ source: 'ANGLE', angle })}
-                    disabled={!canEdit || galleryFull || promoteMutation.isPending}
-                    className="w-full mt-1 px-1 py-0.5 bg-primary/5 rounded text-[10px] text-primary leading-snug hover:bg-primary/10 font-medium disabled:opacity-50"
-                  >
-                    ส่งขึ้นเว็บ
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+
       </div>
 
-      {/* สถานะ + คำอธิบาย */}
+      </>}
+
+      {/* ข้อมูลที่ลูกค้าเห็น */}
       <div className="bg-card rounded-lg border p-4 space-y-4">
         <div>
           <Label htmlFor="device-origin" className="block text-sm mb-2">เครื่องไทย / เครื่องนอก</Label>
@@ -368,25 +420,8 @@ export default function OnlineListingPanel({
         </div>
 
         <div>
-          <div className="flex items-center gap-3">
-            <Switch
-              id="online-visible"
-              checked={product.isOnlineVisible}
-              disabled={!canEdit || toggleMutation.isPending}
-              onCheckedChange={(checked) => toggleMutation.mutate(checked)}
-            />
-            <Label htmlFor="online-visible" className="text-sm leading-snug">
-              แสดงบนเว็บ shop
-            </Label>
-          </div>
-          <p className="ml-6 mt-1 text-xs text-muted-foreground leading-snug">
-            ปิดสวิตช์นี้เพื่อซ่อนเครื่องนี้จากเว็บลูกค้า — เงื่อนไข "ข้อมูลครบ" ดูที่การ์ดสถานะขึ้นเว็บ
-          </p>
-        </div>
-
-        <div>
           <label htmlFor={`${uiFieldId}-1`} className="block text-xs font-medium text-foreground mb-1 leading-snug">
-            คำอธิบายสำหรับเว็บ shop
+            รายละเอียดเพิ่มเติมให้ลูกค้าเห็น (ไม่จำเป็นต้องกรอก)
           </label>
           <textarea id={`${uiFieldId}-1`}
             value={description}
@@ -394,7 +429,7 @@ export default function OnlineListingPanel({
             disabled={!canEdit}
             maxLength={2000}
             rows={4}
-            placeholder="รายละเอียดสินค้าที่จะแสดงบนเว็บ shop"
+            placeholder="เช่น รอยตำหนิ อุปกรณ์ที่ได้รับ หรือข้อมูลเพิ่มเติมที่ลูกค้าควรทราบ"
             className="w-full px-3 py-2 border border-input rounded-lg text-sm leading-snug resize-none disabled:opacity-50 disabled:bg-muted"
           />
           <div className="flex items-center justify-between mt-1 gap-2 flex-wrap">
@@ -408,6 +443,12 @@ export default function OnlineListingPanel({
             </button>
           </div>
         </div>
+      </div>
+      <details className="rounded-xl border bg-card p-4">
+        <summary className="min-h-11 cursor-pointer font-medium leading-snug">ประกันร้าน · {product.shopWarrantyDays == null ? 'ใช้ค่ามาตรฐานร้าน' : `${product.shopWarrantyDays} วัน`}</summary>
+        <ProductWarrantyForm product={product} canEdit={canEdit} />
+      </details>
+      {additionalInfo}
       </div>
     </div>
   );

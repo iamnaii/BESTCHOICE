@@ -1,3 +1,4 @@
+import { hydrateListingGalleries } from '../../utils/product-listing-gallery.util';
 import { validateEvidencePhoto } from '../quality-control/evidence-photo.util';
 import { pickAnglePhotos, pickEvidencePhotos, anglesComplete } from '../quality-control/photo-angles.util';
 import { stockInventoryWhere, stockOver90Where } from './stock-inventory-filter';
@@ -66,6 +67,7 @@ interface AccessorySkuRow {
 }
 import { resolveShopWarrantyDays, SHOP_WARRANTY_DAYS_CONFIG_KEY } from '../warranty/shop-warranty-policy';
 import { readStringFlag } from '../../utils/config.util';
+import { DEFAULT_RECEIPT_WARRANTY_TERMS, RECEIPT_WARRANTY_TERMS_KEY } from '@installment/shared';
 import { evaluateReadiness } from '../../utils/product-readiness.util';
 import {
   toActiveContractSummary,
@@ -245,7 +247,16 @@ export class ProductsService {
       product.status === 'SOLD_INSTALLMENT' ? await this.loadActiveContract(product.id) : null;
     // เงื่อนไขผ่อนของราคากลาง — ค่าตั้งต้นของเครื่องคำนวณ/สรุปส่งลูกค้าชุดเดียวกับหน้าราคาและบอท (final review C1 I1)
     const templateTerms = (await loadTemplateTerms(this.prisma, [product])).get(product.id) ?? null;
-    return { ...product, activeContract, templateTerms };
+    const [listing] = await hydrateListingGalleries(this.prisma, [product]);
+    const [warrantyDaysConfig, warrantyTermsConfig] = await Promise.all([
+      readStringFlag(this.prisma, SHOP_WARRANTY_DAYS_CONFIG_KEY, ''),
+      readStringFlag(this.prisma, RECEIPT_WARRANTY_TERMS_KEY, ''),
+    ]);
+    return {
+      ...listing, activeContract, templateTerms,
+      defaultShopWarrantyDays: resolveShopWarrantyDays({ category: product.category }, warrantyDaysConfig) ?? 0,
+      defaultWarrantyTerms: warrantyTermsConfig.trim() || DEFAULT_RECEIPT_WARRANTY_TERMS,
+    };
   }
 
   private async loadActiveContract(productId: string): Promise<ActiveContractSummary | null> {
@@ -948,7 +959,8 @@ export class ProductsService {
       },
     });
     if (!product || product.deletedAt) throw new NotFoundException('ไม่พบสินค้า');
-    const result = evaluateReadiness(product);
+    const [listing] = await hydrateListingGalleries(this.prisma, [product]);
+    const result = evaluateReadiness(listing);
     return {
       productId: product.id,
       // ⚠️ ชื่อคีย์ต้องเป็น `isReady` — B1 (useProductReadiness/ReadinessCard/fixture)

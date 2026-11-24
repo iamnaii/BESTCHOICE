@@ -51,6 +51,11 @@ const base = {
 };
 
 describe('ProductIdentityCard', () => {
+  it('can omit its duplicate photo strip when listing controls share the page', () => {
+    render(<Wrapper><ProductIdentityCard product={base} onGoPhotos={vi.fn()} showPhotoStrip={false} /></Wrapper>);
+    expect(screen.getByRole('heading', { name: 'ข้อมูลเครื่อง' })).toBeInTheDocument();
+    expect(screen.queryByText(/รูป 6 มุมจากตอนรับเครื่อง/)).not.toBeInTheDocument();
+  });
   beforeEach(() => {
     apiGet.mockReset();
     apiGet.mockResolvedValue({ data: { photos: {} } });

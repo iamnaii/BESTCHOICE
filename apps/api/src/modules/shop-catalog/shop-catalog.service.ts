@@ -1,3 +1,5 @@
+import { hydrateListingGalleries } from '../../utils/product-listing-gallery.util';
+import { DEFAULT_RECEIPT_WARRANTY_TERMS, RECEIPT_WARRANTY_TERMS_KEY, resolveListingWarrantyTerms } from '@installment/shared';
 import { Injectable } from '@nestjs/common';
 import { DeviceOrigin } from '@prisma/client';
 import Decimal from 'decimal.js';
@@ -213,7 +215,7 @@ export class ShopCatalogService {
     const wantsNew = filters.condition !== 'USED';
     const wantsUsed = filters.condition !== 'NEW';
 
-    const [groups, unitRows] = await Promise.all([
+    const [groups, rawUnitRows] = await Promise.all([
       wantsNew
         ? this.prisma.product.groupBy({
             by: [...GROUP_BY],
@@ -256,6 +258,7 @@ export class ShopCatalogService {
         : Promise.resolve([] as any[]),
     ]);
 
+    const unitRows = await hydrateListingGalleries(this.prisma, rawUnitRows);
     const configs = await this.resolveConfigsFor([
       ...groups.map((g: any) => g.category),
       ...(unitRows.length > 0 ? (['PHONE_USED'] as const) : []),
@@ -263,9 +266,7 @@ export class ShopCatalogService {
     const now = new Date();
 
     // New stock: one card per model+storage+origin, with a matching cheapest unit.
-    const groupItems: SortableCard[] = await Promise.all(
-        groups.map(async (g: any) => {
-          const sample = await this.prisma.product.findFirst({
+    const rawSamples = await Promise.all(groups.map((g: any) => this.prisma.product.findFirst({
             where: {
               ...where,
               brand: g.brand,
@@ -276,7 +277,11 @@ export class ShopCatalogService {
             },
             orderBy: { cashPrice: 'asc' },
             select: { id: true, gallery: true, conditionGrade: true },
-          });
+          })));
+    const samples = new Map((await hydrateListingGalleries(this.prisma, rawSamples.filter((p): p is NonNullable<typeof p> => !!p))).map(p => [p.id, p]));
+    const groupItems: SortableCard[] = await Promise.all(
+        groups.map(async (g: any, index: number) => {
+          const sample = samples.get(rawSamples[index]?.id ?? '');
           const minPrice = g._min?.cashPrice != null ? Number(g._min.cashPrice) : null;
           const minInstallment =
             g._min?.installmentPrice != null ? Number(g._min.installmentPrice) : null;
@@ -417,9 +422,7 @@ export class ShopCatalogService {
       take: 6,
     });
     const configs = await this.resolveConfigsFor(groups.map((g) => g.category));
-    return Promise.all(
-      groups.map(async (g) => {
-        const sample = await this.prisma.product.findFirst({
+    const rawSamples = await Promise.all(groups.map(g => this.prisma.product.findFirst({
           where: {
             ...where,
             brand: g.brand,
@@ -443,7 +446,11 @@ export class ShopCatalogService {
             stockInDate: true,
             imeiSerial: true,
           },
-        });
+        })));
+    const samples = new Map((await hydrateListingGalleries(this.prisma, rawSamples.filter((p): p is NonNullable<typeof p> => !!p))).map(p => [p.id, p]));
+    return Promise.all(
+      groups.map(async (g, index) => {
+        const sample = samples.get(rawSamples[index]?.id ?? '');
         const isNew = g.category === 'PHONE_NEW';
         // "Related" spans other MODELS, so it stays one card per model. For
         // second-hand that card describes the cheapest real device of that
@@ -492,18 +499,19 @@ export class ShopCatalogService {
   async getProductDetail(productId: string): Promise<ProductDetail | null> {
     // [DEMO] flag อ่านครั้งเดียวต่อ request — ใช้ร่วมกันทั้ง head query + units query ด้านล่าง
     const excludeDemo = await readBoolFlag(this.prisma, 'shop_hide_demo_products', false);
-    const product = await this.prisma.product.findFirst({
+    const rawProduct = await this.prisma.product.findFirst({
       where: {
         id: productId,
         // ไม่บังคับ IN_STOCK — เครื่องที่ขายแล้วต้องยังเปิดหน้ารุ่นได้ (permalink)
         ...productReadinessWhere({ requireInStock: false, excludeDemo }),
       },
     });
-    if (!product) return null;
+    if (!rawProduct) return null;
+    const [product] = await hydrateListingGalleries(this.prisma, [rawProduct]);
 
     // Keep replacements in the same market, including unverified (null) stock.
     // Get all units (same brand+model+storage+category+origin, พร้อมขายจริง)
-    const allUnits = await this.prisma.product.findMany({
+    const rawUnits = await this.prisma.product.findMany({
       where: {
         model: product.model,
         brand: product.brand,
@@ -516,7 +524,9 @@ export class ShopCatalogService {
       include: { branch: { select: { name: true } } },
     });
 
+    const allUnits = await hydrateListingGalleries(this.prisma, rawUnits);
     const warrantyDefault = await readStringFlag(this.prisma, SHOP_WARRANTY_DAYS_CONFIG_KEY, '');
+    const warrantyTermsDefault = await readStringFlag(this.prisma, RECEIPT_WARRANTY_TERMS_KEY, DEFAULT_RECEIPT_WARRANTY_TERMS);
     const tiers: Record<string, { minPrice: number; maxPrice: number; units: ProductUnit[] }> = {};
     for (const u of allUnits) {
       // B0: readiness fragment กรอง cashPrice > 0 มาแล้ว — ถ้ายังเจอ null แปลว่า
@@ -534,7 +544,7 @@ export class ShopCatalogService {
         hasBox: u.hasBox ?? undefined,
         color: u.color ?? undefined,
         shopWarrantyDays: resolveShopWarrantyDays(u, warrantyDefault) ?? 0,
-        warrantyTerms: u.warrantyTerms ?? undefined,
+        warrantyTerms: resolveListingWarrantyTerms(u.warrantyTerms, resolveShopWarrantyDays(u, warrantyDefault), warrantyTermsDefault),
         cashPrice: price,
         installmentPrice: u.installmentPrice != null ? Number(u.installmentPrice) : null,
         imeiPartial,
@@ -553,7 +563,7 @@ export class ShopCatalogService {
       id: product.id,
       deviceOrigin: product.deviceOrigin ?? null,
       shopWarrantyDays: resolveShopWarrantyDays(product, warrantyDefault) ?? 0,
-      warrantyTerms: product.warrantyTerms ?? undefined,
+      warrantyTerms: resolveListingWarrantyTerms(product.warrantyTerms, resolveShopWarrantyDays(product, warrantyDefault), warrantyTermsDefault),
       brand: product.brand,
       model: product.model,
       storage: product.storage ?? undefined,

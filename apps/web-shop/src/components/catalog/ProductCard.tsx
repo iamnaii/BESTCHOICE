@@ -84,7 +84,8 @@ export function ProductCard({ product: p, priceMode = 'combined' }: Props) {
 
   const isNew = p.condition === 'NEW';
   const isUnit = p.kind === 'UNIT';
-  const grade = p.conditionGrade ?? (!isNew ? p.conditionGrades?.[0] : undefined);
+  const rawGrade = p.conditionGrade ?? (!isNew ? p.conditionGrades?.[0] : undefined);
+  const grade = rawGrade && ['A', 'B', 'C', 'D'].includes(rawGrade) ? rawGrade : undefined;
   const soldOut = p.stock.tone === 'out';
 
   // A used card carries the device's own facts; a new-stock card only has
@@ -151,7 +152,7 @@ export function ProductCard({ product: p, priceMode = 'combined' }: Props) {
                     : 'เครื่องมือสอง'
               }
             >
-              {!isNew && (
+              {!isNew && grade && (
                 <span
                   className={cn(
                     'size-[18px] md:size-5 rounded-full grid place-items-center font-brand text-xs font-bold leading-snug shrink-0',
@@ -165,7 +166,7 @@ export function ProductCard({ product: p, priceMode = 'combined' }: Props) {
               <span
                 className={cn(
                   'font-brand text-xs font-bold uppercase leading-snug whitespace-nowrap',
-                  isNew ? '' : 'hidden sm:inline',
+                  isNew || !grade ? '' : 'hidden sm:inline',
                 )}
                 aria-hidden
               >

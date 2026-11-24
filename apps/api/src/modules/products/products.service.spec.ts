@@ -19,7 +19,7 @@ describe('ProductsService.transferOwnership', () => {
   let prisma: any;
 
   beforeEach(async () => {
-    prisma = {
+    prisma = { $queryRaw: jest.fn().mockResolvedValue([]),
       product: {
         findFirst: jest.fn(),
         update: jest.fn(),
@@ -108,7 +108,7 @@ describe('ProductsService.findAll — filters สำหรับการ์ด 
   let prisma: any;
 
   beforeEach(async () => {
-    prisma = {
+    prisma = { $queryRaw: jest.fn().mockResolvedValue([]),
       product: {
         findMany: jest.fn().mockResolvedValue([]),
         count: jest.fn().mockResolvedValue(0),
@@ -165,7 +165,7 @@ describe('ProductsService.remove — guard กันลบเครื่อง�
   });
 
   beforeEach(async () => {
-    prisma = {
+    prisma = { $queryRaw: jest.fn().mockResolvedValue([]),
       product: {
         findUnique: jest.fn(),
         update: jest.fn().mockResolvedValue({ id: 'p-1', deletedAt: new Date() }),
@@ -283,7 +283,7 @@ describe('ProductsService.remove — จอง/ออเดอร์ออนไ
   let prisma: any;
 
   beforeEach(async () => {
-    prisma = {
+    prisma = { $queryRaw: jest.fn().mockResolvedValue([]),
       product: {
         findUnique: jest
           .fn()
@@ -374,7 +374,7 @@ describe('ProductsService.update — กันแก้ IMEI/Serial บนเค
     });
 
   beforeEach(async () => {
-    prisma = {
+    prisma = { $queryRaw: jest.fn().mockResolvedValue([]),
       product: { findUnique: jest.fn() },
       contract: { findFirst: jest.fn().mockResolvedValue(null) },
       productReservation: { findFirst: jest.fn().mockResolvedValue(null) },
@@ -535,7 +535,7 @@ describe('ProductsService.returnToStock — นำเข้าคลังพร
       auditLog: { create: jest.fn().mockResolvedValue({}) },
       pricingTemplate: { findMany: jest.fn().mockResolvedValue([]) },
     };
-    prisma = {
+    prisma = { $queryRaw: jest.fn().mockResolvedValue([]),
       product: { findUnique: jest.fn().mockResolvedValue(productRow()) },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       $transaction: jest.fn(async (fn: any) => fn(tx)),
@@ -790,7 +790,7 @@ describe('ProductsService.update — ด่านปลายทาง IN_STOCK 
       },
       auditLog: { create: jest.fn().mockResolvedValue({}) },
     };
-    prisma = {
+    prisma = { $queryRaw: jest.fn().mockResolvedValue([]),
       product: { findUnique: jest.fn() },
       contract: { findFirst: jest.fn().mockResolvedValue(null) },
       productReservation: { findFirst: jest.fn().mockResolvedValue(null) },
@@ -939,7 +939,7 @@ describe('ProductsService.returnToStock — ราคาค้างระดั
       },
       auditLog: { create: jest.fn().mockResolvedValue({}) },
     };
-    prisma = {
+    prisma = { $queryRaw: jest.fn().mockResolvedValue([]),
       product: { findUnique: jest.fn().mockResolvedValue(staleRowProduct()) },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       $transaction: jest.fn(async (fn: any) => fn(tx)),
@@ -1022,7 +1022,7 @@ describe('ProductsService — แถวราคาที่ถูกลบต�
   ];
 
   beforeEach(async () => {
-    prisma = {
+    prisma = { $queryRaw: jest.fn().mockResolvedValue([]),
       product: {
         // fake ที่ **เคารพ where ของ include จริง** — ไม่ใช่ echo: ถ้า include ไม่กรอง
         // `deletedAt` แถวที่ถูกลบจะหลุดออกไปเหมือนบน DB จริง
@@ -1054,7 +1054,7 @@ describe('ProductsService.findOne — activeContract (สรุปสัญญ�
   const productRow = (status: string) => ({ id: 'p-1', status, deletedAt: null, prices: [] });
 
   beforeEach(async () => {
-    prisma = {
+    prisma = { $queryRaw: jest.fn().mockResolvedValue([]),
       product: { findUnique: jest.fn() },
       contract: { findFirst: jest.fn() },
     };
@@ -1062,6 +1062,13 @@ describe('ProductsService.findOne — activeContract (สรุปสัญญ�
       providers: [ProductsService, { provide: PrismaService, useValue: prisma }],
     }).compile();
     service = module.get<ProductsService>(ProductsService);
+  });
+
+  it('exposes shop defaults separately from per-device warranty edits', async () => {
+    prisma.product.findUnique.mockResolvedValue({ ...productRow('IN_STOCK'), category: 'PHONE_USED', shopWarrantyDays: 30, warrantyTerms: null });
+    prisma.systemConfig = { findFirst: jest.fn(async ({ where }) => ({ value: where.key === 'warranty.shopWarrantyDays' ? '90' : 'เงื่อนไขมาตรฐานของร้าน' })) };
+    const product = await service.findOneDetail('p-1');
+    expect(product).toMatchObject({ shopWarrantyDays: 30, effectiveShopWarrantyDays: 30, warrantyTerms: null, defaultShopWarrantyDays: 90, defaultWarrantyTerms: 'เงื่อนไขมาตรฐานของร้าน' });
   });
 
   it('เครื่องขายผ่อนแล้ว → แนบสรุปสัญญาล่าสุด (ชื่อลูกค้า · งวดละ · ชำระแล้ว/งวดถัดไป)', async () => {
@@ -1164,7 +1171,7 @@ describe('ProductsService.remove — เครื่องที่ลงบั�
   let prisma: any;
 
   beforeEach(async () => {
-    prisma = {
+    prisma = { $queryRaw: jest.fn().mockResolvedValue([]),
       product: {
         findUnique: jest.fn().mockResolvedValue({
           id: 'p-1',
@@ -1249,7 +1256,7 @@ describe('ProductsService stock list template terms', () => {
           },
         ]),
     };
-    const prisma = {
+    const prisma = { $queryRaw: jest.fn().mockResolvedValue([]),
       product: {
         findMany: jest.fn().mockResolvedValue([row, { ...row, id: 'p2' }]),
         count: jest.fn().mockResolvedValue(2),

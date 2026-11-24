@@ -21,14 +21,14 @@ describe('ProductsOnlineListingService', () => {
   };
 
   beforeEach(async () => {
-    prisma = {
+    prisma = { $queryRaw: jest.fn().mockResolvedValue([]),
       product: {
         findFirst: jest.fn().mockResolvedValue({ ...baseProduct }),
         update: jest.fn().mockImplementation(({ data }) => ({ ...baseProduct, ...data })),
         findMany: jest.fn().mockResolvedValue([]),
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
-      productPhoto: { findUnique: jest.fn().mockResolvedValue({ productId: 'p1', front: PNG_B64, back: null }) },
+      productPhoto: { findFirst: jest.fn().mockImplementation(({ where }) => where.front ? { productId: 'p1' } : null), findUnique: jest.fn().mockResolvedValue({ productId: 'p1', front: PNG_B64, back: null }) },
     };
     storage = {
       upload: jest.fn().mockResolvedValue('shop/product-gallery/p1/x.png'),
@@ -42,6 +42,17 @@ describe('ProductsOnlineListingService', () => {
       ],
     }).compile();
     service = module.get(ProductsOnlineListingService);
+  });
+
+  it('saves only an available product angle as cover', async () => {
+    await service.updateOnlineListing('p1', { onlineCoverAngle: 'front' });
+    expect(prisma.product.update).toHaveBeenCalledWith({ where: { id: 'p1' }, data: { onlineCoverAngle: 'front' } });
+    await expect(service.updateOnlineListing('p1', { onlineCoverAngle: 'back' })).rejects.toThrow('ยังไม่มีรูป');
+  });
+
+  it('rejects a staff evidence key as cover at validation', async () => {
+    const errors = await validate(plainToInstance(UpdateOnlineListingDto, { onlineCoverAngle: 'imeiScreen' }));
+    expect(errors.some(error => error.property === 'onlineCoverAngle')).toBe(true);
   });
 
   describe('updateOnlineListing', () => {
@@ -211,13 +222,15 @@ describe('ProductsOnlineListingService', () => {
       expect(res.gallery).toBe(dbGalleryAfterPush);
     });
 
-    it('ANGLE: reads ProductPhoto side', async () => {
-      prisma.product.update.mockResolvedValueOnce({ gallery: [...baseProduct.gallery, 'https://cdn.example.com/x.png'] });
-      await service.promotePhoto('p1', { source: 'ANGLE', angle: 'front' });
-      expect(storage.upload).toHaveBeenCalled();
-      expect(prisma.product.update).toHaveBeenCalledWith(
-        expect.objectContaining({ data: { gallery: { push: expect.any(String) } }, select: { gallery: true } }),
-      );
+    it('ANGLE: old clients read the derived gallery without creating persistent copies', async () => {
+      prisma.$queryRaw.mockResolvedValue([{ product_id: 'p1', angles: ['front'], cover: null, revision: '1' }]);
+      const first = await service.promotePhoto('p1', { source: 'ANGLE', angle: 'front' });
+      const second = await service.promotePhoto('p1', { source: 'ANGLE', angle: 'front' });
+      expect(first).toEqual(second);
+      expect(first.gallery[0]).toContain('/photos/front?');
+      expect(storage.upload).not.toHaveBeenCalled();
+      expect(prisma.product.update).not.toHaveBeenCalled();
+      expect(prisma.productPhoto.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ deletedAt: null }) }));
     });
 
     it('rejects missing candidate (bad index / empty angle) with Thai message', async () => {
@@ -258,7 +271,7 @@ describe('bulkSetVisibility — ส่งขึ้นเว็บทีเดี
   });
 
   beforeEach(async () => {
-    prisma = {
+    prisma = { $queryRaw: jest.fn().mockResolvedValue([]),
       product: {
         findMany: jest.fn().mockResolvedValue([]),
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
@@ -309,12 +322,11 @@ describe('bulkSetVisibility — ส่งขึ้นเว็บทีเดี
     );
 
     expect(res.matched).toBe(4);
-    expect(res.willAppear).toBe(1);
+    expect(res.willAppear).toBe(2);
     expect(res.blockedBy).toEqual(
       expect.arrayContaining([
         { reason: 'มีราคาเงินสด', count: 1 },
         { reason: 'มีรูปขึ้นเว็บอย่างน้อย 1 รูป', count: 1 },
-        { reason: 'มีเกรดเครื่อง (เฉพาะมือสอง)', count: 1 },
       ]),
     );
   });

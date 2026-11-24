@@ -1,3 +1,4 @@
+import { hydratePublicListingGalleries } from '../../utils/public-listing-gallery.util';
 import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -18,11 +19,13 @@ export class ShopOrdersService {
   ) {}
 
   async listMine(customerId: string) {
-    return this.prisma.onlineOrder.findMany({
+    const orders = await this.prisma.onlineOrder.findMany({
       where: { customerId, deletedAt: null },
       include: { product: { select: { id: true, name: true, gallery: true } } },
       orderBy: { createdAt: 'desc' },
     });
+    const listings = new Map((await hydratePublicListingGalleries(this.prisma, orders.map(o => o.product))).map(p => [p.id, p]));
+    return orders.map(o => ({ ...o, product: listings.get(o.productId) ?? o.product }));
   }
 
   async getByOrderNumber(orderNumber: string, customerId: string) {
@@ -32,7 +35,8 @@ export class ShopOrdersService {
     });
     if (!order) throw new NotFoundException('ไม่พบคำสั่งซื้อ');
     if (order.customerId !== customerId) throw new ForbiddenException('คำสั่งซื้อนี้ไม่ใช่ของคุณ');
-    return order;
+    const [product] = await hydratePublicListingGalleries(this.prisma, [order.product]);
+    return { ...order, product };
   }
 
   async uploadBankSlip(orderNumber: string, customerId: string, slipUrl: string) {

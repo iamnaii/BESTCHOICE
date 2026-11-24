@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -290,6 +291,8 @@ export class EmployeeAccessService {
   async replaceAssignments(actorId: string, userId: string, dto: ReplaceAccessAssignmentsDto) {
     return this.ownerMutation(actorId, async (tx) => {
       const user = await assertActiveStaff(tx, userId);
+      if (user.role === 'OWNER')
+        throw new ForbiddenException('ไม่สามารถมอบหมายตำแหน่งให้บัญชีเจ้าของได้');
       revisionMatches(user.accessRevision, dto.expectedRevision);
       for (const assignment of dto.assignments) await this.validateAssignment(tx, assignment);
       const keys = dto.assignments.map((a) =>

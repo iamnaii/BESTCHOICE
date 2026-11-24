@@ -1,9 +1,10 @@
 import { PrismaClient } from '@prisma/client';
 import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
-import { canAccess } from '@installment/shared';
+import { canAccess, EmployeeAccessHistoryAssignment } from '@installment/shared';
 import { randomUUID } from 'crypto';
 import { AccessSnapshotService } from './access-snapshot.service';
 import { EmployeeAccessService } from './employee-access.service';
+import { EmployeeAccessConsoleService } from './employee-access-console.service';
 import { UsersService } from '../users/users.service';
 
 // Run only with the explicit isolated test database URL, never inherited DATABASE_URL.
@@ -13,6 +14,7 @@ if (!url || !url.includes('/bc_access_task2?host=/tmp/bc-access-'))
 const db = new PrismaClient({ datasources: { db: { url } } });
 const snapshot = new AccessSnapshotService(db as any);
 const service = new EmployeeAccessService(db as any, snapshot);
+const consoleService = new EmployeeAccessConsoleService(db as any, snapshot);
 const users = new UsersService(
   db as any,
   { log: jest.fn() } as any,
@@ -150,6 +152,120 @@ test('position edits update every assigned user immediately and invalidate open 
     );
   }
   await expect(assign(staff, 1)).rejects.toBeInstanceOf(ConflictException);
+});
+
+test('owner console reads persisted grants, immediate revocation, and only access history', async () => {
+  const target = await db.user.create({
+    data: {
+      name: 'TEST Console Staff',
+      email: `${suffix}-console@test.invalid`,
+      password: 'unused',
+      role: 'SALES',
+      branchId: branch,
+    },
+  });
+  const shop = await db.companyInfo.findUniqueOrThrow({ where: { companyCode: 'SHOP' } });
+  const inactiveBranch = await db.branch.create({
+    data: { name: 'TEST Inactive Branch', companyId: shop.id, isActive: false },
+  });
+  const context = await consoleService.context(owner);
+  expect(context.companies).toEqual(['SHOP', 'FINANCE']);
+  expect(context.branches).toContainEqual({
+    id: branch,
+    name: `TEST-${suffix}`,
+    companyCode: 'SHOP',
+  });
+  expect(context.branches).not.toContainEqual(expect.objectContaining({ id: inactiveBranch.id }));
+
+  const created = await service.createPosition(owner, {
+    code: `CONSOLE_${suffix}`,
+    name: 'Test console',
+    permissions: ['sales.read'],
+  });
+  const assignment: EmployeeAccessHistoryAssignment = {
+    positionId: created.id,
+    company: 'SHOP',
+    scope: 'BRANCHES',
+    branchIds: [branch],
+  };
+  const dto = { expectedRevision: 0, assignments: [assignment] };
+  await expect(service.replaceAssignments(target.id, target.id, dto)).rejects.toBeInstanceOf(
+    ForbiddenException,
+  );
+  await expect(service.replaceAssignments(owner, owner, dto)).rejects.toBeInstanceOf(
+    ForbiddenException,
+  );
+  await service.replaceAssignments(owner, target.id, dto);
+  expect(await consoleService.effectiveAccess(owner, target.id)).toEqual({
+    userId: target.id,
+    managed: true,
+    isOwner: false,
+    revision: 1,
+    grants: [{ ...assignment, permissions: ['sales.read'] }],
+  });
+
+  await service.updatePosition(owner, created.id, { expectedRevision: 0, permissions: [] });
+  const revoked = await consoleService.effectiveAccess(owner, target.id);
+  expect(revoked.revision).toBe(2);
+  expect(canAccess(revoked, 'sales.read', { company: 'SHOP', branchId: branch })).toBe(false);
+  await expect(
+    service.replaceAssignments(owner, target.id, { ...dto, expectedRevision: 1 }),
+  ).rejects.toBeInstanceOf(ConflictException);
+
+  const unrelated = await db.auditLog.createManyAndReturn({
+    data: [
+      {
+        userId: owner,
+        action: 'ACCESS_ASSIGNMENTS_REPLACED',
+        entity: 'customer',
+        entityId: target.id,
+        newValue: { customerName: 'SYNTHETIC UNRELATED VALUE' },
+        createdAt: new Date('2099-01-01'),
+      },
+      {
+        userId: owner,
+        action: 'ACCESS_UNRELATED',
+        entity: 'user',
+        entityId: target.id,
+        newValue: { token: 'SYNTHETIC UNRELATED VALUE' },
+        createdAt: new Date('2099-01-01'),
+      },
+    ],
+    select: { id: true },
+  });
+  const first = await consoleService.history(owner, { page: 1, limit: 1 });
+  const second = await consoleService.history(owner, { page: 2, limit: 1 });
+  const all = await consoleService.history(owner, { page: 1, limit: 50 });
+  expect(first.items).toEqual(all.items.slice(0, 1));
+  expect(second.items).toEqual(all.items.slice(1, 2));
+  expect(first.total).toBe(all.items.length);
+  for (const { id } of unrelated) {
+    expect(all.items).not.toContainEqual(expect.objectContaining({ id }));
+  }
+  expect(JSON.stringify(all.items)).not.toContain('SYNTHETIC UNRELATED VALUE');
+  expect(all.items).toContainEqual(
+    expect.objectContaining({
+      action: 'ACCESS_ASSIGNMENTS_REPLACED',
+      entityId: target.id,
+      actor: { id: owner, name: 'TEST Owner' },
+      before: { managed: false, revision: 0, assignments: [] },
+      after: { managed: true, revision: 1, assignments: [assignment] },
+    }),
+  );
+  expect(all.items).toContainEqual(
+    expect.objectContaining({
+      action: 'ACCESS_POSITION_UPDATED',
+      entityId: created.id,
+      before: expect.objectContaining({ permissions: ['sales.read'], revision: 0 }),
+      after: expect.objectContaining({ permissions: [], revision: 1 }),
+    }),
+  );
+
+  await expect(consoleService.context(target.id)).rejects.toBeInstanceOf(ForbiddenException);
+  await expect(consoleService.effectiveAccess(target.id, target.id)).rejects.toBeInstanceOf(
+    ForbiddenException,
+  );
+  await expect(consoleService.history(target.id)).rejects.toBeInstanceOf(ForbiddenException);
 });
 
 test('concurrent position edits with the same revision have exactly one winner', async () => {

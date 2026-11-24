@@ -15,6 +15,7 @@ describe('employee access persistence boundary', () => {
           isActive: true,
           isSystemUser: false,
           deletedAt: null,
+          accessRevision: 0,
         }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
@@ -83,6 +84,13 @@ describe('employee access persistence boundary', () => {
     ).rejects.toThrow(ConflictException);
     expect(db.accessPosition.updateMany).not.toHaveBeenCalled();
   });
+  it('forbids assignment replacement for the persisted owner account', async () => {
+    await expect(
+      service.replaceAssignments('actor', 'actor', { expectedRevision: 0, assignments: [] }),
+    ).rejects.toThrow(ForbiddenException);
+    expect(db.user.updateMany).not.toHaveBeenCalled();
+    expect(db.auditLog.create).not.toHaveBeenCalled();
+  });
   it.each([
     { company: 'OTHER', scope: 'COMPANY', branchIds: [] },
     { company: 'SHOP', scope: 'BRANCHES', branchIds: [] },
@@ -90,12 +98,9 @@ describe('employee access persistence boundary', () => {
     { company: 'SHOP', scope: 'UNKNOWN', branchIds: [] },
     { company: 'SHOP', scope: 'BRANCHES', branchIds: ['missing'] },
   ])('rejects invalid assignment %j', async (assignment) => {
-    db.user.findUnique.mockResolvedValue({
-      id: 'actor',
-      role: 'OWNER',
-      isActive: true,
-      accessRevision: 0,
-    });
+    db.user.findUnique
+      .mockResolvedValueOnce({ id: 'actor', role: 'OWNER', isActive: true })
+      .mockResolvedValueOnce({ id: 'target', role: 'SALES', isActive: true, accessRevision: 0 });
     db.accessPosition.findUnique.mockResolvedValue({
       id: 'p',
       code: 'SALES',
@@ -103,7 +108,7 @@ describe('employee access persistence boundary', () => {
       deletedAt: null,
     });
     await expect(
-      service.replaceAssignments('actor', 'actor', {
+      service.replaceAssignments('actor', 'target', {
         expectedRevision: 0,
         assignments: [{ positionId: 'p', ...assignment } as any],
       }),

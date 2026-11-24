@@ -11,6 +11,7 @@ import {
   IsUUID,
   Length,
   Matches,
+  Max,
   Min,
   ValidateNested,
 } from 'class-validator';
@@ -64,4 +65,20 @@ export class ReplaceAccessAssignmentsDto {
   @ValidateNested({ each: true })
   @Type(() => AccessAssignmentDto)
   assignments!: AccessAssignmentDto[];
+}
+
+export class EmployeeAccessHistoryQueryDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'เลขหน้าต้องเป็นจำนวนเต็ม' })
+  @Min(1, { message: 'เลขหน้าต้องมีค่าอย่างน้อย 1' })
+  @Max(Number.MAX_SAFE_INTEGER, { message: 'เลขหน้ามีค่ามากเกินไป' })
+  page?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'จำนวนรายการต่อหน้าต้องเป็นจำนวนเต็ม' })
+  @Min(1, { message: 'จำนวนรายการต่อหน้าต้องมีค่าอย่างน้อย 1' })
+  @Max(50, { message: 'จำนวนรายการต่อหน้าต้องไม่เกิน 50' })
+  limit?: number;
 }

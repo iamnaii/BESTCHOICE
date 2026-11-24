@@ -231,3 +231,21 @@ normal product PATCH audit. **Never rewrite an old import receipt fingerprint**
 to conceal an edited target. Keep the original import verification as historical
 evidence and record the correction separately. Later daily snapshots exclude
 already imported physical units after reconciliation, preserving legitimate edits.
+
+## Battery health from stock snapshots
+
+The detail table's `รายละเอียดสินค้า` field may contain `แบตเตอรี่ : 81%`.
+New stock imports preserve an evidenced integer from 0 through 100 as `batteryHealth`.
+Missing health remains unknown; do not infer 100 for new phones. Invalid, conflicting
+or incomplete battery assertions stop the source row for review. A new batch with
+an evidenced value conflicting with an existing product stops without overwriting it;
+an absent source value never clears a value already recorded.
+
+Adding battery evidence changes canonical payload hashes for older files containing
+that text. Do not replay old reviewed manifests with new code or rewrite old receipts.
+For an existing imported unit, use a separate reviewed metadata correction matched
+by IMEI, branch and original intake timestamp. `backfillBatteryHealth` is an internal
+transaction helper for that correction: fill only NULL, bind the workbook hash and
+row to an atomic audit, and require the same plan for a zero-write replay. The caller
+must validate the actual workbook and reviewed plan before invoking it. It neither
+changes prices, stock statuses nor historical sales, and is not an automatic job.

@@ -9,7 +9,12 @@ import type {
   ParseResult,
   SourceRef,
 } from '../../cli/tooltify-cutover/types';
-import { deriveBrandModel, isImeiBarcode, STOCK_SNAPSHOT_COLUMNS } from './tooltify-stock-parser';
+import {
+  deriveBrandModel,
+  isImeiBarcode,
+  parseBatteryHealth,
+  STOCK_SNAPSHOT_COLUMNS,
+} from './tooltify-stock-parser';
 
 const COLUMNS = STOCK_SNAPSHOT_COLUMNS;
 const REQUIRED_COLUMNS = Object.values(COLUMNS);
@@ -131,6 +136,10 @@ export function parseStockSnapshot(
       : CATEGORY_MAP.get(get(COLUMNS.category));
     const cost = readCost(get(COLUMNS.cost));
     const importedAt = readImportedAt(get(COLUMNS.importedAt));
+    const details = get(COLUMNS.details);
+    const batteryHealth = category?.kind === 'DEVICE' ? parseBatteryHealth(details) : null;
+    if (category?.kind === 'DEVICE' && /แบตเตอรี่/.test(details) && batteryHealth === null)
+      issue('INVALID_BATTERY_HEALTH', 'เปอร์เซ็นต์แบตเตอรี่ไม่ถูกต้องหรือขัดกัน', source);
 
     if (!category) issue('UNKNOWN_SOURCE_CATEGORY', 'หมวดหมู่ต้นทางว่างหรือยังไม่รู้จัก', source);
     if (category?.kind === 'DEVICE') {
@@ -173,6 +182,7 @@ export function parseStockSnapshot(
       ...(columnIndices.has(COLUMNS.supplier) ? { supplierLabel: get(COLUMNS.supplier) } : {}),
       sourceKey: createHash('sha256').update(JSON.stringify(identity)).digest('hex'),
       ...category,
+      ...(batteryHealth !== null ? { batteryHealth } : {}),
       barcode,
       name,
       ...deriveBrandModel(name, category.category),

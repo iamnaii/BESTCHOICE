@@ -84,10 +84,16 @@ export function mapStockCategory(categoryText: string): StockProductCategory {
 
 /** Parses "% แบตเตอรี่ : NN%" out of the details column. null if absent/unparseable. */
 export function parseBatteryHealth(details: string): number | null {
-  const m = (details ?? '').match(/แบตเตอรี่\s*:?\s*(\d{1,3})\s*%/);
-  if (!m) return null;
-  const n = parseInt(m[1], 10);
-  return Number.isFinite(n) ? n : null;
+  const values = [...(details ?? '').matchAll(/แบตเตอรี่\s*:?\s*([^\s%]+)\s*%/g)].map((m) =>
+    /^\d{1,3}$/.test(m[1]) ? Number(m[1]) : NaN,
+  );
+  if (
+    !values.length ||
+    values.length !== (details.match(/แบตเตอรี่/g) ?? []).length ||
+    values.some((n) => !Number.isInteger(n) || n < 0 || n > 100)
+  )
+    return null;
+  return new Set(values).size === 1 ? values[0] : null;
 }
 
 export interface DerivedBrandModel {

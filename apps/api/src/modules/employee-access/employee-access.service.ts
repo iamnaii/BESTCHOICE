@@ -332,18 +332,21 @@ export class EmployeeAccessService {
         where: { userId, deletedAt: null },
         data: { deletedAt: new Date() },
       });
-      for (const assignment of dto.assignments) {
+      const assignments: AccessAssignmentDto[] = [];
+      for (const { positionId, company, scope, branchIds } of dto.assignments) {
         await tx.employeeAccessAssignment.create({
           data: {
             userId,
-            positionId: assignment.positionId,
-            companyCode: assignment.company,
-            scope: assignment.scope,
-            branches: { create: assignment.branchIds.map((branchId) => ({ branchId })) },
+            positionId,
+            companyCode: company,
+            scope,
+            branches: { create: branchIds.map((branchId) => ({ branchId })) },
           },
         });
+        assignments.push({ positionId, company, scope, branchIds });
       }
       const snapshot = await this.snapshots.forUserInTransaction(tx, userId);
+      // Effective grants may exclude saved tuples if branch or company status changes.
       await this.audit(
         tx,
         actorId,
@@ -356,7 +359,7 @@ export class EmployeeAccessService {
           assignments: before,
           removedLegacyGrants,
         },
-        snapshot,
+        { ...snapshot, assignments },
       );
       return { ...snapshot, affectedEmployeeCount: 1, removedLegacyGrants };
     });

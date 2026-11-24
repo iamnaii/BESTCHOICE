@@ -78,7 +78,7 @@ function projectAssignment(value: Prisma.JsonValue): EmployeeAccessHistoryAssign
   ) {
     return null;
   }
-  // Before stores persisted join rows, while after stores access snapshot grants.
+  // Before stores branch join rows. After tuples and legacy grants store branch IDs.
   const branchIds = Array.isArray(assignment.branchIds)
     ? assignment.branchIds
     : Array.isArray(assignment.branches)

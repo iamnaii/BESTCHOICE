@@ -268,6 +268,61 @@ test('owner console reads persisted grants, immediate revocation, and only acces
   await expect(consoleService.history(target.id)).rejects.toBeInstanceOf(ForbiddenException);
 });
 
+test('history retains saved assignments when a branch becomes inactive before the snapshot', async () => {
+  const shop = await db.companyInfo.findUniqueOrThrow({ where: { companyCode: 'SHOP' } });
+  const deactivated = await db.branch.create({
+    data: { name: 'TEST Branch to Deactivate', companyId: shop.id },
+  });
+  const target = await db.user.create({
+    data: {
+      name: 'TEST History Staff',
+      email: `${suffix}-history@test.invalid`,
+      password: 'unused',
+      role: 'SALES',
+    },
+  });
+  const assignment: EmployeeAccessHistoryAssignment = {
+    positionId: position,
+    company: 'SHOP',
+    scope: 'BRANCHES',
+    branchIds: [deactivated.id],
+  };
+  const snapshots = new AccessSnapshotService(db as any);
+  const readSnapshot = snapshots.forUserInTransaction.bind(snapshots);
+  jest.spyOn(snapshots, 'forUserInTransaction').mockImplementation(async (tx, userId) => {
+    // Branch status can change in a separate transaction while assignments are being saved.
+    await db.branch.update({ where: { id: deactivated.id }, data: { isActive: false } });
+    return readSnapshot(tx, userId);
+  });
+
+  const result = await new EmployeeAccessService(db as any, snapshots).replaceAssignments(
+    owner,
+    target.id,
+    { expectedRevision: 0, assignments: [assignment] },
+  );
+  expect(result).toMatchObject({ managed: true, revision: 1, grants: [] });
+  expect(result).not.toHaveProperty('assignments');
+  expect(
+    await db.employeeAccessAssignment.findMany({
+      where: { userId: target.id, deletedAt: null },
+      include: { branches: true },
+    }),
+  ).toMatchObject([
+    {
+      positionId: position,
+      companyCode: 'SHOP',
+      scope: 'BRANCHES',
+      branches: [{ branchId: deactivated.id }],
+    },
+  ]);
+  const history = await consoleService.history(owner);
+  const event = history.items.find((item) => item.entityId === target.id);
+  expect(event).toMatchObject({
+    action: 'ACCESS_ASSIGNMENTS_REPLACED',
+    after: { managed: true, revision: 1, assignments: [assignment] },
+  });
+});
+
 test('concurrent position edits with the same revision have exactly one winner', async () => {
   const results = await Promise.allSettled([
     service.updatePosition(owner, position, { expectedRevision: 1, name: 'first' }),

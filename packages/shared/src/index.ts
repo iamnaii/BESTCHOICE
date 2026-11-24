@@ -50,6 +50,7 @@ export * from './chat-analytics';
 export * from './chat-library';
 
 export * from './employee-access';
+export * from './employee-access-console';
 export * from './party-access';
 export * from './party-query';
 export * from './customer-attachments';

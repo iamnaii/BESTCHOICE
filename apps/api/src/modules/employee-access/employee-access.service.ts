@@ -1,9 +1,11 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import { AccessPosition, Prisma } from '@prisma/client';
 import {
   DEFAULT_ACCESS_POSITIONS,
@@ -59,14 +61,48 @@ function validatePermissions(permissions: string[]) {
     );
   }
 }
-function parseGrantMap(value: string): Record<string, unknown> {
+function parseGrantMap(value: string): Record<string, unknown> | null {
   try {
     const parsed = JSON.parse(value);
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
   } catch {
     /* reject below */
   }
-  throw new ConflictException('ข้อมูลสิทธิ์รายบุคคลเดิมไม่ถูกต้อง กรุณาตรวจสอบก่อนย้ายสิทธิ์');
+  return null;
+}
+
+async function readLegacyGrantMaps(tx: AccessClient) {
+  const configs = await tx.systemConfig.findMany({
+    where: { key: { in: LEGACY_GRANT_KEYS }, deletedAt: null },
+    select: { id: true, key: true, value: true },
+    orderBy: { key: 'asc' },
+  });
+  return configs.map(({ id, key, value }) => ({ id, key, entries: parseGrantMap(value) }));
+}
+
+function legacyGrantReview(
+  user: { id: string; canReverseOverride: boolean | null },
+  configs: Awaited<ReturnType<typeof readLegacyGrantMaps>>,
+) {
+  const removedLegacyGrants: Record<string, unknown> = { canReverseOverride: user.canReverseOverride };
+  const personalGrants: Record<string, unknown> = { ...removedLegacyGrants };
+  const warnings: string[] = [];
+  for (const { key, entries } of configs) {
+    if (!entries) {
+      personalGrants[key] = null;
+      warnings.push(`ต้องตรวจสอบข้อมูล ${key} ที่อ่านไม่ได้`);
+      continue;
+    }
+    const present = Object.prototype.hasOwnProperty.call(entries, user.id);
+    if (present) removedLegacyGrants[key] = entries[user.id];
+    personalGrants[key] = present ? entries[user.id] ?? [] : [];
+  }
+  // Hash exactly what cleanup would remove, in fixed config-key order. Changes to
+  // another employee (including creating a map without this employee) are irrelevant.
+  const fingerprint = warnings.length ? null : createHash('sha256')
+    .update(JSON.stringify([user.id, removedLegacyGrants]))
+    .digest('hex');
+  return { removedLegacyGrants, personalGrants, warnings, fingerprint };
 }
 
 @Injectable()
@@ -226,6 +262,14 @@ export class EmployeeAccessService {
       )
         throw new BadRequestException('สถานะตำแหน่งไม่ถูกต้อง');
       const affectedEmployeeCount = await this.affectedCount(tx, id);
+      if (dto.expectedAffectedEmployeeCount !== undefined) {
+        if (
+          !Number.isInteger(dto.expectedAffectedEmployeeCount) || dto.expectedAffectedEmployeeCount < 0
+        )
+          throw new BadRequestException('จำนวนพนักงานที่ตรวจสอบไม่ถูกต้อง');
+        if (affectedEmployeeCount !== dto.expectedAffectedEmployeeCount)
+          throw new ConflictException('จำนวนพนักงานที่ได้รับมอบหมายเปลี่ยนแปลง กรุณาโหลดใหม่ก่อนบันทึก');
+      }
       const changed = await tx.accessPosition.updateMany({
         where: { id, revision: dto.expectedRevision },
         data: {
@@ -264,6 +308,8 @@ export class EmployeeAccessService {
       throw new BadRequestException('งาน ขอบเขต หรือสาขาไม่ถูกต้อง');
     }
     const position = await tx.accessPosition.findUnique({ where: { id: assignment.positionId } });
+    if (position && assignment.expectedPositionRevision !== undefined)
+      revisionMatches(position.revision, assignment.expectedPositionRevision);
     if (!position || !position.isActive || position.deletedAt || position.code === 'OWNER')
       throw new BadRequestException('ตำแหน่งไม่พร้อมใช้งานหรือไม่สามารถมอบหมายได้');
     const activeCompany = await tx.companyInfo.findFirst({
@@ -289,7 +335,11 @@ export class EmployeeAccessService {
 
   async replaceAssignments(actorId: string, userId: string, dto: ReplaceAccessAssignmentsDto) {
     return this.ownerMutation(actorId, async (tx) => {
+      // A legacy reversal edit updates the user directly. Lock before reading it.
+      await tx.$executeRaw`SELECT id FROM users WHERE id = ${userId} FOR NO KEY UPDATE`;
       const user = await assertActiveStaff(tx, userId);
+      if (user.role === 'OWNER')
+        throw new ForbiddenException('ไม่สามารถมอบหมายตำแหน่งให้บัญชีเจ้าของได้');
       revisionMatches(user.accessRevision, dto.expectedRevision);
       for (const assignment of dto.assignments) await this.validateAssignment(tx, assignment);
       const keys = dto.assignments.map((a) =>
@@ -297,6 +347,17 @@ export class EmployeeAccessService {
       );
       if (new Set(keys).size !== keys.length)
         throw new BadRequestException('รายการมอบหมายตำแหน่งซ้ำกัน');
+      // The settings writers use these per-key locks even for a first-time upsert.
+      // Keep the global access → user → ordered config lock order until commit.
+      for (const key of LEGACY_GRANT_KEYS)
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${key}))`;
+      await tx.$executeRaw`SELECT key FROM system_config WHERE key IN ('accounting_permissions', 'payment_approval_permissions') ORDER BY key FOR UPDATE`;
+      const configs = await readLegacyGrantMaps(tx);
+      const { fingerprint, removedLegacyGrants } = legacyGrantReview(user, configs);
+      if (fingerprint === null)
+        throw new ConflictException('ข้อมูลสิทธิ์รายบุคคลเดิมไม่ถูกต้อง กรุณาตรวจสอบก่อนย้ายสิทธิ์');
+      if (dto.expectedLegacyGrantsFingerprint !== undefined && fingerprint !== dto.expectedLegacyGrantsFingerprint)
+        throw new ConflictException('สิทธิ์รายบุคคลเปลี่ยนแปลง กรุณาโหลดข้อมูลล่าสุดก่อนบันทึก');
       const before = await tx.employeeAccessAssignment.findMany({
         where: { userId, deletedAt: null },
         include: { branches: true },
@@ -307,40 +368,33 @@ export class EmployeeAccessService {
       });
       if (changed.count !== 1)
         throw new ConflictException('ข้อมูลพนักงานเปลี่ยนแปลง กรุณาโหลดใหม่');
-      // Lock both legacy maps before removal; retain everyone else's reviewed grants.
-      await tx.$executeRaw`SELECT key FROM system_config WHERE key IN ('accounting_permissions', 'payment_approval_permissions') FOR UPDATE`;
-      const configs = await tx.systemConfig.findMany({
-        where: { key: { in: LEGACY_GRANT_KEYS }, deletedAt: null },
-      });
-      const removedLegacyGrants: Record<string, unknown> = {
-        canReverseOverride: user.canReverseOverride,
-      };
-      for (const config of configs) {
-        const map = parseGrantMap(config.value);
-        if (!Object.prototype.hasOwnProperty.call(map, userId)) continue;
-        removedLegacyGrants[config.key] = map[userId];
-        delete map[userId];
+      for (const { id, key, entries } of configs) {
+        if (!entries || !Object.prototype.hasOwnProperty.call(removedLegacyGrants, key)) continue;
+        delete entries[userId];
         await tx.systemConfig.update({
-          where: { id: config.id },
-          data: { value: JSON.stringify(map) },
+          where: { id },
+          data: { value: JSON.stringify(entries) },
         });
       }
       await tx.employeeAccessAssignment.updateMany({
         where: { userId, deletedAt: null },
         data: { deletedAt: new Date() },
       });
-      for (const assignment of dto.assignments) {
+      const assignments: AccessAssignmentDto[] = [];
+      for (const { positionId, company, scope, branchIds } of dto.assignments) {
         await tx.employeeAccessAssignment.create({
           data: {
             userId,
-            positionId: assignment.positionId,
-            companyCode: assignment.company,
-            scope: assignment.scope,
-            branches: { create: assignment.branchIds.map((branchId) => ({ branchId })) },
+            positionId,
+            companyCode: company,
+            scope,
+            branches: { create: branchIds.map((branchId) => ({ branchId })) },
           },
         });
+        assignments.push({ positionId, company, scope, branchIds });
       }
       const snapshot = await this.snapshots.forUserInTransaction(tx, userId);
+      // Effective grants may exclude saved tuples if branch or company status changes.
       await this.audit(
         tx,
         actorId,
@@ -353,7 +407,7 @@ export class EmployeeAccessService {
           assignments: before,
           removedLegacyGrants,
         },
-        snapshot,
+        { ...snapshot, assignments },
       );
       return { ...snapshot, affectedEmployeeCount: 1, removedLegacyGrants };
     });
@@ -388,9 +442,7 @@ export class EmployeeAccessService {
           select: STAFF_SELECT,
           orderBy: { name: 'asc' },
         });
-        const configs = await tx.systemConfig.findMany({
-          where: { key: { in: LEGACY_GRANT_KEYS }, deletedAt: null },
-        });
+        const configs = await readLegacyGrantMaps(tx);
         return users.map((user) => {
           const companyAccess = resolveCompanyAccess(
             user.role,
@@ -400,18 +452,7 @@ export class EmployeeAccessService {
           const template = DEFAULT_ACCESS_POSITIONS.find(
             (position) => position.assignable && position.code === user.role,
           );
-          const personalGrants: Record<string, unknown> = {
-            canReverseOverride: user.canReverseOverride,
-          };
-          const warnings: string[] = ['ต้องให้เจ้าของตรวจสอบหน้าที่จริงและยืนยันขอบเขตก่อนเปิดใช้'];
-          for (const config of configs) {
-            try {
-              personalGrants[config.key] = parseGrantMap(config.value)[user.id] ?? [];
-            } catch {
-              personalGrants[config.key] = null;
-              warnings.push(`ต้องตรวจสอบข้อมูล ${config.key} ที่อ่านไม่ได้`);
-            }
-          }
+          const review = legacyGrantReview(user, configs);
           return {
             ...user,
             managed: user.accessManaged,
@@ -420,8 +461,9 @@ export class EmployeeAccessService {
             proposedCompanies: [...companyAccess.accessible],
             proposedBranchIds: user.branchId ? [user.branchId] : [],
             proposedScope: user.branchId ? 'BRANCHES' : null,
-            personalGrants,
-            warnings,
+            personalGrants: review.personalGrants,
+            legacyGrantsFingerprint: review.fingerprint,
+            warnings: ['ต้องให้เจ้าของตรวจสอบหน้าที่จริงและยืนยันขอบเขตก่อนเปิดใช้', ...review.warnings],
             requiresReview: true,
             // Names and legacy roles are suggestions only; no automatic company-wide grant.
             reservedRightsRemoved:

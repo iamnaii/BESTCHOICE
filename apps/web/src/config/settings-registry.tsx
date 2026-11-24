@@ -4,6 +4,7 @@ import { MENU_ICONS } from './navigation-icons';
 
 // Navigation/search read this registry too: defer page code until its item is rendered.
 const CompanySettingsPage = lazy(() => import('@/pages/CompanySettingsPage'));
+const EmployeeAccessPage = lazy(() => import('@/pages/EmployeeAccessPage'));
 const AccountRolesPage = lazy(() => import('@/pages/AccountRolesPage'));
 const IntegrationHubPage = lazy(() => import('@/pages/IntegrationHubPage'));
 const MdmTestPage = lazy(() => import('@/pages/MdmTestPage'));
@@ -114,6 +115,7 @@ export const settingsRegistry: SettingsCategory[] = [
     id: 'access', label: 'ผู้ใช้ & สิทธิ์', icon: MENU_ICONS['/settings/access'], roles: ['OWNER'], group: 'org',
     items: [
       { id: 'users', label: 'ผู้ใช้ / พนักงาน', group: 'ผู้ใช้', roles: ['OWNER'], kind: 'external', path: '/users' },
+      { id: 'employee-permissions', label: 'ตำแหน่งและสิทธิ์', group: 'ผู้ใช้', roles: ['OWNER'], kind: 'route', component: EmployeeAccessPage, path: '/settings/access/employee-permissions', keywords: ['ตำแหน่ง', 'มอบหมาย', 'ขอบเขต', 'สิทธิ์พนักงาน', 'พนักงานและสิทธิ์'] },
       { id: 'account-roles', label: "บัญชีตาม บทบาท", group: 'ผู้ใช้', roles: ['OWNER'], kind: 'route', component: AccountRolesPage, path: '/settings/access/account-roles' },
       { id: 'maker-checker', label: "ระบบอนุมัติ 2 ชั้น (การแยกผู้บันทึกและผู้อนุมัติ)", group: 'การอนุมัติ & สิทธิ์', roles: ['OWNER'], kind: 'inline', component: MakerCheckerToggle, keywords: ['อนุมัติ', 'maker', 'checker'] },
       { id: 'accounting-permissions', label: 'สิทธิ์รายการบัญชีรายรับ–รายจ่าย', group: 'การอนุมัติ & สิทธิ์', roles: ['OWNER'], kind: 'inline', component: AccountingPermissionsCard, keywords: ['รายรับ', 'รายจ่าย', 'POST', 'อนุมัติ', 'ยกเลิก'] },

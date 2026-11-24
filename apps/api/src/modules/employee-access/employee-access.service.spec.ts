@@ -1,5 +1,6 @@
-import { ForbiddenException, BadRequestException, ConflictException } from '@nestjs/common';
+import { ForbiddenException, BadRequestException, ConflictException, ValidationPipe } from '@nestjs/common';
 import { EmployeeAccessService } from './employee-access.service';
+import { ReplaceAccessAssignmentsDto, UpdateAccessPositionDto } from './employee-access.dto';
 import { AccessSnapshotService } from './access-snapshot.service';
 
 describe('employee access persistence boundary', () => {
@@ -15,6 +16,7 @@ describe('employee access persistence boundary', () => {
           isActive: true,
           isSystemUser: false,
           deletedAt: null,
+          accessRevision: 0,
         }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
@@ -83,6 +85,13 @@ describe('employee access persistence boundary', () => {
     ).rejects.toThrow(ConflictException);
     expect(db.accessPosition.updateMany).not.toHaveBeenCalled();
   });
+  it('forbids assignment replacement for the persisted owner account', async () => {
+    await expect(
+      service.replaceAssignments('actor', 'actor', { expectedRevision: 0, assignments: [] }),
+    ).rejects.toThrow(ForbiddenException);
+    expect(db.user.updateMany).not.toHaveBeenCalled();
+    expect(db.auditLog.create).not.toHaveBeenCalled();
+  });
   it.each([
     { company: 'OTHER', scope: 'COMPANY', branchIds: [] },
     { company: 'SHOP', scope: 'BRANCHES', branchIds: [] },
@@ -90,12 +99,9 @@ describe('employee access persistence boundary', () => {
     { company: 'SHOP', scope: 'UNKNOWN', branchIds: [] },
     { company: 'SHOP', scope: 'BRANCHES', branchIds: ['missing'] },
   ])('rejects invalid assignment %j', async (assignment) => {
-    db.user.findUnique.mockResolvedValue({
-      id: 'actor',
-      role: 'OWNER',
-      isActive: true,
-      accessRevision: 0,
-    });
+    db.user.findUnique
+      .mockResolvedValueOnce({ id: 'actor', role: 'OWNER', isActive: true })
+      .mockResolvedValueOnce({ id: 'target', role: 'SALES', isActive: true, accessRevision: 0 });
     db.accessPosition.findUnique.mockResolvedValue({
       id: 'p',
       code: 'SALES',
@@ -103,10 +109,49 @@ describe('employee access persistence boundary', () => {
       deletedAt: null,
     });
     await expect(
-      service.replaceAssignments('actor', 'actor', {
+      service.replaceAssignments('actor', 'target', {
         expectedRevision: 0,
         assignments: [{ positionId: 'p', ...assignment } as any],
       }),
     ).rejects.toThrow(BadRequestException);
+  });
+});
+
+describe('employee access review request validation', () => {
+  const pipe = new ValidationPipe({
+    transform: true,
+    whitelist: true,
+    transformOptions: { enableImplicitConversion: true },
+  });
+  const positionId = '0d883600-a8e7-4422-9a20-afe46abaa8d3';
+  const assignment = { positionId, company: 'SHOP', scope: 'COMPANY', branchIds: [] };
+
+  it('accepts both zero-valued and omitted expectations', async () => {
+    const position = { expectedRevision: 3, expectedAffectedEmployeeCount: 0 };
+    const assignments = { expectedRevision: 4, assignments: [assignment, { ...assignment, expectedPositionRevision: 0 }] };
+    await expect(pipe.transform(position, { type: 'body', metatype: UpdateAccessPositionDto })).resolves.toEqual(position);
+    await expect(pipe.transform(assignments, { type: 'body', metatype: ReplaceAccessAssignmentsDto })).resolves.toEqual(assignments);
+    await expect(pipe.transform({ expectedRevision: 3 }, { type: 'body', metatype: UpdateAccessPositionDto })).resolves.toEqual({ expectedRevision: 3 });
+  });
+
+  it('retains a valid fingerprint and rejects malformed or coerced request values', async () => {
+    const request = { expectedRevision: 4, assignments: [assignment], expectedLegacyGrantsFingerprint: 'a'.repeat(64) };
+    const metadata = { type: 'body' as const, metatype: ReplaceAccessAssignmentsDto };
+    await expect(pipe.transform(request, metadata)).resolves.toEqual(request);
+    for (const value of [null, false, 123, ['a'.repeat(64)], 'a'.repeat(63), 'g'.repeat(64), 'a'.repeat(65)]) {
+      await expect(pipe.transform({ ...request, expectedLegacyGrantsFingerprint: value }, metadata))
+        .rejects.toBeInstanceOf(BadRequestException);
+    }
+  });
+
+  it.each([-1, 1.5, '3', '', false, null])('rejects an invalid review expectation %j', async (value) => {
+    await expect(pipe.transform(
+      { expectedRevision: 3, expectedAffectedEmployeeCount: value },
+      { type: 'body', metatype: UpdateAccessPositionDto },
+    )).rejects.toBeInstanceOf(BadRequestException);
+    await expect(pipe.transform(
+      { expectedRevision: 4, assignments: [{ ...assignment, expectedPositionRevision: value }] },
+      { type: 'body', metatype: ReplaceAccessAssignmentsDto },
+    )).rejects.toBeInstanceOf(BadRequestException);
   });
 });

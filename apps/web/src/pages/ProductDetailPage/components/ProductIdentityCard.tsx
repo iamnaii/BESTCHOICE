@@ -211,7 +211,7 @@ export default function ProductIdentityCard({
 
         {!isAccessory && (
           <div className="flex flex-wrap items-center gap-3">
-            <div className="flex gap-1.5">
+            <div className="flex flex-wrap gap-1.5">
               {ANGLES.map((angle) => {
                 const url = photos[angle];
                 return (

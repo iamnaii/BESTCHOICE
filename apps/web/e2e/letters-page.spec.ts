@@ -28,7 +28,7 @@ test.describe('/letters page', () => {
       (req) => req.url().includes('/overdue/letters') && req.url().includes('q='),
       { timeout: 10000 },
     );
-    await page.getByPlaceholder(/ค้นหา/).fill('สมชาย');
+    await page.getByRole('textbox', { name: 'ค้นหาจดหมาย', exact: true }).fill('สมชาย');
     await requestPromise;
   });
 

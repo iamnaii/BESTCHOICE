@@ -1,0 +1,70 @@
+{
+  "sourceDate": "2026-11-24 Asia/Bangkok",
+  "apiEntrypoints": 1491,
+  "classifications": {
+    "staff": 1378,
+    "public": 60,
+    "self-service": 11,
+    "integration": 12,
+    "customer": 30
+  },
+  "unresolvedApiRoles": [],
+  "webRoutes": 225,
+  "unresolvedWebRoutes": [],
+  "menuDestinations": {
+    "OWNER": 74,
+    "BRANCH_MANAGER": 33,
+    "SALES": 21,
+    "FINANCE_MANAGER": 61,
+    "ACCOUNTANT": 55,
+    "VIEWER": 14
+  },
+  "permissions": 399,
+  "positions": [
+    {
+      "code": "OWNER",
+      "name": "เจ้าของ",
+      "explicitTemplateGrants": 0
+    },
+    {
+      "code": "BRANCH_MANAGER",
+      "name": "ผู้จัดการสาขา",
+      "explicitTemplateGrants": 48
+    },
+    {
+      "code": "SALES",
+      "name": "พนักงานขาย",
+      "explicitTemplateGrants": 36
+    },
+    {
+      "code": "STOCK",
+      "name": "พนักงานสต็อก",
+      "explicitTemplateGrants": 21
+    },
+    {
+      "code": "PURCHASING",
+      "name": "ฝ่ายจัดซื้อ",
+      "explicitTemplateGrants": 18
+    },
+    {
+      "code": "FINANCE",
+      "name": "พนักงานการเงิน",
+      "explicitTemplateGrants": 14
+    },
+    {
+      "code": "FINANCE_MANAGER",
+      "name": "ผู้จัดการการเงิน",
+      "explicitTemplateGrants": 37
+    },
+    {
+      "code": "COLLECTIONS",
+      "name": "พนักงานติดตามหนี้",
+      "explicitTemplateGrants": 15
+    },
+    {
+      "code": "ACCOUNTANT",
+      "name": "ฝ่ายบัญชี",
+      "explicitTemplateGrants": 36
+    }
+  ]
+}

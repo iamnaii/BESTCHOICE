@@ -1,4 +1,4 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayUnique,
@@ -11,7 +11,9 @@ import {
   IsUUID,
   Length,
   Matches,
+  Max,
   Min,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 
@@ -32,6 +34,11 @@ export class CreateAccessPositionDto {
 }
 export class UpdateAccessPositionDto {
   @IsInt() @Min(0, { message: 'กรุณาระบุรุ่นข้อมูลที่กำลังแก้ไข' }) expectedRevision!: number;
+  @Transform(({ obj, key }) => obj[key], { toClassOnly: true })
+  @ValidateIf((_, value) => value !== undefined)
+  @IsInt({ message: 'จำนวนพนักงานที่ตรวจสอบต้องเป็นจำนวนเต็ม' })
+  @Min(0, { message: 'จำนวนพนักงานที่ตรวจสอบต้องไม่ติดลบ' })
+  expectedAffectedEmployeeCount?: number;
   @IsOptional() @IsString() @Length(1, 120) name?: string;
   @IsOptional()
   @IsArray()
@@ -44,6 +51,11 @@ export class UpdateAccessPositionDto {
 }
 export class AccessAssignmentDto {
   @IsUUID() positionId!: string;
+  @Transform(({ obj, key }) => obj[key], { toClassOnly: true })
+  @ValidateIf((_, value) => value !== undefined)
+  @IsInt({ message: 'รุ่นข้อมูลตำแหน่งที่ตรวจสอบต้องเป็นจำนวนเต็ม' })
+  @Min(0, { message: 'รุ่นข้อมูลตำแหน่งที่ตรวจสอบต้องไม่ติดลบ' })
+  expectedPositionRevision?: number;
   @IsIn(['SHOP', 'FINANCE'], { message: 'กรุณาเลือกงานหน้าร้านหรืองานการเงิน' }) company!:
     | 'SHOP'
     | 'FINANCE';
@@ -58,10 +70,30 @@ export class AccessAssignmentDto {
   branchIds!: string[];
 }
 export class ReplaceAccessAssignmentsDto {
+  @Transform(({ obj, key }) => obj[key], { toClassOnly: true })
+  @ValidateIf((_, value) => value !== undefined)
+  @Matches(/^[a-f0-9]{64}$/, { message: 'ข้อมูลยืนยันสิทธิ์รายบุคคลไม่ถูกต้อง' })
+  expectedLegacyGrantsFingerprint?: string;
   @IsInt() @Min(0, { message: 'กรุณาระบุรุ่นข้อมูลที่กำลังแก้ไข' }) expectedRevision!: number;
   @IsArray()
   @ArrayMaxSize(100)
   @ValidateNested({ each: true })
   @Type(() => AccessAssignmentDto)
   assignments!: AccessAssignmentDto[];
+}
+
+export class EmployeeAccessHistoryQueryDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'เลขหน้าต้องเป็นจำนวนเต็ม' })
+  @Min(1, { message: 'เลขหน้าต้องมีค่าอย่างน้อย 1' })
+  @Max(Number.MAX_SAFE_INTEGER, { message: 'เลขหน้ามีค่ามากเกินไป' })
+  page?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'จำนวนรายการต่อหน้าต้องเป็นจำนวนเต็ม' })
+  @Min(1, { message: 'จำนวนรายการต่อหน้าต้องมีค่าอย่างน้อย 1' })
+  @Max(50, { message: 'จำนวนรายการต่อหน้าต้องไม่เกิน 50' })
+  limit?: number;
 }

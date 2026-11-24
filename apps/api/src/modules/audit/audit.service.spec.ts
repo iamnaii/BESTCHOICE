@@ -45,6 +45,9 @@ describe('AuditService — Merkle hash chain (T2-C4 ext)', () => {
       auditLog: {
         findMany: jest.fn(),
       },
+      auditChainAcknowledgedBreak: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
     };
     const mod: TestingModule = await Test.createTestingModule({
       providers: [AuditService, { provide: PrismaService, useValue: prisma }],
@@ -220,6 +223,155 @@ describe('AuditService — Merkle hash chain (T2-C4 ext)', () => {
       const result = await service.verifyChain();
       expect(result.ok).toBe(true);
     });
+
+    describe('acknowledged breaks (audit_chain_acknowledged_breaks)', () => {
+      // seq 3 ถูกเขียนแบบ race: prevRowHash=null ทั้งที่ seq 2 มีอยู่ (เหมือน prod seq=3194)
+      const buildChain = () => {
+        const row1 = buildRow(1n, null);
+        const row2 = buildRow(2n, row1.rowHash);
+        const row3 = buildRow(3n, null);
+        const row4 = buildRow(4n, row3.rowHash);
+        const row5 = buildRow(5n, row4.rowHash);
+        return { row1, row2, row3, row4, row5 };
+      };
+      const ackFor = (
+        row: { sequenceNumber: bigint; id: string; rowHash: string; prevRowHash: string | null },
+        expectedPrevRowHash: string,
+        overrides: Record<string, unknown> = {},
+      ) => ({
+        sequenceNumber: row.sequenceNumber,
+        auditLogId: row.id,
+        breakType: 'PREV_LINK_MISMATCH',
+        expectedPrevRowHash,
+        actualPrevRowHash: row.prevRowHash,
+        rowHashAtAck: row.rowHash,
+        ...overrides,
+      });
+
+      it('without an acknowledgement the race break still fails at seq 3 (PREV_LINK)', async () => {
+        const { row1, row2, row3, row4 } = buildChain();
+        prisma.auditLog.findMany.mockResolvedValue([row1, row2, row3, row4]);
+
+        const result = await service.verifyChain();
+        expect(result.ok).toBe(false);
+        expect(result.firstMismatchSeq).toBe(3n);
+        expect(result.mismatchKind).toBe('PREV_LINK');
+      });
+
+      it('1) matching acknowledgement → ok=true, verification continues past the break', async () => {
+        const { row1, row2, row3, row4, row5 } = buildChain();
+        prisma.auditLog.findMany.mockResolvedValue([row1, row2, row3, row4, row5]);
+        prisma.auditChainAcknowledgedBreak.findMany.mockResolvedValue([ackFor(row3, row2.rowHash)]);
+
+        const result = await service.verifyChain();
+        expect(result.ok).toBe(true);
+        expect(result.rowsChecked).toBe(5);
+        expect(result.acknowledgedBreaks).toBe(1);
+        expect(result.acknowledgedSeqs).toEqual(['3']);
+      });
+
+      it('2) another (unacknowledged) break after the acknowledged one still alerts', async () => {
+        const { row1, row2, row3, row4 } = buildChain();
+        const row5 = buildRow(5n, null); // race อีกจุด ไม่ได้ acknowledge
+        prisma.auditLog.findMany.mockResolvedValue([row1, row2, row3, row4, row5]);
+        prisma.auditChainAcknowledgedBreak.findMany.mockResolvedValue([ackFor(row3, row2.rowHash)]);
+
+        const result = await service.verifyChain();
+        expect(result.ok).toBe(false);
+        expect(result.firstMismatchSeq).toBe(5n);
+        expect(result.mismatchKind).toBe('PREV_LINK');
+        expect(result.acknowledgedSeqs).toEqual(['3']);
+      });
+
+      it('3) content of the acknowledged row edited later → still detected (ROW_HASH)', async () => {
+        const { row1, row2, row3, row4 } = buildChain();
+        const tampered = { ...row3, action: 'DELETE' };
+        prisma.auditLog.findMany.mockResolvedValue([row1, row2, tampered, row4]);
+        prisma.auditChainAcknowledgedBreak.findMany.mockResolvedValue([ackFor(row3, row2.rowHash)]);
+
+        const result = await service.verifyChain();
+        expect(result.ok).toBe(false);
+        expect(result.firstMismatchSeq).toBe(3n);
+        expect(result.mismatchKind).toBe('ROW_HASH');
+      });
+
+      it('4) rowHash or stored prevRowHash of the acknowledged row changed → ACK_MISMATCH', async () => {
+        const { row1, row2, row3, row4 } = buildChain();
+        const ack = ackFor(row3, row2.rowHash);
+
+        // rowHash ถูกเขียนใหม่ (เช่น reseal ด้วย prev=fake ให้ hash เนื้อหาผ่าน)
+        const resealed = buildRow(3n, 'fake-prev');
+        prisma.auditLog.findMany.mockResolvedValue([row1, row2, resealed, row4]);
+        prisma.auditChainAcknowledgedBreak.findMany.mockResolvedValue([ack]);
+        let result = await service.verifyChain();
+        expect(result.ok).toBe(false);
+        expect(result.firstMismatchSeq).toBe(3n);
+        expect(result.mismatchKind).toBe('ACK_MISMATCH');
+
+        // เฉพาะ prevRowHash ที่เก็บไว้เปลี่ยน
+        prisma.auditLog.findMany.mockResolvedValue([
+          row1,
+          row2,
+          { ...row3, prevRowHash: 'other' },
+          row4,
+        ]);
+        result = await service.verifyChain();
+        expect(result.ok).toBe(false);
+        expect(result.firstMismatchSeq).toBe(3n);
+        expect(result.mismatchKind).toBe('ACK_MISMATCH');
+      });
+
+      it('5) rowHash of the previous row (seq-1) changed → ACK_MISMATCH', async () => {
+        const { row1, row3, row4 } = buildChain();
+        // seq 2 ถูก reseal ด้วยเนื้อหาใหม่ → hash ตัวเองผ่าน แต่ไม่ตรง expectedPrevRowHash ที่ ack ไว้
+        const originalRow2 = buildRow(2n, row1.rowHash);
+        const newRow2 = buildRow(2n, row1.rowHash, { action: 'DELETE' });
+        prisma.auditLog.findMany.mockResolvedValue([row1, newRow2, row3, row4]);
+        prisma.auditChainAcknowledgedBreak.findMany.mockResolvedValue([
+          ackFor(row3, originalRow2.rowHash),
+        ]);
+
+        const result = await service.verifyChain();
+        expect(result.ok).toBe(false);
+        expect(result.firstMismatchSeq).toBe(3n);
+        expect(result.mismatchKind).toBe('ACK_MISMATCH');
+      });
+
+      it('6) the row after the acknowledged one must still link to its rowHash', async () => {
+        const { row1, row2, row3 } = buildChain();
+        const row4 = buildRow(4n, row2.rowHash); // ชี้ข้าม seq 3 → ต้องจับได้
+        prisma.auditLog.findMany.mockResolvedValue([row1, row2, row3, row4]);
+        prisma.auditChainAcknowledgedBreak.findMany.mockResolvedValue([ackFor(row3, row2.rowHash)]);
+
+        const result = await service.verifyChain();
+        expect(result.ok).toBe(false);
+        expect(result.firstMismatchSeq).toBe(4n);
+        expect(result.mismatchKind).toBe('PREV_LINK');
+      });
+
+      it('7) acknowledgement for a different row id at the same seq → ACK_MISMATCH', async () => {
+        const { row1, row2, row3, row4 } = buildChain();
+        prisma.auditLog.findMany.mockResolvedValue([row1, row2, row3, row4]);
+        prisma.auditChainAcknowledgedBreak.findMany.mockResolvedValue([
+          ackFor(row3, row2.rowHash, { auditLogId: 'some-other-id' }),
+        ]);
+
+        const result = await service.verifyChain();
+        expect(result.ok).toBe(false);
+        expect(result.firstMismatchSeq).toBe(3n);
+        expect(result.mismatchKind).toBe('ACK_MISMATCH');
+      });
+
+      it('8) acknowledgement table unreadable → throws (fail closed, never silently ok)', async () => {
+        const { row1, row2, row3 } = buildChain();
+        prisma.auditLog.findMany.mockResolvedValue([row1, row2, row3]);
+        prisma.auditChainAcknowledgedBreak.findMany.mockRejectedValue(
+          new Error('relation "audit_chain_acknowledged_breaks" does not exist'),
+        );
+
+        await expect(service.verifyChain()).rejects.toThrow('audit_chain_acknowledged_breaks');
+      });
+    });
   });
 });
 
@@ -233,6 +385,7 @@ describe('AuditService.log — sanitize direct writes before sealing the hash', 
   const prisma = {
     $transaction: jest.fn(),
     auditLog: { findMany },
+    auditChainAcknowledgedBreak: { findMany: jest.fn().mockResolvedValue([]) },
   };
   let service: AuditService;
 

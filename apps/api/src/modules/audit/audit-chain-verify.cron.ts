@@ -21,7 +21,11 @@ export class AuditChainVerifyCron {
       const result = await this.audit.verifyChain({ maxRows: 50_000 });
       if (!result.ok) {
         this.logger.error(
-          `AuditLog chain broken at seq=${result.firstMismatchSeq} id=${result.firstMismatchId}`,
+          `AuditLog chain broken at seq=${result.firstMismatchSeq} id=${result.firstMismatchId}` +
+            ` kind=${result.mismatchKind}` +
+            (result.acknowledgedBreaks > 0
+              ? ` (acknowledged before this point: seq=${result.acknowledgedSeqs.join(',')})`
+              : ''),
         );
         Sentry.captureMessage(
           `AuditLog Merkle chain mismatch — seq=${result.firstMismatchSeq} id=${result.firstMismatchId}`,
@@ -32,6 +36,8 @@ export class AuditChainVerifyCron {
               rowsChecked: result.rowsChecked,
               firstMismatchSeq: result.firstMismatchSeq?.toString() ?? null,
               firstMismatchId: result.firstMismatchId,
+              mismatchKind: result.mismatchKind,
+              acknowledgedSeqs: result.acknowledgedSeqs,
             },
           },
         );
@@ -40,6 +46,9 @@ export class AuditChainVerifyCron {
           `AuditLog chain verified — ${result.rowsChecked} row(s) OK` +
             (result.legacyUnverifiable > 0
               ? ` (${result.legacyUnverifiable} legacy v1 row(s) skipped — hash รุ่นเก่าตรวจย้อนหลังไม่ได้)`
+              : '') +
+            (result.acknowledgedBreaks > 0
+              ? ` (${result.acknowledgedBreaks} acknowledged break(s): seq=${result.acknowledgedSeqs.join(',')})`
               : ''),
         );
       }

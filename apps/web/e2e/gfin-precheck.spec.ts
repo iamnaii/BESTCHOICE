@@ -57,7 +57,8 @@ test.describe('GFIN pre-check tab', () => {
     const ok = await gotoWithRetry(page, `/inbox/${roomId}`);
     expect(ok).toBe(true);
     expect(await hasErrorBoundary(page)).toBe(false);
-    if (page.viewportSize()!.width < 1280) await page.getByRole('button', { name: /ข้อมูลลูกค้า/ }).first().click();
+    // RoomDossier is docked from 1440px; narrower screens open it as a sheet.
+    if (page.viewportSize()!.width < 1440) await page.getByRole('button', { name: /ข้อมูลลูกค้า/ }).first().click();
     await page.getByRole('tab', { name: /GFIN/ }).click();
     await page.getByRole('button', { name: 'เริ่มใบยื่น' }).click();
     await expect(page.getByText(/ใบยื่น \(ร่าง\)/)).toBeVisible({ timeout: 15000 });

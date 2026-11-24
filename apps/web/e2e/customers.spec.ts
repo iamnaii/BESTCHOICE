@@ -58,7 +58,7 @@ test.describe('Customers Page', () => {
     // PR #1496: the button opens an in-page modal instead of navigating to
     // /customer-intake, so the button label and the modal <h2> now share the
     // same text — target the button by role to keep the locator unambiguous.
-    const addButton = page.getByRole('button', { name: '+ เพิ่มลูกค้าใหม่' });
+    const addButton = page.getByRole('button', { name: 'เพิ่มลูกค้าใหม่', exact: true });
     await expect(addButton).toBeVisible({ timeout: 15000 });
     await addButton.click();
 
@@ -75,7 +75,7 @@ test.describe('Customers Page', () => {
 
   test('should create a new customer successfully', async ({ page }) => {
     await page.goto('/customers', { waitUntil: 'domcontentloaded' });
-    const addButton = page.getByRole('button', { name: '+ เพิ่มลูกค้าใหม่' });
+    const addButton = page.getByRole('button', { name: 'เพิ่มลูกค้าใหม่', exact: true });
     await expect(addButton).toBeVisible({ timeout: 15000 });
     await addButton.click();
     await expect(page.getByRole('heading', { name: 'เพิ่มลูกค้าใหม่' })).toBeVisible({

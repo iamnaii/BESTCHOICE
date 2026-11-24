@@ -1,9 +1,11 @@
 import { test, expect, type Page, type Download } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import ExcelJS from 'exceljs';
 
-const evidence = path.resolve('..', '..', 'docs/review/2026-09-11-sales/remediation-evidence');
+// Keep generated screenshots in this checkout regardless of the invocation directory.
+const evidence = fileURLToPath(new URL('../../../.tmp/e2e-sales-menu/', import.meta.url));
 type Row = Record<string, any>;
 async function fixture(page: Page, role = 'OWNER') {
   const actor = { id: 'ux-actor', name: 'พนักงานตัวอย่าง UX', email: 'ux@example.invalid', role, branchId: 'ux-branch', accessibleCompanies: role === 'SALES' ? ['SHOP'] : ['SHOP', 'FINANCE'], primaryCompany: 'SHOP' };
@@ -235,7 +237,7 @@ for (const width of [1440, 390]) {
         await snapshot(page, `customer-detail-${tabs.indexOf(title)}`, width);
       }
       await page.getByRole('tab', { name: /^เครดิต/ }).click();
-      await expect(page.getByRole('button', { name: '+ ตรวจเครดิตใหม่', exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'ตรวจเครดิตใหม่', exact: true })).toBeVisible();
       await expect(page.getByRole('button', { name: 'แก้ไขข้อมูล', exact: true })).toHaveCount(0);
       await page.getByRole('button', { name: /^ดำเนินการ/ }).click();
       await expect(page.getByRole('menuitem', { name: 'ตรวจเครดิตใหม่', exact: true })).toBeVisible();

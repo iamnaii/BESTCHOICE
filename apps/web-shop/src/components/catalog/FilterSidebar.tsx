@@ -1,8 +1,10 @@
 import { NativeSelect } from '@/components/ui/native-select';
-import { useEffect, useState } from 'react';
 import { SlidersHorizontal, Sparkles, Smartphone, X } from '@/lib/icons';
+import { copy } from '@/lib/copy';
 import { cn } from '@/lib/utils';
-import { parseDeviceOrigin, type DeviceOrigin } from '@/lib/device-origin';
+import type { DeviceOrigin } from '@/lib/device-origin';
+import { DownAmountField } from './DownAmountField';
+import { Pill } from './Pill';
 
 export interface CatalogFilters {
   deviceOrigin?: DeviceOrigin;
@@ -21,21 +23,19 @@ export interface ModelOption {
 }
 
 export interface PlanControls {
-  downPct: number;
+  /** เงินดาวน์ที่ลูกค้าพิมพ์ (บาท) — null = ไม่ได้ใส่ */
+  down: number | null;
   months: number | null;
-  /** Floor from the API — the finance side rejects anything under it. */
-  minDownPct: number;
   monthsOptions: number[];
-  onDownPct: (v: number) => void;
+  /** 0 = ไม่มีเงินดาวน์ (หน้ารวมแปลงเป็นติ๊กฟรีดาวน์) */
+  onDown: (v: number | null) => void;
   onMonths: (v: number | null) => void;
+  /** ลูกค้าติ๊ก "ฟรีดาวน์" อยู่ */
+  freeDown: boolean;
+  /** จำนวนเครื่องฟรีดาวน์ตามตัวกรองอื่น */
+  freeDownCount: number;
+  onFreeDown: (v: boolean) => void;
 }
-
-/**
- * Ceiling for the down payment, shared by the slider and the typed box so the
- * two can never disagree about what is in range. The DTO allows up to 90; 80
- * keeps the useful 15–40 zone readable on the track.
- */
-const MAX_DOWN_PCT = 80;
 
 /**
  * Budget buckets, not a free-form min/max pair. Thai shoppers pick a band
@@ -52,11 +52,11 @@ const PRICE_BANDS: Array<{ id: string; label: string; min?: number; max?: number
   { id: '30000-', label: '฿30,000 ขึ้นไป', min: 30000 },
 ];
 
-const GRADES: Array<{ v: string; label: string }> = [
-  { v: '', label: 'ทุกเกรด' },
-  { v: 'A', label: 'เกรด A — สภาพสวยมาก' },
-  { v: 'B', label: 'เกรด B — มีร่องรอยการใช้งาน' },
-  { v: 'C', label: 'เกรด C — ตำหนิชัด ราคาคุ้ม' },
+/** ตัวกรองสภาพเครื่อง (เกรด) ถูกเอาออกจาก UI — เจ้าของ 2026-11-25 · ป้ายเกรดบนการ์ดยังอยู่ */
+const ORIGINS: Array<{ v: DeviceOrigin | undefined; label: string }> = [
+  { v: undefined, label: 'ทั้งหมด' },
+  { v: 'THAI', label: 'เครื่องไทย' },
+  { v: 'IMPORTED', label: 'เครื่องนอก' },
 ];
 
 const DEVICE_TYPES = [
@@ -80,19 +80,23 @@ interface Props {
   onChange: (next: CatalogFilters) => void;
   models?: ModelOption[];
   plan?: PlanControls;
+  /** ล้างตัวกรองทั้งหมด รวมเงินดาวน์/ฟรีดาวน์ ในครั้งเดียว — ไม่ส่ง = ล้างเฉพาะตัวกรองผ่าน onChange */
+  onClearAll?: () => void;
   /** Inside the mobile dialog the panel drops its own chrome. */
   bare?: boolean;
 }
 
-export function FilterSidebar({ filters, onChange, models, plan, bare }: Props) {
-  const isNew = filters.condition === 'NEW';
+export function FilterSidebar({ filters, onChange, models, plan, onClearAll, bare }: Props) {
+  const idPrefix = bare ? 'mobile-filter' : 'filter';
+  const modelId = `${idPrefix}-model`;
   const active =
     filters.deviceOrigin ||
     filters.condition ||
     filters.model ||
     filters.conditionGrade ||
     filters.minPrice !== undefined ||
-    filters.maxPrice !== undefined;
+    filters.maxPrice !== undefined ||
+    (plan != null && (plan.down != null || plan.freeDown));
 
   function pickType(v: 'NEW' | 'USED') {
     const next = filters.condition === v ? undefined : v;
@@ -108,7 +112,7 @@ export function FilterSidebar({ filters, onChange, models, plan, bare }: Props) 
     <div className={cn('font-head space-y-5', bare ? 'pt-1' : 'px-4 pb-5 pt-4')}>
       {/* "ดาวน์เท่าไหร่ ผ่อนเดือนละเท่าไหร่" is the first question in a Thai
           phone shop, so it sits above the filters. */}
-      {plan && <PlanBlock plan={plan} />}
+      {plan && <PlanBlock plan={plan} bare={bare} />}
 
       <div>
         <span className={labelCls}>ประเภทเครื่อง</span>
@@ -139,30 +143,30 @@ export function FilterSidebar({ filters, onChange, models, plan, bare }: Props) 
         </div>
       </div>
 
-      <div>
-        <label className={labelCls} htmlFor={bare ? 'mobile-filter-origin' : 'filter-origin'}>
+      <div role="group" aria-labelledby={`${idPrefix}-origin-label`}>
+        <span id={`${idPrefix}-origin-label`} className={labelCls}>
           เครื่องไทย / เครื่องนอก
-        </label>
-        <NativeSelect wrapperClassName="max-w-full w-full"
-          id={bare ? 'mobile-filter-origin' : 'filter-origin'}
-          className={selectCls}
-          value={filters.deviceOrigin ?? ''}
-          onChange={(e) =>
-            onChange({ ...filters, deviceOrigin: parseDeviceOrigin(e.target.value) })
-          }
-        >
-          <option value="">ทั้งหมด</option>
-          <option value="THAI">เครื่องไทย</option>
-          <option value="IMPORTED">เครื่องนอก</option>
-        </NativeSelect>
+        </span>
+        <div className="flex flex-wrap gap-1.5">
+          {ORIGINS.map((o) => (
+            <Pill
+              key={o.label}
+              active={filters.deviceOrigin === o.v}
+              onClick={() => onChange({ ...filters, deviceOrigin: o.v })}
+              className="px-3.5"
+            >
+              {o.label}
+            </Pill>
+          ))}
+        </div>
       </div>
 
       <div>
-        <label className={labelCls} htmlFor="filter-model">
+        <label className={labelCls} htmlFor={modelId}>
           รุ่น
         </label>
         <NativeSelect wrapperClassName="max-w-full w-full"
-          id="filter-model"
+          id={modelId}
           className={selectCls}
           value={filters.model ?? ''}
           onChange={(e) => onChange({ ...filters, model: e.target.value || undefined })}
@@ -176,64 +180,43 @@ export function FilterSidebar({ filters, onChange, models, plan, bare }: Props) 
         </NativeSelect>
       </div>
 
-      {!isNew && (
-        <div>
-          <label className={labelCls} htmlFor="filter-grade">
-            สภาพเครื่อง
-          </label>
-          <NativeSelect wrapperClassName="max-w-full w-full"
-            id="filter-grade"
-            className={selectCls}
-            value={filters.conditionGrade ?? ''}
-            onChange={(e) => onChange({ ...filters, conditionGrade: e.target.value || undefined })}
-          >
-            {GRADES.map((g) => (
-              <option key={g.v} value={g.v}>
-                {g.label}
-              </option>
-            ))}
-          </NativeSelect>
-        </div>
-      )}
-
-      <div>
-        <label className={labelCls} htmlFor="filter-price">
+      <div role="group" aria-labelledby={`${idPrefix}-price-label`}>
+        <span id={`${idPrefix}-price-label`} className={labelCls}>
           ช่วงราคา
-        </label>
-        <NativeSelect wrapperClassName="max-w-full w-full"
-          id="filter-price"
-          className={selectCls}
-          value={bandId(filters)}
-          onChange={(e) => {
-            const band = PRICE_BANDS.find((b) => b.id === e.target.value);
-            onChange({ ...filters, minPrice: band?.min, maxPrice: band?.max });
-          }}
-        >
+        </span>
+        <div className="flex flex-wrap gap-1.5">
           {PRICE_BANDS.map((b) => (
-            <option key={b.id} value={b.id}>
+            <Pill
+              key={b.id || 'all'}
+              active={bandId(filters) === b.id}
+              onClick={() => onChange({ ...filters, minPrice: b.min, maxPrice: b.max })}
+              className="num px-3.5"
+            >
               {b.label}
-            </option>
+            </Pill>
           ))}
-        </NativeSelect>
+        </div>
       </div>
 
       {active && (
         <button
           type="button"
           onClick={() =>
-            onChange({
-              search: filters.search,
-              condition: undefined,
-              model: undefined,
-              conditionGrade: undefined,
-              minPrice: undefined,
-              maxPrice: undefined,
-            })
+            onClearAll
+              ? onClearAll()
+              : onChange({
+                  search: filters.search,
+                  condition: undefined,
+                  model: undefined,
+                  conditionGrade: undefined,
+                  minPrice: undefined,
+                  maxPrice: undefined,
+                })
           }
-          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors leading-snug"
+          className="inline-flex min-h-11 items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors leading-snug"
         >
           <X className="size-4" aria-hidden />
-          ล้างตัวกรองทั้งหมด
+          {copy.catalog.clearAll}
         </button>
       )}
     </div>
@@ -255,103 +238,60 @@ export function FilterSidebar({ filters, onChange, models, plan, bare }: Props) 
   );
 }
 
-/**
- * Down payment + tenure. The typed box keeps its own raw string while the
- * shopper is mid-type: clamping on every keystroke would turn "25" into "15"
- * the moment they pressed 2. It commits — and clamps — on blur or Enter.
- */
-function PlanBlock({ plan }: { plan: PlanControls }) {
-  const [raw, setRaw] = useState(String(plan.downPct));
-  useEffect(() => setRaw(String(plan.downPct)), [plan.downPct]);
-
-  const typed = Number(raw);
-  const belowMin = raw.trim() !== '' && Number.isFinite(typed) && typed < plan.minDownPct;
-
-  function commit() {
-    const n = Number(raw.replace(/[^\d]/g, ''));
-    if (!Number.isFinite(n) || raw.trim() === '') {
-      setRaw(String(plan.downPct));
-      return;
-    }
-    const clamped = Math.min(MAX_DOWN_PCT, Math.max(plan.minDownPct, n));
-    setRaw(String(clamped));
-    plan.onDownPct(clamped);
-  }
-
+/** กล่องเงินดาวน์ของตัวกรอง: เงินดาวน์เป็นบาท · ติ๊กฟรีดาวน์ · จำนวนงวด (สเปค 2026-11-25 หัวข้อ 5–6) */
+function PlanBlock({ plan, bare }: { plan: PlanControls; bare?: boolean }) {
+  const downId = bare ? 'mobile-filter-down' : 'filter-down';
+  const monthsId = bare ? 'mobile-filter-months' : 'filter-months';
   return (
     <div className="rounded-2xl bg-emerald-50 p-3.5">
-      <div className="flex items-center justify-between gap-2">
-        <label className="text-sm text-emerald-900 leading-snug" htmlFor="filter-down-num">
-          เงินดาวน์
-        </label>
-        <div className="flex items-center gap-1">
-          <input
-            id="filter-down-num"
-            type="number"
-            inputMode="numeric"
-            min={plan.minDownPct}
-            max={MAX_DOWN_PCT}
-            value={raw}
-            onChange={(e) => setRaw(e.target.value)}
-            onBlur={commit}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                e.currentTarget.blur();
-              }
-            }}
-            aria-describedby="filter-down-hint"
-            className={cn(
-              'num w-20 h-11 rounded-lg bg-card px-2 text-right text-base font-bold leading-snug',
-              'focus:outline-none focus:ring-2',
-              belowMin
-                ? 'text-orange-700 ring-1 ring-orange-400 focus:ring-orange-500/50'
-                : 'text-emerald-800 focus:ring-emerald-500/50',
-            )}
-          />
-          <span className="num text-sm font-bold text-emerald-800">%</span>
-        </div>
-      </div>
-
-      <input
-        aria-label="เลื่อนปรับเงินดาวน์"
-        type="range"
-        min={plan.minDownPct}
-        max={MAX_DOWN_PCT}
-        step={5}
-        value={plan.downPct}
-        onChange={(e) => plan.onDownPct(Number(e.target.value))}
-        className="mt-2 w-full accent-emerald-600"
+      <DownAmountField
+        id={downId}
+        hintId={`${downId}-hint`}
+        value={plan.down}
+        disabled={plan.freeDown}
+        onCommit={plan.onDown}
       />
-      <div className="num flex justify-between text-xs text-emerald-700/70 leading-snug">
-        <span>{plan.minDownPct}%</span>
-        <span>{MAX_DOWN_PCT}%</span>
-      </div>
-
-      <p
-        id="filter-down-hint"
-        className={cn(
-          'mt-1.5 text-xs leading-snug',
-          belowMin ? 'text-orange-700 font-medium' : 'text-emerald-800/70',
-        )}
-      >
-        {belowMin
-          ? `ดาวน์ขั้นต่ำ ${plan.minDownPct}% — จะปรับขึ้นให้เมื่อออกจากช่อง`
-          : `พิมพ์ตัวเลขเองได้ ขั้นต่ำ ${plan.minDownPct}%`}
+      <p id={`${downId}-hint`} className="mt-1.5 text-xs text-emerald-800/70 leading-snug">
+        {plan.freeDown
+          ? 'กำลังแสดงเฉพาะเครื่องที่ไม่ต้องวางดาวน์ — เอาติ๊กออกเพื่อตั้งเงินดาวน์เอง'
+          : copy.catalog.downHint}
       </p>
+
+      {(plan.freeDownCount > 0 || plan.freeDown) && (
+        <label
+          className={cn(
+            'mt-3 flex min-h-11 cursor-pointer items-center gap-2.5 rounded-xl px-3 text-sm leading-snug',
+            plan.freeDown
+              ? 'bg-sand-50 font-semibold text-sand-900 ring-1 ring-inset ring-promo/60'
+              : 'bg-card text-emerald-900',
+          )}
+        >
+          <input
+            type="checkbox"
+            checked={plan.freeDown}
+            onChange={(e) => plan.onFreeDown(e.target.checked)}
+            className="size-5 shrink-0 accent-emerald-600"
+          />
+          ฟรีดาวน์
+          <span className="num ml-auto text-xs font-normal text-muted-foreground">
+            {plan.freeDownCount} เครื่อง
+          </span>
+        </label>
+      )}
 
       {plan.monthsOptions.length > 0 && (
         <div className="mt-3">
           <label
             className="block text-sm text-emerald-900 mb-2 leading-snug"
-            htmlFor="filter-months"
+            htmlFor={monthsId}
           >
             จำนวนงวด
           </label>
           <NativeSelect wrapperClassName="max-w-full w-full"
-            id="filter-months"
+            id={monthsId}
             className="h-10 rounded-xl border-0 bg-card px-3 text-base md:text-sm text-foreground leading-snug focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
             value={plan.months ?? ''}
+            disabled={plan.freeDown}
             onChange={(e) => plan.onMonths(e.target.value ? Number(e.target.value) : null)}
           >
             <option value="">งวดยาวสุด (ผ่อนถูกที่สุด)</option>
@@ -363,10 +303,6 @@ function PlanBlock({ plan }: { plan: PlanControls }) {
           </NativeSelect>
         </div>
       )}
-
-      <p className="mt-2.5 text-xs text-emerald-800/70 leading-snug">
-        เลื่อนหรือพิมพ์แล้วค่างวดบนการ์ดทุกใบคำนวณใหม่ทันที
-      </p>
     </div>
   );
 }

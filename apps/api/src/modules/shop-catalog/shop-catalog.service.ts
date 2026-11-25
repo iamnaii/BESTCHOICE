@@ -1,7 +1,8 @@
 import { hydrateListingGalleries } from '../../utils/product-listing-gallery.util';
 import { DEFAULT_RECEIPT_WARRANTY_TERMS, RECEIPT_WARRANTY_TERMS_KEY, resolveListingWarrantyTerms } from '@installment/shared';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { DeviceOrigin } from '@prisma/client';
+import * as Sentry from '@sentry/nestjs';
 import Decimal from 'decimal.js';
 import { PrismaService } from '../../prisma/prisma.service';
 import { productReadinessWhere } from '../../utils/product-readiness.util';
@@ -12,6 +13,13 @@ import { resolveBcConfigForCategory } from '../../utils/bc-installment-config.ut
 import type { BcConfig } from '../../utils/installment-calc.types';
 import { parseAccessories, parseQcChecklist, QcCheckItem } from './product-unit-detail.util';
 import { parseDeviceQuery } from '../../utils/device-query-normalize.util';
+import { loadTemplateTerms } from '../../utils/pricing-template-terms.util';
+import {
+  loadShopGfinContext,
+  quoteCardRate2,
+  shopGfinSalePrice,
+  type CardRate2,
+} from './shop-gfin-quote.util';
 
 export interface ProductGroup {
   deviceOrigin: DeviceOrigin | null;
@@ -44,6 +52,8 @@ export interface ProductGroup {
   conditionGrades: string[];
   /** ค่างวดต่ำสุดที่ทำสัญญาได้จริง (งวดยาวสุด + ดาวน์ต่ำสุด); null = ยังไม่ตั้งราคาผ่อน */
   monthlyPaymentFrom: number | null;
+  /** แผนเรท 2 ที่ค่าตั้งต้นของเครื่อง (ดาวน์ 0 = ฟรีดาวน์) · null = คิดไม่ได้ */
+  rate2: CardRate2 | null;
   condition: 'NEW' | 'USED';
 }
 
@@ -114,10 +124,15 @@ interface SortableCard {
   /** A→B→C within one model. */
   grade: number;
   isGroup: boolean;
+  /** ดาวน์ขั้นต่ำเรท 1 ของการ์ด — คิดเฉพาะเมื่อลูกค้าใส่เงินดาวน์ (ใช้ตัดรายการ ไม่ส่งออกในคำตอบ) */
+  rate1MinDown: number | null;
 }
 
 /** Upper bound on used-device rows pulled for one catalog page. */
 const MAX_UNIT_SCAN = 2000;
+
+/** เพดานเงินดาวน์เรท 1 = 90% ของราคาผ่อน ปัดลงเป็นบาทเต็ม — ค่าเดียวกับ MAX_DOWN_PCT ของหน้ารายละเอียด (web-shop) */
+const MAX_CARD_DOWN_RATIO = new Decimal('0.90');
 
 // B0 §2.3: เงื่อนไขขึ้นเว็บมาจาก util ตัวเดียว (brand/category/สถานะ/ราคา/รูป/เกรด/[DEMO])
 // fragment ใช้คีย์ `AND` เท่านั้น → ประกอบต่อกับเงื่อนไข search (Task 7) ที่ต่อเข้า
@@ -132,6 +147,8 @@ function shopBaseWhere(excludeDemo: boolean): Record<string, any> {
 @Injectable()
 export class ShopCatalogService {
   constructor(private prisma: PrismaService) {}
+
+  private readonly logger = new Logger(ShopCatalogService.name);
 
   async listGroupedByModel(filters: {
     deviceOrigin?: DeviceOrigin;
@@ -151,6 +168,10 @@ export class ShopCatalogService {
     /** Shopper's chosen tenure. Falls back to the longest allowed (= lowest
      *  monthly), which is what the page showed before this was adjustable. */
     months?: number;
+    /** true = เฉพาะการ์ดที่แผนเรท 2 ไม่ต้องวางดาวน์ */
+    freeDown?: boolean;
+    /** เงินดาวน์ที่ลูกค้ามี (บาทเต็ม) — สถานะ ② · 0 = ฟรีดาวน์ · ส่งมาแล้วไม่ใช้ downPct */
+    downAmount?: number;
   }): Promise<{
     data: ProductGroup[];
     total: number;
@@ -162,9 +183,27 @@ export class ShopCatalogService {
     /** Tenures the rate table actually allows, so the picker cannot offer a
      *  plan that would silently fall back to a different number of งวด. */
     monthsOptions: number[];
+    /** จำนวนการ์ดฟรีดาวน์ตามตัวกรองอื่น — ไม่ขึ้นกับ freeDown และการแบ่งหน้า */
+    freeDownCount: number;
+    /** สถานะ ②: จำนวนการ์ดที่มีแผนผ่อนแต่ต้องดาวน์มากกว่าเงินที่ลูกค้าใส่ (ถูกตัดออกจากรายการ) · นอกสถานะ ② = 0 */
+    overBudgetCount: number;
+    /** เงินดาวน์น้อยสุดที่ทำให้การ์ดที่ถูกตัดใบถัดไปขึ้น · null = ไม่มีใบไหนถูกตัด */
+    nextDownFrom: number | null;
   }> {
     const page = filters.page ?? 1;
     const limit = filters.limit ?? 24;
+    // เงินดาวน์เป็นบาท (สเปค 2026-11-25 หัวข้อ 8): freeDown ชนะ downAmount · downAmount=0 = freeDown
+    // · ส่ง downAmount มาแล้วไม่ใช้ downPct (downPct คงไว้ให้เว็บรุ่นเก่า)
+    const freeDownOnly = filters.freeDown === true || filters.downAmount === 0;
+    const budget =
+      !freeDownOnly && filters.downAmount != null && filters.downAmount > 0
+        ? filters.downAmount
+        : null;
+    const rate1Opts = {
+      downPct: filters.downAmount == null ? filters.downPct : undefined,
+      months: filters.months,
+      budget,
+    };
     // อ่าน [DEMO] flag ครั้งเดียวต่อ request — ใช้ร่วมกันทั้ง groupBy หลัก + allGroups count
     // (ทั้งคู่ reuse `where` object เดียวกัน ไม่ได้เรียก shopBaseWhere ซ้ำ)
     const excludeDemo = await readBoolFlag(this.prisma, 'shop_hide_demo_products', false);
@@ -244,6 +283,7 @@ export class ShopCatalogService {
               deviceOrigin: true,
               cashPrice: true,
               installmentPrice: true,
+              financePrice: true,
               conditionGrade: true,
               batteryHealth: true,
               hasBox: true,
@@ -276,9 +316,50 @@ export class ShopCatalogService {
               deviceOrigin: g.deviceOrigin ?? null,
             },
             orderBy: { cashPrice: 'asc' },
-            select: { id: true, gallery: true, conditionGrade: true },
+            select: {
+              id: true,
+              gallery: true,
+              conditionGrade: true,
+              installmentPrice: true,
+              financePrice: true,
+              warrantyExpired: true,
+              warrantyExpireDate: true,
+            },
           })));
     const samples = new Map((await hydrateListingGalleries(this.prisma, rawSamples.filter((p): p is NonNullable<typeof p> => !!p))).map(p => [p.id, p]));
+    // แผนเรท 2 ของทุกการ์ด — อ่านตั้งค่าครั้งเดียวต่อคำขอ (สเปค 2026-11-25 หัวข้อ 8)
+    const rate2For = await this.rate2Quoter([
+      ...unitRows.map((u: any) => ({
+        id: u.id as string,
+        brand: u.brand as string | null,
+        model: u.model as string,
+        storage: (u.storage ?? null) as string | null,
+        category: u.category,
+        deviceOrigin: (u.deviceOrigin ?? null) as 'THAI' | 'IMPORTED' | null,
+        warrantyExpired: (u.warrantyExpired ?? null) as boolean | null,
+        warrantyExpireDate: (u.warrantyExpireDate ?? null) as Date | null,
+        installmentPrice: u.installmentPrice,
+        financePrice: u.financePrice,
+      })),
+      ...groups.flatMap((g: any, index: number) => {
+        const sample = samples.get(rawSamples[index]?.id ?? '');
+        if (!sample) return [];
+        return [
+          {
+            id: sample.id as string,
+            brand: g.brand as string | null,
+            model: g.model as string,
+            storage: (g.storage ?? null) as string | null,
+            category: g.category,
+            deviceOrigin: (g.deviceOrigin ?? null) as 'THAI' | 'IMPORTED' | null,
+            warrantyExpired: ((sample as any).warrantyExpired ?? null) as boolean | null,
+            warrantyExpireDate: ((sample as any).warrantyExpireDate ?? null) as Date | null,
+            installmentPrice: (sample as any).installmentPrice,
+            financePrice: (sample as any).financePrice,
+          },
+        ];
+      }),
+    ]);
     const groupItems: SortableCard[] = await Promise.all(
         groups.map(async (g: any, index: number) => {
           const sample = samples.get(rawSamples[index]?.id ?? '');
@@ -286,16 +367,15 @@ export class ShopCatalogService {
           const minInstallment =
             g._min?.installmentPrice != null ? Number(g._min.installmentPrice) : null;
           const stockCount = g._count?.id ?? 0;
-          const quote = this.installmentFor(minInstallment, configs.get(g.category) ?? null, {
-            downPct: filters.downPct,
-            months: filters.months,
-          });
+          const rate1 = this.rate1For(minInstallment, configs.get(g.category) ?? null, rate1Opts);
+          const quote = rate1.quote;
           return {
             price: minPrice,
             at: g._max?.createdAt ? new Date(g._max.createdAt).getTime() : 0,
             rank: modelRank(g.model),
             grade: gradeRank(null),
             isGroup: true,
+            rate1MinDown: rate1.minDown,
             item: {
               kind: 'GROUP' as const,
               deviceOrigin: g.deviceOrigin ?? null,
@@ -311,6 +391,7 @@ export class ShopCatalogService {
               monthlyPaymentFrom: quote?.monthly ?? null,
               downAmount: quote?.downAmount ?? null,
               installmentMonths: quote?.months ?? null,
+              rate2: sample ? rate2For(sample.id) : null,
               condition: 'NEW' as const,
               tags: [],
             },
@@ -322,17 +403,19 @@ export class ShopCatalogService {
     const usedConfig = configs.get('PHONE_USED') ?? null;
     const unitItems = unitRows.map((u: any) => {
       const price = u.cashPrice != null ? Number(u.cashPrice) : null;
-      const quote = this.installmentFor(
+      const rate1 = this.rate1For(
         u.installmentPrice != null ? Number(u.installmentPrice) : null,
         usedConfig,
-        { downPct: filters.downPct, months: filters.months },
+        rate1Opts,
       );
+      const quote = rate1.quote;
       return {
         price,
         at: u.createdAt ? new Date(u.createdAt).getTime() : 0,
         rank: modelRank(u.model),
         grade: gradeRank(u.conditionGrade),
         isGroup: false,
+        rate1MinDown: rate1.minDown,
         item: {
           kind: 'UNIT' as const,
           deviceOrigin: u.deviceOrigin ?? null,
@@ -352,6 +435,7 @@ export class ShopCatalogService {
           monthlyPaymentFrom: quote?.monthly ?? null,
           downAmount: quote?.downAmount ?? null,
           installmentMonths: quote?.months ?? null,
+          rate2: rate2For(u.id),
           condition: 'USED' as const,
           tags: deriveUnitTags(u, now),
         },
@@ -375,8 +459,37 @@ export class ShopCatalogService {
       return (b.price ?? 0) - (a.price ?? 0);
     });
 
-    const total = merged.length;
-    const data: ProductGroup[] = merged.slice((page - 1) * limit, page * limit).map((m) => m.item);
+    const isFreeDown = (card: SortableCard) => card.item.rate2?.down === 0;
+    const freeDownCount = merged.filter(isFreeDown).length;
+
+    // สถานะ ②: ตัดการ์ดที่เงินไม่พอทั้งสองเรท — ทำหลังนับฟรีดาวน์ ก่อนตัวกรองฟรีดาวน์และก่อนแบ่งหน้า
+    // needs = เงินดาวน์น้อยสุดที่ทำให้การ์ดขึ้น · null = คิดไม่ได้ทั้งสองเรท (ไม่แสดง และไม่นับว่า "ต้องดาวน์มากกว่า")
+    const needs = (card: SortableCard): number | null => {
+      const options = [card.rate1MinDown, card.item.rate2?.down ?? null].filter(
+        (n): n is number => n != null,
+      );
+      return options.length > 0 ? Math.min(...options) : null;
+    };
+    let affordable: SortableCard[] = merged;
+    let overBudgetCount = 0;
+    let nextDownFrom: number | null = null;
+    if (budget != null) {
+      affordable = [];
+      for (const card of merged) {
+        const need = needs(card);
+        if (need == null) continue;
+        if (need <= budget) {
+          affordable.push(card);
+          continue;
+        }
+        overBudgetCount += 1;
+        if (nextDownFrom == null || need < nextDownFrom) nextDownFrom = need;
+      }
+    }
+    const visible = freeDownOnly ? affordable.filter(isFreeDown) : affordable;
+
+    const total = visible.length;
+    const data: ProductGroup[] = visible.slice((page - 1) * limit, page * limit).map((m) => m.item);
 
     // The slider must not offer a down payment the finance side would reject.
     const mins = [...configs.values()]
@@ -389,7 +502,17 @@ export class ShopCatalogService {
       ),
     ].sort((a, b) => a - b);
 
-    return { data, total, page, limit, minDownPct, monthsOptions };
+    return {
+      data,
+      total,
+      page,
+      limit,
+      minDownPct,
+      monthsOptions,
+      freeDownCount,
+      overBudgetCount,
+      nextDownFrom,
+    };
   }
 
   async listAvailableModels(): Promise<{ model: string; count: number }[]> {
@@ -489,6 +612,7 @@ export class ShopCatalogService {
           monthlyPaymentFrom: quote?.monthly ?? null,
           downAmount: quote?.downAmount ?? null,
           installmentMonths: quote?.months ?? null,
+          rate2: null,
           condition: (isNew ? 'NEW' : 'USED') as 'NEW' | 'USED',
           tags: isNew || !sample ? [] : deriveUnitTags(sample),
         };
@@ -598,6 +722,98 @@ export class ShopCatalogService {
   }
 
   /**
+   * ตัวคิด "แผนเรท 2" ของการ์ดในคำขอนี้ · เรท 2 เป็นส่วนเสริมของการ์ด —
+   * ถ้าอ่านตั้งค่าไม่ได้ การ์ดต้องยังขึ้น (ไม่มีกล่องล่าง) หน้ารวมห้ามล้มเพราะเรื่องนี้
+   */
+  private async rate2Quoter(
+    products: Array<{
+      id: string;
+      brand: string | null;
+      model: string;
+      storage: string | null;
+      category: any;
+      deviceOrigin: 'THAI' | 'IMPORTED' | null;
+      warrantyExpired: boolean | null;
+      warrantyExpireDate: Date | null;
+      installmentPrice: unknown;
+      financePrice: unknown;
+    }>,
+  ): Promise<(id: string) => CardRate2 | null> {
+    if (products.length === 0) return () => null;
+    try {
+      const [ctx, terms] = await Promise.all([
+        loadShopGfinContext(this.prisma),
+        loadTemplateTerms(
+          this.prisma,
+          products.map((p) => ({ ...p, brand: p.brand ?? '' })),
+        ),
+      ]);
+      const byId = new Map<string, CardRate2 | null>();
+      for (const p of products) {
+        // ไม่มีราคาผ่อน = หน้ารายละเอียดไม่แสดงเครื่องคิดเลย → การ์ดห้ามเสนอแผนเรท 2
+        const inst = Number(p.installmentPrice);
+        if (!(inst > 0)) {
+          byId.set(p.id, null);
+          continue;
+        }
+        const t = terms.get(p.id);
+        const templateMonths = t?.rate2TermMonths && t.rate2TermMonths > 0 ? t.rate2TermMonths : null;
+        byId.set(
+          p.id,
+          quoteCardRate2(
+            ctx,
+            p,
+            shopGfinSalePrice(p as { financePrice?: any; installmentPrice?: any }),
+            templateMonths,
+          ),
+        );
+      }
+      return (id) => byId.get(id) ?? null;
+    } catch (err) {
+      this.logger.warn(
+        `แผนเรท 2 ของหน้ารวมคิดไม่ได้ในคำขอนี้: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      Sentry.captureException(err, { tags: { subsystem: 'shop-catalog-rate2' } });
+      return () => null;
+    }
+  }
+
+  /**
+   * กล่องเรท 1 ของการ์ด · `budget` = เงินดาวน์เป็นบาทที่ลูกค้าใส่ (สถานะ ②)
+   * - ต่ำกว่าดาวน์ขั้นต่ำเรท 1 ของเครื่อง (ตัวเลขเดียวกับที่การ์ดโชว์ตอนไม่ใส่อะไร) → ไม่มีกล่องเรท 1
+   * - ไม่งั้นดาวน์ = เงินที่ใส่ ไม่เกินเพดาน 90%
+   * `minDown` คืนเฉพาะสถานะ ② — ใช้ตัดรายการและหา nextDownFrom
+   */
+  private rate1For(
+    installmentPrice: number | null,
+    config: BcConfig | null,
+    opts: { downPct?: number; months?: number; budget: number | null },
+  ): {
+    quote: { monthly: number; downAmount: number; months: number } | null;
+    minDown: number | null;
+  } {
+    if (opts.budget == null) {
+      return {
+        quote: this.installmentFor(installmentPrice, config, {
+          downPct: opts.downPct,
+          months: opts.months,
+        }),
+        minDown: null,
+      };
+    }
+    const floor = this.installmentFor(installmentPrice, config, { months: opts.months });
+    if (!floor) return { quote: null, minDown: null };
+    if (opts.budget < floor.downAmount) return { quote: null, minDown: floor.downAmount };
+    return {
+      quote: this.installmentFor(installmentPrice, config, {
+        months: opts.months,
+        downAmount: opts.budget,
+      }),
+      minDown: floor.downAmount,
+    };
+  }
+
+  /**
    * "ผ่อนเริ่มต้น" ของกลุ่ม = ค่างวดต่ำสุดที่ทำสัญญาได้จริง
    * (งวดยาวสุดที่มีเรต + ดาวน์ขั้นต่ำตาม InterestConfig) ผ่านเครื่องคิดตัวเดียว
    * กับ InstallmentPreviewService — ห้ามคำนวณเองด้วยสูตรย่อ
@@ -610,7 +826,7 @@ export class ShopCatalogService {
   private installmentFor(
     installmentPrice: number | null,
     config: BcConfig | null,
-    opts?: { downPct?: number; months?: number },
+    opts?: { downPct?: number; months?: number; downAmount?: number },
   ): { monthly: number; downAmount: number; months: number } | null {
     if (installmentPrice == null || installmentPrice <= 0) return null;
     if (!config || config.allowedMonths.length === 0) return null;
@@ -623,15 +839,19 @@ export class ShopCatalogService {
         ? requested
         : config.allowedMonths[config.allowedMonths.length - 1];
 
-    const asked = opts?.downPct != null ? new Decimal(opts.downPct).div(100) : config.minDownPct;
-    const downPct = Decimal.max(asked, config.minDownPct);
+    const price = new Decimal(installmentPrice);
+    const down =
+      opts?.downAmount != null
+        ? // เงินดาวน์เป็นบาท: เกินเพดานใช้เพดาน — ส่งเป็น customDownAmount แบบเดียวกับหน้ารายละเอียด
+          { customDownAmount: Decimal.min(opts.downAmount, price.mul(MAX_CARD_DOWN_RATIO).floor()) }
+        : {
+            downPct: Decimal.max(
+              opts?.downPct != null ? new Decimal(opts.downPct).div(100) : config.minDownPct,
+              config.minDownPct,
+            ),
+          };
 
-    const result = calcBcInstallment({
-      installmentPrice: new Decimal(installmentPrice),
-      months,
-      downPct,
-      config,
-    });
+    const result = calcBcInstallment({ installmentPrice: price, months, config, ...down });
     if (!result.isValid) return null;
     return {
       monthly: Math.ceil(result.monthlyPayment.toNumber()),

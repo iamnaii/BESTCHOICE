@@ -10,6 +10,8 @@ import {
 } from '@/components/catalog/FilterSidebar';
 import { WaitlistCard } from '@/components/catalog/WaitlistCard';
 import { CatalogResults } from '@/components/catalog/CatalogResults';
+import { Pill } from '@/components/catalog/Pill';
+import { DownAmountField } from '@/components/catalog/DownAmountField';
 import {
   Container,
   Dialog,
@@ -25,6 +27,7 @@ import { useTrackEvent } from '@/hooks/useTrackEvent';
 import { usePageMeta } from '@/hooks/usePageMeta';
 import { cn } from '@/lib/utils';
 import { deviceOriginLabel, parseDeviceOrigin } from '@/lib/device-origin';
+import { buildCatalogParams, parseDownParam } from './catalog-params';
 
 interface CatalogResponse {
   data: ProductGroup[];
@@ -35,6 +38,12 @@ interface CatalogResponse {
   minDownPct: number | null;
   /** Tenures the rate table allows. */
   monthsOptions: number[];
+  /** จำนวนเครื่องฟรีดาวน์ตามตัวกรองอื่น. ไม่มีใน API รุ่นเก่า. */
+  freeDownCount?: number;
+  /** สถานะ ②: จำนวนเครื่องที่ต้องดาวน์มากกว่าเงินที่ใส่. ไม่มีใน API รุ่นเก่า. */
+  overBudgetCount?: number;
+  /** เงินดาวน์น้อยสุดที่ทำให้เครื่องถัดไปขึ้น. ไม่มีใน API รุ่นเก่า. */
+  nextDownFrom?: number | null;
 }
 
 const CONDITIONS: Array<{ v: '' | 'NEW' | 'USED'; label: string }> = [
@@ -58,30 +67,6 @@ const SORTS: Array<{ v: string; label: string }> = [
   { v: 'price_desc', label: 'ราคา สูง → ต่ำ' },
 ];
 
-interface PillProps {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}
-
-function Pill({ active, onClick, children }: PillProps) {
-  return (
-    <button
-      type="button"
-      aria-pressed={active}
-      onClick={onClick}
-      className={cn(
-        'min-h-11 px-4 py-1.5 font-head text-sm font-medium rounded-full transition-colors leading-snug whitespace-nowrap',
-        active
-          ? 'bg-ink text-ink-foreground font-semibold'
-          : 'bg-card text-accent-foreground ring-1 ring-inset ring-border hover:bg-muted',
-      )}
-    >
-      {children}
-    </button>
-  );
-}
-
 export default function CatalogPage() {
   usePageMeta(
     'สินค้าทั้งหมด',
@@ -96,13 +81,7 @@ export default function CatalogPage() {
     search: searchParams.get('search') ?? undefined,
   }));
   const [sort, setSort] = useState<string>('popular');
-  // null = "not chosen yet", so the first response's minimum can seed it without
-  // fighting a value the shopper actually picked.
-  const [downPct, setDownPct] = useState<number | null>(null);
   const [months, setMonths] = useState<number | null>(null);
-  // The range input fires on every pixel of a drag; refetching that often would
-  // hammer the API for figures nobody reads. Commit shortly after they stop.
-  const [committedDown, setCommittedDown] = useState<number | null>(null);
   const [sortOpen, setSortOpen] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
   const sortBtnRef = useRef<HTMLButtonElement>(null);
@@ -116,11 +95,6 @@ export default function CatalogPage() {
   useEffect(() => {
     track('ViewContent', { content_type: 'catalog' });
   }, [track]);
-
-  useEffect(() => {
-    const t = setTimeout(() => setCommittedDown(downPct), 250);
-    return () => clearTimeout(t);
-  }, [downPct]);
 
   // The header search submits to /products?search=… — also while already on
   // this page, so keep listening to URL changes after the initial state.
@@ -139,24 +113,46 @@ export default function CatalogPage() {
     );
   }, [searchParams]);
 
+  // ทุกตัวเขียน URL เริ่มจากพารามิเตอร์ล่าสุดที่เขียนไปแล้ว ไม่ใช่ closure ของ render —
+  // react-router ใช้ startTransition จึงค้างค่าเก่า: blur (commit ?down=) แล้วคลิกปุ่มกรองอื่น
+  // ใน task เดียวกันจะเขียนทับกัน
+  const latestParams = useRef(searchParams);
+  useEffect(() => {
+    latestParams.current = searchParams;
+  }, [searchParams]);
+  function writeParams(mutate: (sp: URLSearchParams) => void) {
+    const sp = new URLSearchParams(latestParams.current);
+    mutate(sp);
+    latestParams.current = sp;
+    setSearchParams(sp, { replace: true });
+  }
+
   // Single write path: keep condition+search mirrored into the URL so header
   // search, pill clicks, and deep links never fight over the state.
   function updateFilters(next: CatalogFilters) {
     setFilters(next);
-    const sp = new URLSearchParams(searchParams);
-    if (next.deviceOrigin) sp.set('deviceOrigin', next.deviceOrigin);
-    else sp.delete('deviceOrigin');
-    if (next.condition) sp.set('condition', next.condition);
-    else sp.delete('condition');
-    if (next.model) sp.set('model', next.model);
-    else sp.delete('model');
-    if (next.search) sp.set('search', next.search);
-    else sp.delete('search');
-    setSearchParams(sp, { replace: true });
+    writeParams((sp) => {
+      if (next.deviceOrigin) sp.set('deviceOrigin', next.deviceOrigin);
+      else sp.delete('deviceOrigin');
+      if (next.condition) sp.set('condition', next.condition);
+      else sp.delete('condition');
+      if (next.model) sp.set('model', next.model);
+      else sp.delete('model');
+      if (next.search) sp.set('search', next.search);
+      else sp.delete('search');
+    });
   }
 
   function clearSearch() {
     updateFilters({ ...filters, search: undefined });
+  }
+
+  // ล้างตัวกรอง + เงินดาวน์ + ติ๊กฟรีดาวน์ ด้วยการเขียน URL ครั้งเดียว (คำค้นหาและโหมดราคายังอยู่)
+  function clearAllFilters() {
+    setFilters({ search: filters.search });
+    writeParams((sp) => {
+      for (const key of ['deviceOrigin', 'condition', 'model', 'down', 'freeDown']) sp.delete(key);
+    });
   }
 
   // Derived straight from the URL (no shadow state) — updateFilters copies the
@@ -164,11 +160,50 @@ export default function CatalogPage() {
   // shared link opens in the same view.
   const priceMode: PriceMode = searchParams.get('mode') === 'cash' ? 'cash' : 'installment';
   function setPriceMode(next: PriceMode) {
-    const sp = new URLSearchParams(searchParams);
-    if (next === 'cash') sp.set('mode', 'cash');
-    else sp.delete('mode');
-    setSearchParams(sp, { replace: true });
+    writeParams((sp) => {
+      if (next === 'cash') {
+        sp.set('mode', 'cash');
+        // เงินดาวน์และฟรีดาวน์เป็นเรื่องผ่อนอย่างเดียว
+        sp.delete('freeDown');
+        sp.delete('down');
+      } else sp.delete('mode');
+    });
   }
+
+  // เงินดาวน์ (บาท) และฟรีดาวน์อยู่ใน URL เหมือนโหมดราคา — ลิงก์โฆษณา/ลิงก์แชร์เปิดมาในสถานะเดียวกันได้
+  const rawDown = priceMode === 'installment' ? parseDownParam(searchParams.get('down')) : null;
+  // พิมพ์ 0 = ติ๊กฟรีดาวน์ · ฟรีดาวน์ชนะเงินดาวน์ (กติกาเดียวกับ API)
+  const freeDown =
+    priceMode === 'installment' && (searchParams.get('freeDown') === '1' || rawDown === 0);
+  const down = freeDown ? null : rawDown;
+  // เขียน URL ครั้งเดียวต่อการกระทำ — setSearchParams ไม่ต่อคิวกัน
+  function setDown(next: number | null) {
+    writeParams((sp) => {
+      sp.delete('down');
+      if (next === 0) sp.set('freeDown', '1');
+      else if (next != null) sp.set('down', String(next));
+    });
+  }
+  function setFreeDown(next: boolean) {
+    // ติ๊ก = ไม่มีเงินดาวน์ · เอาติ๊กออก = กลับสถานะไม่ใส่อะไร (สเปคหัวข้อ 5)
+    writeParams((sp) => {
+      sp.delete('down');
+      if (next) sp.set('freeDown', '1');
+      else sp.delete('freeDown');
+    });
+  }
+  // ช่องเงินดาวน์ commit ตอนออกจากช่อง / กด Enter แล้วหน่วง 250ms ก่อนเปลี่ยนคำขอ · ล้างค่ามีผลทันที
+  const [committedDown, setCommittedDown] = useState<number | null>(down);
+  useEffect(() => {
+    if (down == null) {
+      setCommittedDown(null);
+      return;
+    }
+    const t = setTimeout(() => setCommittedDown(down), 250);
+    return () => clearTimeout(t);
+  }, [down]);
+  // ค่าที่ใช้กับคำขอและการ์ด — มีเฉพาะสถานะ ② (โหมดผ่อน · ไม่ได้ติ๊กฟรีดาวน์)
+  const activeDown = priceMode === 'installment' && !freeDown ? committedDown : null;
 
   // Close sort menu on Escape; return focus to the trigger.
   useEffect(() => {
@@ -193,20 +228,16 @@ export default function CatalogPage() {
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery<CatalogResponse>({
-    queryKey: ['shop', 'catalog', filters, sort, committedDown, months],
+    queryKey: ['shop', 'catalog', filters, sort, activeDown, months, freeDown],
     queryFn: ({ pageParam }) => {
-      const params = new URLSearchParams();
-      if (filters.deviceOrigin) params.set('deviceOrigin', filters.deviceOrigin);
-      if (filters.condition) params.set('condition', filters.condition);
-      if (filters.model) params.set('model', filters.model);
-      if (filters.conditionGrade) params.set('conditionGrade', filters.conditionGrade);
-      if (filters.minPrice !== undefined) params.set('minPrice', String(filters.minPrice));
-      if (filters.maxPrice !== undefined) params.set('maxPrice', String(filters.maxPrice));
-      if (filters.search) params.set('search', filters.search);
-      params.set('sort', sort);
-      if (committedDown != null) params.set('downPct', String(committedDown));
-      if (months != null) params.set('months', String(months));
-      params.set('page', String(pageParam));
+      const params = buildCatalogParams({
+        filters,
+        sort,
+        downAmount: activeDown,
+        months,
+        freeDown,
+        page: pageParam as number,
+      });
       return api.get(`/api/shop/products?${params}`).then((r) => r.data);
     },
     initialPageParam: 1,
@@ -216,28 +247,47 @@ export default function CatalogPage() {
   const groups = data?.pages.flatMap((p) => p.data);
   const first = data?.pages[0];
   const total = first?.total ?? 0;
-  const minDownPct = first?.minDownPct ?? null;
-  const monthsOptions = first?.monthsOptions ?? [];
+  // ตัวควบคุมแผนผ่อน (งวด · ช่องฟรีดาวน์) ต้องไม่หายระหว่างโหลดรายการใหม่ —
+  // จำค่าล่าสุดจากหน้าแรกที่เคยได้ แล้วอ่านจากนั้นตอน data ยังเป็น undefined
+  // (ห้ามใช้ keepPreviousData: การ์ดเก่าจะค้างใต้ตัวกรองใหม่)
+  const lastMeta = useRef<{
+    monthsOptions: number[];
+    freeDownCount: number;
+    freeDownSupported: boolean;
+    overBudgetCount: number;
+    overBudgetSupported: boolean;
+    nextDownFrom: number | null;
+  } | null>(null);
+  if (first) {
+    lastMeta.current = {
+      monthsOptions: first.monthsOptions ?? [],
+      freeDownCount: first.freeDownCount ?? 0,
+      freeDownSupported: first.freeDownCount !== undefined,
+      overBudgetCount: first.overBudgetCount ?? 0,
+      overBudgetSupported: first.overBudgetCount !== undefined,
+      nextDownFrom: first.nextDownFrom ?? null,
+    };
+  }
+  const monthsOptions = lastMeta.current?.monthsOptions ?? [];
+  const freeDownCount = lastMeta.current?.freeDownCount ?? 0;
+  const overBudgetCount = lastMeta.current?.overBudgetCount ?? 0;
+  const nextDownFrom = lastMeta.current?.nextDownFrom ?? null;
+  // API รุ่นเก่าไม่ส่ง overBudgetCount และไม่รู้จัก downAmount — อย่าบอกลูกค้าว่ากรองด้วยเงินที่ใส่
+  const downSupported = lastMeta.current?.overBudgetSupported ?? false;
+  // API รุ่นเก่าไม่ส่ง freeDownCount และไม่รู้จักตัวกรอง — อย่าให้การ์ดขึ้นโหมดฟรีดาวน์ล้วน
+  const freeDownOnly = freeDown && (lastMeta.current?.freeDownSupported ?? false);
+  const showFreeDown = priceMode === 'installment' && (freeDownCount > 0 || freeDown);
 
-  // Seed the slider from the API's floor the first time we learn it.
-  useEffect(() => {
-    if (minDownPct != null && downPct == null) {
-      setDownPct(minDownPct);
-      setCommittedDown(minDownPct);
-    }
-  }, [minDownPct, downPct]);
-
-  const plan =
-    minDownPct != null
-      ? {
-          downPct: downPct ?? minDownPct,
-          months,
-          minDownPct,
-          monthsOptions,
-          onDownPct: setDownPct,
-          onMonths: setMonths,
-        }
-      : undefined;
+  const plan = {
+    down,
+    months,
+    monthsOptions,
+    onDown: setDown,
+    onMonths: setMonths,
+    freeDown,
+    freeDownCount,
+    onFreeDown: setFreeDown,
+  };
   const activeCondition = filters.condition ?? '';
   const activeSortLabel = SORTS.find((s) => s.v === sort)?.label ?? '';
 
@@ -296,6 +346,7 @@ export default function CatalogPage() {
             <FilterSidebar
               filters={filters}
               onChange={updateFilters}
+              onClearAll={clearAllFilters}
               models={models}
               plan={priceMode === 'installment' ? plan : undefined}
             />
@@ -347,6 +398,40 @@ export default function CatalogPage() {
                 })}
               </div>
 
+              {/* มือถือไม่มีแถบข้าง — ใส่เงินดาวน์ / ติ๊กฟรีดาวน์ได้เลยโดยไม่ต้องเปิดแผงตัวกรอง (สเปคหัวข้อ 6) */}
+              {priceMode === 'installment' && (
+                <div data-mobile-plan className="flex w-full flex-wrap items-center gap-2 lg:hidden">
+                  <DownAmountField
+                    id="toolbar-down"
+                    variant="pill"
+                    value={down}
+                    disabled={freeDown}
+                    onCommit={setDown}
+                  />
+                  {showFreeDown && (
+                    <label
+                      className={cn(
+                        'inline-flex min-h-11 shrink-0 cursor-pointer items-center gap-2 rounded-full px-3 font-head text-sm leading-snug whitespace-nowrap',
+                        freeDown
+                          ? 'bg-sand-50 font-semibold text-sand-900 ring-1 ring-inset ring-promo/60'
+                          : 'bg-card text-accent-foreground ring-1 ring-inset ring-border',
+                      )}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={freeDown}
+                        onChange={(e) => setFreeDown(e.target.checked)}
+                        className="size-4 shrink-0 accent-emerald-600"
+                      />
+                      ฟรีดาวน์
+                      <span className="num text-xs font-normal text-muted-foreground">
+                        {freeDownCount}
+                      </span>
+                    </label>
+                  )}
+                </div>
+              )}
+
               <div className="flex lg:hidden gap-2">
                 {CONDITIONS.map((c) => (
                   <Pill
@@ -383,6 +468,7 @@ export default function CatalogPage() {
                   <FilterSidebar
                     filters={filters}
                     onChange={updateFilters}
+                    onClearAll={clearAllFilters}
                     models={models}
                     plan={priceMode === 'installment' ? plan : undefined}
                     bare
@@ -469,8 +555,16 @@ export default function CatalogPage() {
               loading={isLoading}
               error={isError}
               updating={isFetching}
-              resultKey={JSON.stringify([filters, sort, committedDown, months])}
+              resultKey={JSON.stringify([filters, sort, activeDown, months, freeDown])}
               priceMode={priceMode}
+              freeDownOnly={freeDownOnly}
+              down={downSupported ? activeDown : null}
+              hasMore={hasNextPage}
+              overBudgetCount={overBudgetCount}
+              nextDownFrom={nextDownFrom}
+              freeDownCount={freeDownCount}
+              onClearDown={() => setDown(null)}
+              onShowFreeDown={() => setFreeDown(true)}
               onRetry={() => refetch()}
             />
 

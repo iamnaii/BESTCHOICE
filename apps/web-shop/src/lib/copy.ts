@@ -119,6 +119,26 @@ export const copy = {
     sortPriceDesc: 'ราคาสูง → ต่ำ',
     emptyTitle: 'ไม่พบสินค้าตามตัวกรอง',
     emptyDescription: 'ลองเปลี่ยนยี่ห้อหรือช่วงราคา',
+    emptyFreeDownTitle: 'ยังไม่มีเครื่องฟรีดาวน์ตามตัวกรองนี้',
+    emptyFreeDownDescription: 'ลองเอาเครื่องหมายถูกที่ช่อง "ฟรีดาวน์" ออก เพื่อดูเครื่องทั้งหมด',
+    // ตัวกรองเงินดาวน์เป็นบาท (สเปค 2026-11-25 หัวข้อ 5–6)
+    downLabel: 'เงินดาวน์',
+    downUnit: 'บาท',
+    foundWithDown: (count: number, down: number) =>
+      `พบ ${count} เครื่องที่ดาวน์ได้ด้วยเงิน ฿${down.toLocaleString()}`,
+    foundFreeDown: (count: number) => `พบ ${count} เครื่องฟรีดาวน์`,
+    /** บรรทัดท้ายรายการสถานะ ② — `from` = เงินดาวน์น้อยสุดที่ทำให้เครื่องถัดไปขึ้น */
+    overBudget: (count: number, down: number, from: number | null) =>
+      `อีก ${count} เครื่องต้องดาวน์มากกว่า ฿${down.toLocaleString()}` +
+      (from != null ? ` (เริ่มที่ ฿${from.toLocaleString()})` : ''),
+    showAll: 'ดูทั้งหมด',
+    emptyDownTitle: (down: number) => `เงินดาวน์ ฿${down.toLocaleString()} ยังไม่พอ`,
+    emptyDownDescription: (from: number) => `ดาวน์ต่ำสุดเริ่มที่ ฿${from.toLocaleString()}`,
+    seeFreeDown: 'ดูเครื่องฟรีดาวน์',
+    clearDown: 'ล้างเงินดาวน์',
+    clearAll: 'ล้างตัวกรองทั้งหมด',
+    downHint:
+      'ใส่เงินดาวน์ที่มี ระบบจะแสดงทุกเครื่องที่ดาวน์ได้ · ไม่ใส่ = ดาวน์ขั้นต่ำของแต่ละเครื่อง',
   },
 
   product: {

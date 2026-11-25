@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router';
+import { useParams, useSearchParams, Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type { AxiosError } from 'axios';
@@ -26,6 +26,7 @@ import { WarrantyDetails } from '@/components/catalog/WarrantyDetails';
 import { deviceOriginLabel, type DeviceOrigin } from '@/lib/device-origin';
 import { RelatedSection } from '@/components/catalog/RelatedSection';
 import { StockIndicator } from '@/components/catalog/StockIndicator';
+import { parseDownParam } from './catalog-params';
 import {
   Container,
   Section,
@@ -72,6 +73,9 @@ function conditionDescription(g: string): string {
 
 export default function ProductDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const [searchParams] = useSearchParams();
+  // เงินดาวน์ที่ลูกค้าพิมพ์ในหน้ารวม (ลิงก์จากการ์ดสถานะ ②) — ใช้กับเรท 1 ตอนเปิดหน้าเท่านั้น (คำตัดสิน ข1)
+  const initialDown = parseDownParam(searchParams.get('down'));
   const track = useTrackEvent();
   const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
 
@@ -453,6 +457,7 @@ export default function ProductDetailPage() {
               productId={selectedUnit?.id ?? data.id}
               cashPrice={selectedUnit?.cashPrice ?? data.cashPrice}
               installmentPrice={selectedUnit?.installmentPrice ?? data.installmentPrice}
+              initialDown={initialDown}
             />
           </Container>
         </Section>

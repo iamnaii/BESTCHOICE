@@ -6,9 +6,11 @@ interface Props {
   title: string;
   description?: string;
   cta?: { label: string; to: string };
+  /** ปุ่มการกระทำใต้ข้อความ (เช่น ล้างตัวกรอง) — ใช้เมื่อปุ่มต้องเรียกฟังก์ชัน ไม่ใช่พาไปหน้าอื่น */
+  children?: React.ReactNode;
 }
 
-export function EmptyState({ icon, title, description, cta }: Props) {
+export function EmptyState({ icon, title, description, cta, children }: Props) {
   return (
     <div className="flex flex-col items-center justify-center text-center py-12 px-4 leading-snug">
       {icon && (
@@ -25,6 +27,7 @@ export function EmptyState({ icon, title, description, cta }: Props) {
           <Link to={cta.to}>{cta.label}</Link>
         </Button>
       )}
+      {children && <div className="mt-6 flex flex-wrap justify-center gap-2">{children}</div>}
     </div>
   );
 }

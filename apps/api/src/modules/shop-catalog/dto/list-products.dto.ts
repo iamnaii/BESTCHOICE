@@ -1,5 +1,15 @@
-import { IsOptional, IsString, IsInt, Min, Max, MaxLength, IsEnum, IsIn } from 'class-validator';
-import { Type } from 'class-transformer';
+import {
+  IsOptional,
+  IsString,
+  IsInt,
+  Min,
+  Max,
+  MaxLength,
+  IsEnum,
+  IsIn,
+  IsBoolean,
+} from 'class-validator';
+import { Transform, Type } from 'class-transformer';
 import { DeviceOrigin } from '@prisma/client';
 
 export class ListProductsDto {
@@ -81,4 +91,34 @@ export class ListProductsDto {
   @Min(1)
   @Max(36)
   months?: number;
+
+  /**
+   * true = เฉพาะเครื่องที่แผนเรท 2 ไม่ต้องวางดาวน์ (ฟรีดาวน์)
+   * อ่านจากค่าดิบ (`obj`) เพราะ ValidationPipe กลางเปิด enableImplicitConversion —
+   * ถ้าปล่อยให้แปลงเอง สตริง "false" จะกลายเป็น true
+   */
+  @IsOptional()
+  @Transform(({ obj }) => {
+    const raw = (obj as { freeDown?: unknown }).freeDown;
+    return raw === undefined ? undefined : raw === true || raw === 'true' || raw === '1';
+  })
+  @IsBoolean()
+  freeDown?: boolean;
+
+  /**
+   * เงินดาวน์ที่ลูกค้ามี เป็น **บาทเต็ม** (5000 = ฿5,000) — สเปค 2026-11-25 หัวข้อ 8
+   * ส่งมาแล้ว `downPct` ไม่ถูกใช้ · 0 = ฟรีดาวน์ · `freeDown=true` ชนะค่านี้
+   * อ่านจากค่าดิบ (`obj`) เหมือน `freeDown`: `?downAmount=` ที่เป็นสตริงว่างต้องเป็น "ไม่ได้ส่ง"
+   * ไม่ใช่ 0 (enableImplicitConversion จะแปลง '' เป็น 0 ซึ่งแปลว่าฟรีดาวน์)
+   */
+  @IsOptional()
+  @Transform(({ obj }) => {
+    const raw = (obj as { downAmount?: unknown }).downAmount;
+    if (raw === undefined || raw === null || raw === '') return undefined;
+    return typeof raw === 'number' ? raw : Number(raw);
+  })
+  @IsInt({ message: 'เงินดาวน์ต้องเป็นจำนวนเต็มบาท' })
+  @Min(0, { message: 'เงินดาวน์ต้องไม่ติดลบ' })
+  @Max(9_999_999, { message: 'เงินดาวน์เกินจำนวนที่รับได้' })
+  downAmount?: number;
 }

@@ -3,6 +3,7 @@ import { Link } from 'react-router';
 import { cn } from '@/lib/utils';
 import { shopInfo } from '@/lib/copy';
 import { deviceOriginLabel, type DeviceOrigin } from '@/lib/device-origin';
+import { PlanTiles } from './PlanTiles';
 
 export interface ProductGroup {
   deviceOrigin?: DeviceOrigin | null;
@@ -38,12 +39,18 @@ export interface ProductGroup {
   downAmount?: number | null;
   /** Tenure the monthly figure is quoted at. */
   installmentMonths?: number | null;
+  /** แผนเรท 2 ที่ค่าตั้งต้นของเครื่อง (ดาวน์ 0 = ฟรีดาวน์). ไม่มีใน API รุ่นเก่า. */
+  rate2?: { down: number; monthly: number; months: number } | null;
   condition: 'NEW' | 'USED';
   stock: { display: string; tone: string };
 }
 
 interface Props {
   product: ProductGroup;
+  /** ลูกค้าติ๊ก "ฟรีดาวน์" ในตัวกรอง — การ์ดแสดงเฉพาะกล่องฟรีดาวน์ */
+  freeDownOnly?: boolean;
+  /** สถานะ ②: เงินดาวน์ที่ลูกค้าพิมพ์ในหน้ารวม (บาท) — ลิงก์ของการ์ดพาไปหน้ารายละเอียดด้วย */
+  down?: number | null;
   /**
    * 'combined' (default) is the original dual layout — cash price big with
    * the installment teaser under it (HomePage / related sections).
@@ -76,8 +83,14 @@ const THUMB_SLOTS = 4;
 /** The reference stacks up to five tags and buries the product photo. */
 const MAX_TAGS = 2;
 
-export function ProductCard({ product: p, priceMode = 'combined' }: Props) {
-  const to = p.id ? `/products/${p.id}` : '/products';
+export function ProductCard({
+  product: p,
+  priceMode = 'combined',
+  freeDownOnly = false,
+  down = null,
+}: Props) {
+  // เงินดาวน์ที่พิมพ์ไว้ตามไปหน้ารายละเอียด (ใช้กับเรท 1 — คำตัดสิน ข1)
+  const to = p.id ? `/products/${p.id}${down ? `?down=${down}` : ''}` : '/products';
   const photos = (p.images?.length ? p.images : p.thumbnailUrl ? [p.thumbnailUrl] : []).slice(0, 5);
   const [active, setActive] = useState(0);
   const current = photos[Math.min(active, photos.length - 1)];
@@ -140,7 +153,11 @@ export function ProductCard({ product: p, priceMode = 'combined' }: Props) {
                 isNew
                   ? 'bg-ink text-white ring-white/55 px-2 py-1 md:px-2.5'
                   : cn(
-                      'p-0.5 sm:pr-2 ring-white/55',
+                      // The 2px left padding only makes sense around the grade
+                      // circle — an ungraded "มือ 2" pill needs even padding or
+                      // the label hugs the left edge.
+                      grade ? 'p-0.5 sm:pr-2' : 'px-2 py-1 md:px-2.5',
+                      'ring-white/55',
                       GRADE_STYLES[grade ?? ''] ?? 'bg-zinc-700 text-white',
                     ),
               )}
@@ -299,39 +316,19 @@ export function ProductCard({ product: p, priceMode = 'combined' }: Props) {
             {p.minPrice == null ? (
               <span className="text-sm font-medium text-muted-foreground">สอบถามราคา</span>
             ) : priceMode === 'installment' ? (
-              hasQuote ? (
-                <>
-                  {/* เน้นดาวน์ก่อน (owner 2026-08-31): the down payment leads
-                      in the SAME deep-green price treatment every other big
-                      figure uses — a yellow sticker per card turned the grid
-                      into a flyer wall (yellow stays reserved for real
-                      promos). The monthly rate follows as the detail line. */}
-                  <div className="font-head text-xs font-medium text-muted-foreground leading-snug">
-                    ดาวน์
-                  </div>
-                  {p.downAmount != null ? (
-                    <div className="num text-xl md:text-2xl font-bold text-primary leading-tight whitespace-nowrap">
-                      ฿{p.downAmount.toLocaleString()}
-                    </div>
-                  ) : (
-                    <div className="num text-xl md:text-2xl font-bold text-primary leading-tight whitespace-nowrap">
-                      ฿{p.monthlyPaymentFrom!.toLocaleString()}
-                      <span className="text-xs font-semibold text-primary/80"> /เดือน</span>
-                    </div>
-                  )}
-                  {p.downAmount != null && (
-                    <p className="num mt-0.5 text-xs text-muted-foreground leading-snug">
-                      ผ่อน{' '}
-                      <span className="font-semibold text-primary">
-                        ฿{p.monthlyPaymentFrom!.toLocaleString()}/เดือน
-                      </span>
-                      {p.installmentMonths ? ` · ${p.installmentMonths} งวด` : ''}
-                    </p>
-                  )}
-                </>
-              ) : (
-                <span className="text-sm font-medium text-muted-foreground">สอบถามค่างวด</span>
-              )
+              <PlanTiles
+                rate1={
+                  hasQuote && p.downAmount != null
+                    ? {
+                        down: p.downAmount,
+                        monthly: p.monthlyPaymentFrom!,
+                        months: p.installmentMonths ?? null,
+                      }
+                    : null
+                }
+                rate2={p.rate2 ?? null}
+                freeDownOnly={freeDownOnly}
+              />
             ) : priceMode === 'cash' ? (
               <>
                 <div className="font-head text-xs font-medium text-muted-foreground leading-snug">

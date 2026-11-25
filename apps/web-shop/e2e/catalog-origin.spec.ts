@@ -45,14 +45,14 @@ test('desktop filters, refreshes a shared link, clears and displays device origi
   await page.goto('/products?mode=cash');
   await expect(page.locator('article')).toHaveCount(3);
   await expect(page.locator('article').filter({ hasText: 'ยังไม่ระบุไทย/นอก' })).toHaveCount(1);
-  await page.locator('#filter-origin').selectOption('IMPORTED');
+  await page.getByRole('group', { name: 'เครื่องไทย / เครื่องนอก' }).getByRole('button', { name: 'เครื่องนอก', exact: true }).click();
   await expect(page).toHaveURL(/deviceOrigin=IMPORTED/);
   await expect(page.locator('article')).toHaveCount(1);
   await expect(page.locator('article')).toContainText('เครื่องนอก');
   await page.reload();
-  await expect(page.locator('#filter-origin')).toHaveValue('IMPORTED');
+  await expect(page.getByRole('group', { name: 'เครื่องไทย / เครื่องนอก' }).getByRole('button', { name: 'เครื่องนอก', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('article')).toHaveCount(1);
-  await page.locator('#filter-origin').selectOption('THAI');
+  await page.getByRole('group', { name: 'เครื่องไทย / เครื่องนอก' }).getByRole('button', { name: 'เครื่องไทย', exact: true }).click();
   await expect(page.locator('article')).toContainText('เครื่องไทย');
   await page.getByRole('button', { name: 'ล้างตัวกรองเครื่องไทย', exact: true }).click();
   await expect(page.locator('article')).toHaveCount(3);
@@ -67,7 +67,7 @@ test('mobile filter combines with condition/model/search and resets without clea
   await page.goto('/products?condition=USED&model=iPhone+15&search=iPhone&mode=cash');
   await page.getByRole('button', { name: 'ตัวกรอง', exact: true }).click();
   const dialog = page.getByRole('dialog');
-  await dialog.getByLabel('เครื่องไทย / เครื่องนอก', { exact: true }).selectOption('IMPORTED');
+  await dialog.getByRole('group', { name: 'เครื่องไทย / เครื่องนอก' }).getByRole('button', { name: 'เครื่องนอก', exact: true }).click();
   await expect(page).toHaveURL(/deviceOrigin=IMPORTED/);
   await expect(page.locator('article')).toHaveCount(1);
   const query = new URL(page.url()).searchParams;
@@ -75,7 +75,7 @@ test('mobile filter combines with condition/model/search and resets without clea
   expect(query.get('model')).toBe('iPhone 15');
   expect(query.get('search')).toBe('iPhone');
   await dialog.getByRole('button', { name: 'ล้างตัวกรองทั้งหมด' }).click();
-  await expect(dialog.getByLabel('เครื่องไทย / เครื่องนอก', { exact: true })).toHaveValue('');
+  await expect(dialog.getByRole('group', { name: 'เครื่องไทย / เครื่องนอก' }).getByRole('button', { name: 'ทั้งหมด', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(page).not.toHaveURL(/deviceOrigin/);
   await expect(page).toHaveURL(/search=iPhone/);
   await expect(page.locator('article')).toHaveCount(3);

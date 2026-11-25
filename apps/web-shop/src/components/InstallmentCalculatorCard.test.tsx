@@ -37,19 +37,24 @@ beforeEach(() => {
   );
 });
 afterEach(() => clients.splice(0).forEach((client) => client.clear()));
-function setup(id = 'device-1', price = 20000) {
+function setup(id = 'device-1', price = 20000, initialDown?: number | null) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   clients.push(client);
   const view = (productId: string) => (
     <QueryClientProvider client={client}>
-      <InstallmentCalculatorCard productId={productId} cashPrice={12000} installmentPrice={price} />
+      <InstallmentCalculatorCard
+        productId={productId}
+        cashPrice={12000}
+        installmentPrice={price}
+        initialDown={initialDown}
+      />
     </QueryClientProvider>
   );
   const rendered = render(view(id));
   return { ...rendered, changeDevice: (next: string) => rendered.rerender(view(next)) };
 }
-const BC_TERM = 'จำนวนงวด BESTCHOICE';
-const GFIN_TERM = 'จำนวนงวด GFIN';
+const BC_TERM = 'จำนวนงวด เรท 1';
+const GFIN_TERM = 'จำนวนงวด เรท 2';
 const provider = (request: Request) => request.params.get('provider');
 async function answer(batch: Request[], monthlyPayment: number, extra: Partial<Result> = {}) {
   await act(async () =>
@@ -95,7 +100,7 @@ describe('installment quote interactions', () => {
       requests[0].reject(new Error('offline'));
       requests[1].resolve({ data: { available: false } });
     });
-    const retry = await screen.findByRole('button', { name: 'ลองคำนวณ BESTCHOICE อีกครั้ง' });
+    const retry = await screen.findByRole('button', { name: 'ลองคำนวณ เรท 1 อีกครั้ง' });
     expect(
       screen.getByText('ยังไม่มีแผนผ่อนสำหรับตัวเลือกนี้ ลองเปลี่ยนเงินดาวน์หรืองวด'),
     ).toBeInTheDocument();
@@ -213,5 +218,125 @@ describe('installment quote interactions', () => {
     setup();
     await answer(requests.slice(), 3138.66);
     expect(await screen.findAllByText('฿3,139')).toHaveLength(2);
+  });
+
+  // สเปค 2026-11-25 หัวข้อ 7 — เรท 2 เปิดที่ค่าตั้งต้นของมัน (ตรงกับการ์ดหน้ารวม) จนกว่าลูกค้าจะแก้ช่องเงินดาวน์
+  it('เรท 2: คำขอแรกไม่ส่ง % ดาวน์ · ลูกค้าแก้ช่องเงินดาวน์แล้วส่งทั้งสองเรท', async () => {
+    setup();
+    const [bc, gfin] = requests;
+    expect(bc.params.get('downPct')).toBe('0.15');
+    expect(gfin.params.has('downPct')).toBe(false);
+    expect(gfin.params.has('customDownAmount')).toBe(false);
+    await answer(requests.slice(), 1290);
+    const amount = screen.getByLabelText('เงินดาวน์ เป็นบาท');
+    fireEvent.change(amount, { target: { value: '4567' } });
+    fireEvent.blur(amount);
+    const after = requests.slice(-2);
+    expect(after.map(provider)).toEqual(['BC', 'GFIN']);
+    expect(after.every((r) => r.params.get('downPct') === '0.23')).toBe(true);
+  });
+
+  it('เรท 2 ดาวน์ 0 → ป้าย "ฟรีดาวน์" และบรรทัด "ไม่ต้องวางดาวน์"', async () => {
+    setup();
+    await answer([requests[0]], 2890, { downAmount: 4485 });
+    await answer([requests[1]], 4061, { downAmount: 0, months: 15, allowedMonths: [12, 15], defaultMonths: 15 });
+    expect(await screen.findByText('ฟรีดาวน์')).toBeInTheDocument();
+    expect(screen.getByText('ไม่ต้องวางดาวน์ · 15 งวด')).toBeInTheDocument();
+    expect(screen.getByText('ค่างวดต่ำกว่า')).toBeInTheDocument();
+    expect(screen.getByText('ผ่อนจบเร็วกว่า')).toBeInTheDocument();
+    expect(screen.queryByText('ดาวน์น้อยกว่า')).not.toBeInTheDocument();
+  });
+
+  it('สองเรทต่างกัน → ป้ายบอกความต่างตามตัวเลขจริง ไม่มีชื่อผู้ให้ผ่อน ไม่มียอดรวม', async () => {
+    const { container } = setup();
+    await answer([requests[0]], 4848, { downAmount: 6000 });
+    await answer([requests[1]], 4821, { downAmount: 5900, months: 15, allowedMonths: [12, 15], defaultMonths: 15 });
+    expect(await screen.findByText('ดาวน์น้อยกว่า')).toBeInTheDocument();
+    expect(screen.getByText('ค่างวดต่ำกว่า')).toBeInTheDocument();
+    expect(screen.getByText('ผ่อนจบเร็วกว่า')).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/GFIN|BESTCHOICE|รวมจ่าย/);
+  });
+});
+
+// สเปค 2026-11-25 หัวข้อ 7 (คำตัดสิน ข1) — เปิดจากการ์ดหน้ารวมที่ลูกค้าพิมพ์เงินดาวน์ไว้ (?down=)
+describe('เปิดด้วยเงินดาวน์จากหน้ารวม (initialDown)', () => {
+  it('เรท 1 ขอที่เงินดาวน์นั้น · เรท 2 ยังไม่ส่งดาวน์ · ไม่นับว่าลูกค้าแก้ช่อง จนกว่าจะพิมพ์เอง', async () => {
+    setup('device-1', 20000, 5000);
+    const [bc, gfin] = requests;
+    expect(provider(bc)).toBe('BC');
+    expect(bc.params.get('customDownAmount')).toBe('5000');
+    expect(bc.params.get('downPct')).toBe('0.25');
+    expect(provider(gfin)).toBe('GFIN');
+    expect(gfin.params.has('downPct')).toBe(false);
+    expect(gfin.params.has('customDownAmount')).toBe(false);
+    expect(screen.getByLabelText('เงินดาวน์ เป็นบาท')).toHaveValue(5000);
+    await answer([bc], 1960, { downAmount: 5000 });
+    await answer([gfin], 4061, {
+      downAmount: 0,
+      months: 15,
+      allowedMonths: [12, 15],
+      defaultMonths: 15,
+    });
+    expect(await screen.findByText('ไม่ต้องวางดาวน์ · 15 งวด')).toBeInTheDocument();
+    expect(requests).toHaveLength(2);
+
+    const amount = screen.getByLabelText('เงินดาวน์ เป็นบาท');
+    fireEvent.change(amount, { target: { value: '6000' } });
+    fireEvent.blur(amount);
+    const after = requests.slice(-2);
+    expect(after.map(provider)).toEqual(['BC', 'GFIN']);
+    expect(after.every((r) => r.params.get('customDownAmount') === '6000')).toBe(true);
+  });
+
+  it('เกินเพดาน 90% ของราคาผ่อน → ใช้เพดาน', () => {
+    setup('device-1', 20000, 50000);
+    const [bc, gfin] = requests;
+    expect(bc.params.get('customDownAmount')).toBe('18000');
+    expect(bc.params.get('downPct')).toBe('0.9');
+    expect(gfin.params.has('customDownAmount')).toBe(false);
+    expect(screen.getByLabelText('เงินดาวน์ เป็นบาท')).toHaveValue(18000);
+  });
+
+  it('ต่ำกว่าขั้นต่ำของเครื่อง → เรท 1 ถอยไปดาวน์ขั้นต่ำเอง โดยเรท 2 ยังไม่ถูกส่งดาวน์', async () => {
+    setup('device-1', 20000, 1000);
+    const [bc, gfin] = requests;
+    expect(bc.params.get('customDownAmount')).toBe('1000');
+    expect(
+      screen.getByText('ต่ำกว่าขั้นต่ำ — กำลังปรับขึ้นเป็น 15% (฿3,000)'),
+    ).toBeInTheDocument();
+    await act(async () => {
+      bc.resolve({ data: { available: false, minDownPct: 15, allowedMonths: [6, 8, 10, 12] } });
+    });
+    await answer([gfin], 4061, {
+      downAmount: 0,
+      months: 15,
+      allowedMonths: [12, 15],
+      defaultMonths: 15,
+    });
+    // ตัว clamp เดิมของช่องปรับขึ้นเองเมื่อค่านิ่ง (~0.9 วินาที) — จบที่ 15% = ฿3,000
+    await waitFor(
+      () => {
+        const lastBc = requests.filter((r) => provider(r) === 'BC').slice(-1)[0];
+        expect(lastBc.params.get('downPct')).toBe('0.15');
+        expect(['3000', null]).toContain(lastBc.params.get('customDownAmount'));
+      },
+      { timeout: 3000 },
+    );
+    expect(screen.getByLabelText('เงินดาวน์ เป็นบาท')).toHaveValue(3000);
+    const gfinRequests = requests.filter((r) => provider(r) === 'GFIN');
+    expect(
+      gfinRequests.every((r) => !r.params.has('downPct') && !r.params.has('customDownAmount')),
+    ).toBe(true);
+  });
+
+  it('ไม่ส่ง / 0 / ไม่ใช่จำนวนเต็ม → พฤติกรรมเดิม (ดาวน์ขั้นต่ำเป็น %)', () => {
+    for (const bad of [undefined, null, 0, 12.5]) {
+      requests.length = 0;
+      const view = setup('device-1', 20000, bad);
+      const [bc] = requests;
+      expect(bc.params.get('downPct')).toBe('0.15');
+      expect(bc.params.has('customDownAmount')).toBe(false);
+      view.unmount();
+    }
   });
 });

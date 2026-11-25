@@ -2,13 +2,7 @@ import { Injectable } from '@nestjs/common';
 import Decimal from 'decimal.js';
 import type { ProductCategory } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import {
-  calcBcInstallment,
-  calcGfinInstallment,
-  findGfinMapping,
-  findGfinOverpriceRule,
-  resolveGfinDownPct,
-} from '../../utils/installment-calc.util';
+import { calcBcInstallment } from '../../utils/installment-calc.util';
 import { productReadinessWhere } from '../../utils/product-readiness.util';
 import { readBoolFlag } from '../../utils/config.util';
 import { resolveBcConfigForCategory } from '../../utils/bc-installment-config.util';
@@ -16,6 +10,13 @@ import { commissionPctForCategory, loadGfinSettings } from '../gfin-config/gfin-
 import { isInstallmentPriceLabel } from '../../utils/product-price-sync.util';
 import { loadTemplateTerms } from '../../utils/pricing-template-terms.util';
 import { InstallmentPreviewDto } from './dto/installment-preview.dto';
+import {
+  computeShopGfinQuote,
+  resolveShopGfinPlan,
+  toGfinFactorRow,
+  toGfinMappingRows,
+  toGfinRuleRows,
+} from './shop-gfin-quote.util';
 
 export interface PreviewResult {
   available: boolean;
@@ -36,13 +37,6 @@ export interface PreviewResult {
   allowedMonths?: number[];
   /** GFIN only — งวดตั้งต้นของเครื่อง: งวดเรท 2 ของราคากลาง ไม่มีแล้วเพดานกติกา OVER (ตัวเดียวกับใบเสนอราคาพนักงาน) */
   defaultMonths?: number;
-}
-
-/** งวดตั้งต้นที่ใช้ได้จริง: ตรงในรายการ → ใช้เลย · ไม่ตรง → งวดมากสุดที่ไม่เกิน · ไม่มีเลย → งวดแรก */
-function pickDefaultMonths(wanted: number, allowed: number[]): number {
-  if (allowed.length === 0 || allowed.includes(wanted)) return wanted;
-  const below = allowed.filter((m) => m <= wanted);
-  return below.length > 0 ? below[below.length - 1] : allowed[0];
 }
 
 @Injectable()
@@ -139,15 +133,9 @@ export class InstallmentPreviewService {
     installmentPrice: Decimal,
     dto: InstallmentPreviewDto,
   ): Promise<PreviewResult> {
-    // เรทของ GFIN ขึ้นกับ (จำนวนงวด, %คอมที่ร้านเลือก) — เว็บร้านใช้คอมตั้งต้นตามหมวด (มือถือ 15 · iPad 5)
+    // เรท 2 ขึ้นกับ (จำนวนงวด, %คอมที่ร้านเลือก) — เว็บร้านใช้คอมตั้งต้นตามหมวด (มือถือ 15 · iPad 5)
     const settings = await loadGfinSettings(this.prisma);
     const commissionPct = commissionPctForCategory(settings, product.category);
-    const gfinCategory =
-      product.category === 'TABLET'
-        ? 'TABLET'
-        : product.category === 'PHONE_NEW'
-          ? 'PHONE_NEW'
-          : 'PHONE_USED';
 
     const [mappings, rules, factorMonths] = await Promise.all([
       this.prisma.gfinModelMapping.findMany({
@@ -162,110 +150,61 @@ export class InstallmentPreviewService {
       }),
     ]);
 
-    const mappingObjects = mappings.map((m) => ({
-      id: m.id,
-      gfinSeries: m.gfinSeries,
-      gfinVariant: m.gfinVariant,
-      storage: m.storage,
-      condition: m.condition as 'HAND_1' | 'HAND_2',
-      maxPrice: new Decimal(m.maxPrice.toString()),
-      modelMatchPattern: m.modelMatchPattern,
-      isActive: m.isActive,
-    }));
-
-    const mapping = findGfinMapping(
-      {
-        brand: product.brand ?? '',
-        model: product.model,
-        storage: product.storage ?? '',
-        category: gfinCategory,
-      },
-      mappingObjects,
-    );
-    if (!mapping) return { available: false, reason: 'no_gfin_mapping' };
-
-    const ruleObjects = rules.map((r) => ({
-      id: r.id,
-      label: r.label,
-      seriesPattern: r.seriesPattern,
-      condition: r.condition as 'HAND_1' | 'HAND_2',
-      allowance: new Decimal(r.allowance.toString()),
-      maxMonths: r.maxMonths ?? null,
-      minDownPct: r.minDownPct ?? null,
-      isActive: r.isActive,
-    }));
-
-    const rule = findGfinOverpriceRule(mapping, ruleObjects);
-    // สเปก 2026-11-20 §4: มีราคาแต่ไม่มีเงื่อนไขของรุ่น = ยังคิดไม่ได้ (เว็บ shop ไม่โชว์ GFIN)
-    if (!rule) return { available: false, reason: 'no_gfin_rule' };
-
-    // งวดของ GFIN มาจากฝั่ง GFIN (ไม่ใช่งวดของตั้งค่าดอกเบี้ย BC): งวดที่มีเรทของคอมหมวดนี้ ไม่เกินเพดานกติกา OVER
-    // งวดตั้งต้น = งวดเรท 2 ของราคากลาง ไม่มีแล้วเพดานกติกา OVER (สูตรเดียวกับ buildModelQuote — หน้า "ราคาและเรทผ่อน" / บอท / สติกเกอร์)
-    const allowedMonths = [...new Set(factorMonths.map((f) => f.months))]
-      .filter((m) => rule.maxMonths == null || m <= rule.maxMonths)
-      .sort((a, b) => a - b);
+    // งวดตั้งต้น = งวดเรท 2 ของราคากลาง ไม่มีแล้วเพดานของรุ่น (สูตรเดียวกับหน้า "ราคาและเรทผ่อน" / บอท / สติกเกอร์)
     const terms = (
       await loadTemplateTerms(this.prisma, [{ ...product, brand: product.brand ?? '' }])
     ).get(product.id);
-    const templateMonths = terms?.rate2TermMonths && terms.rate2TermMonths > 0 ? terms.rate2TermMonths : null;
-    const defaultMonths = pickDefaultMonths(templateMonths ?? rule.maxMonths ?? 12, allowedMonths);
-    const months = dto.months ?? defaultMonths;
-    const termInfo = { allowedMonths, defaultMonths };
+    const templateMonths =
+      terms?.rate2TermMonths && terms.rate2TermMonths > 0 ? terms.rate2TermMonths : null;
 
-    // ผ่อนได้สูงสุดต่อซีรีส์/สภาพตามตารางราคา GFIN (12 series = 10 · 13-15 = 12 · 16-17 = 15)
-    if (rule.maxMonths != null && months > rule.maxMonths) {
-      return { available: false, reason: 'months_over_max', ...termInfo };
+    const plan = resolveShopGfinPlan({
+      product,
+      settings,
+      mappings: toGfinMappingRows(mappings),
+      rules: toGfinRuleRows(rules),
+      factorMonths: factorMonths.map((f) => f.months),
+      templateMonths,
+      requestedMonths: dto.months,
+    });
+    if (!plan.ok) {
+      return plan.allowedMonths
+        ? {
+            available: false,
+            reason: plan.reason,
+            allowedMonths: plan.allowedMonths,
+            defaultMonths: plan.defaultMonths,
+          }
+        : { available: false, reason: plan.reason };
     }
+    const termInfo = { allowedMonths: plan.allowedMonths, defaultMonths: plan.defaultMonths };
 
     const factor = await this.prisma.gfinRateFactor.findFirst({
-      where: { months, shopCommissionPct: commissionPct, deletedAt: null, isActive: true },
-    });
-    if (!factor) return { available: false, reason: 'no_rate_factor', ...termInfo };
-
-    // ดาวน์ขั้นต่ำ: กติกา OVER ของรุ่นก่อน ไม่มีแล้วใช้ค่าตั้ง gfin.minDownPct (สเปค price-master-retire 3.3)
-    // เว็บ shop ส่ง % เดียวกับเรท 1 มาด้วย (ค่าเริ่ม 15%) — GFIN ไม่รับดาวน์ต่ำกว่าขั้นต่ำ จึงยกขึ้นเป็นขั้นต่ำ
-    const minDownPct = resolveGfinDownPct(rule, new Decimal(settings.minDownPct).div(100));
-    const downPct =
-      dto.downPct !== undefined ? Decimal.max(new Decimal(dto.downPct), minDownPct) : minDownPct;
-
-    const result = calcGfinInstallment({
-      installmentPrice,
-      product: {
-        brand: product.brand ?? '',
-        model: product.model,
-        storage: product.storage ?? '',
-        category: gfinCategory,
-      },
-      months,
-      downPct,
-      shopCommissionPct: new Decimal(commissionPct),
-      contractFee: new Decimal(settings.contractFee),
-      mapping,
-      overpriceRule: rule,
-      // GFIN ให้ OVER เต็มเฉพาะเครื่องไทย — เครื่องนอก/ยังไม่ระบุได้ครึ่งเดียว
-      deviceOrigin: product.deviceOrigin,
-      rateFactor: {
-        months: factor.months,
-        shopCommissionPct: factor.shopCommissionPct,
-        factor: new Decimal(factor.factor.toString()),
-        feePerInstallment: new Decimal(factor.feePerInstallment.toString()),
-        isActive: factor.isActive,
-      },
+      where: { months: plan.months, shopCommissionPct: commissionPct, deletedAt: null, isActive: true },
     });
 
-    if (!result.isValid) {
-      return { available: false, reason: 'invalid', errors: result.errors, ...termInfo };
+    // เว็บ shop ส่ง % เดียวกับเรท 1 มาได้ — เรท 2 ไม่รับดาวน์ต่ำกว่าขั้นต่ำ จึงยกขึ้นเป็นขั้นต่ำ (ใน computeShopGfinQuote)
+    const quote = computeShopGfinQuote(plan, {
+      product,
+      salePrice: installmentPrice,
+      settings,
+      factor: factor ? toGfinFactorRow(factor) : null,
+      downPct: dto.downPct !== undefined ? new Decimal(dto.downPct) : undefined,
+    });
+    if (!quote.ok) {
+      return quote.errors
+        ? { available: false, reason: quote.reason, errors: quote.errors, ...termInfo }
+        : { available: false, reason: quote.reason, ...termInfo };
     }
 
     return {
       available: true,
       provider: 'GFIN',
-      monthlyPayment: result.monthlyPayment.toNumber(),
-      downAmount: result.downAmountActual.toNumber(),
-      financedAmount: result.financedAmount.toNumber(),
-      months,
+      monthlyPayment: quote.monthlyPayment,
+      downAmount: quote.downAmount,
+      financedAmount: quote.financedAmount,
+      months: quote.months,
       ...termInfo,
-      // ราคาส่ง GFIN / ส่วนลดดาวน์ไม่ออกเว็บร้าน (กติการวม — ราคาส่ง − ส่วนลด = ราคาขาย GFIN ของเครื่อง)
+      // ราคาส่ง / ส่วนลดดาวน์ไม่ออกเว็บร้าน
     };
   }
 }

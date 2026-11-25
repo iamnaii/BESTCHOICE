@@ -7,6 +7,8 @@ import { MessageCircle } from '@/lib/icons';
 import { Card, CardHeader, CardBody, CardTitle, Button } from '@/components';
 import { displayInstallment, minDownAmountFromPct } from '@installment/shared';
 import { lineOaMessageUrl, productShareUrl } from '@/lib/copy';
+import { cn } from '@/lib/utils';
+import { compareBadges, FREE_DOWN_BADGE, isFreeDown } from './installment-compare';
 
 interface PreviewResponse {
   available: boolean;
@@ -27,12 +29,15 @@ interface PreviewResponse {
 
 type Provider = 'BC' | 'GFIN';
 
-const PROVIDER_LABEL: Record<Provider, string> = { BC: 'BESTCHOICE', GFIN: 'GFIN' };
+/** หน้าร้านไม่บอกชื่อผู้ให้ผ่อน — ลูกค้าเห็นแค่ "เรท 1 / เรท 2" (เจ้าของ 2026-11-25) */
+const PROVIDER_LABEL: Record<Provider, string> = { BC: 'เรท 1', GFIN: 'เรท 2' };
 
 interface Props {
   productId: string;
   cashPrice: number | null;
   installmentPrice: number | null;
+  /** เงินดาวน์ที่ลูกค้าพิมพ์ในหน้ารวม (`?down=`) — ค่าเริ่มต้นของเรท 1 ตอนเปิดหน้า · ไม่นับว่าลูกค้าแก้ช่อง */
+  initialDown?: number | null;
 }
 
 function formatTHB(n: number): string {
@@ -63,6 +68,7 @@ function DownPaymentInput({
   amount,
   onCommitPct,
   onCommitAmount,
+  onUserEdit,
 }: {
   installmentPrice: number;
   minDownPct: number;
@@ -70,6 +76,8 @@ function DownPaymentInput({
   amount: number;
   onCommitPct: (v: number) => void;
   onCommitAmount: (v: number) => void;
+  /** ลูกค้าพิมพ์ในช่องเอง (ไม่รวมการปรับขึ้นเป็นขั้นต่ำอัตโนมัติ) */
+  onUserEdit: () => void;
 }) {
   const [pctRaw, setPctRaw] = useState(String(pct));
   const [amtRaw, setAmtRaw] = useState(String(amount));
@@ -160,7 +168,10 @@ function DownPaymentInput({
             value={pctRaw}
             min={minDownPct}
             max={MAX_DOWN_PCT}
-            onChange={(e) => setPctRaw(e.target.value)}
+            onChange={(e) => {
+              onUserEdit();
+              setPctRaw(e.target.value);
+            }}
             onBlur={commitPct}
             onKeyDown={enterCommits}
             className={`${box} w-16`}
@@ -181,7 +192,10 @@ function DownPaymentInput({
             min={minAmount}
             max={installmentPrice - 1}
             step={500}
-            onChange={(e) => setAmtRaw(e.target.value)}
+            onChange={(e) => {
+              onUserEdit();
+              setAmtRaw(e.target.value);
+            }}
             onBlur={commitAmount}
             onKeyDown={enterCommits}
             className={`${box} w-28`}
@@ -246,13 +260,17 @@ function QuoteOption({
   label,
   query,
   term,
+  badges,
 }: {
   label: string;
   query: UseQueryResult<PreviewResponse, Error>;
   term: React.ReactNode;
+  badges: string[];
 }) {
   const highlight = useRef<HTMLDivElement>(null);
   const result = query.data;
+  const settled = !query.isFetching && !query.isPending && !query.isError;
+  const freeDown = settled && isFreeDown(result);
   useGSAP(
     () => {
       if (query.isFetching || query.isError || !result?.available || !window.matchMedia) return;
@@ -273,14 +291,35 @@ function QuoteOption({
   );
 
   return (
-    <div className="relative min-h-36 overflow-hidden rounded-xl border border-border bg-card p-4">
+    <div
+      className={cn(
+        'relative min-h-36 overflow-hidden rounded-xl border p-4',
+        freeDown ? 'border-promo/60 bg-sand-50' : 'border-border bg-card',
+      )}
+    >
       <div
         ref={highlight}
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 bg-primary/10 opacity-0"
       />
       <div className="relative space-y-2">
-        <h3 className="text-sm font-semibold text-primary leading-snug">{label}</h3>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <h3 className="text-sm font-semibold text-primary leading-snug">{label}</h3>
+          {settled &&
+            badges.map((badge) => (
+              <span
+                key={badge}
+                className={cn(
+                  'rounded-full px-2 py-0.5 text-xs font-semibold leading-snug whitespace-nowrap',
+                  badge === FREE_DOWN_BADGE
+                    ? 'bg-promo text-promo-foreground'
+                    : 'bg-muted text-accent-foreground',
+                )}
+              >
+                {badge}
+              </span>
+            ))}
+        </div>
         {term}
         {query.isFetching || query.isPending ? (
           <div aria-hidden="true" className="space-y-2">
@@ -309,7 +348,9 @@ function QuoteOption({
               <span className="text-sm font-normal"> / เดือน</span>
             </p>
             <p className="text-sm text-muted-foreground leading-snug">
-              ดาวน์ ฿{formatTHB(result.downAmount ?? 0)} · {result.months} งวด
+              {freeDown
+                ? `ไม่ต้องวางดาวน์ · ${result.months} งวด`
+                : `ดาวน์ ฿${formatTHB(result.downAmount ?? 0)} · ${result.months} งวด`}
             </p>
           </>
         ) : (
@@ -325,7 +366,15 @@ function QuoteOption({
 function InstallmentCalculator({
   productId,
   installmentPrice,
+  initialDown,
 }: Props & { installmentPrice: number }) {
+  // เปิดจากการ์ดหน้ารวมสถานะ ② (คำตัดสิน ข1): เรท 1 เริ่มที่เงินดาวน์นั้น ไม่เกินเพดาน 90%
+  // ต่ำกว่าขั้นต่ำของเครื่อง → ช่องเงินดาวน์ปรับขึ้นเองตามกติกาเดิมของมัน
+  // ห้ามแตะ downTyped / downEdited ตรงนี้ — เรท 2 ต้องเปิดที่ค่าตั้งต้นจนกว่าลูกค้าจะพิมพ์เอง
+  const seedDown =
+    initialDown != null && Number.isInteger(initialDown) && initialDown > 0
+      ? Math.min(initialDown, Math.floor((installmentPrice * MAX_DOWN_PCT) / 100))
+      : null;
   const [months, setMonths] = useState(INITIAL_MONTHS);
   const [termOptions, setTermOptions] = useState<number[]>([INITIAL_MONTHS]);
   // GFIN: null = ยังไม่เลือก → ให้ server ใช้งวดตั้งต้นของเครื่อง (งวดเรท 2 ของราคากลาง / เพดานกติกา OVER)
@@ -334,17 +383,28 @@ function InstallmentCalculator({
     options: [],
     defaultMonths: null,
   });
-  const [downPct, setDownPct] = useState(DEFAULT_DOWN_PCT);
-  const [downMode, setDownMode] = useState<'PCT' | 'AMOUNT'>('PCT');
-  const [downAmountInput, setDownAmountInput] = useState<number | null>(null);
+  const [downPct, setDownPct] = useState(
+    seedDown != null ? Math.round((seedDown / installmentPrice) * 100) : DEFAULT_DOWN_PCT,
+  );
+  const [downMode, setDownMode] = useState<'PCT' | 'AMOUNT'>(seedDown != null ? 'AMOUNT' : 'PCT');
+  const [downAmountInput, setDownAmountInput] = useState<number | null>(seedDown);
   const [minDownPct, setMinDownPct] = useState(DEFAULT_DOWN_PCT);
+  // เรท 2 เปิดที่ค่าตั้งต้นของมัน (ตรงกับการ์ดหน้ารวม) จนกว่าลูกค้าจะแก้ช่องเงินดาวน์ในหน้านี้เอง
+  // downTyped = ลูกค้าพิมพ์แล้ว · downEdited = ค่าที่พิมพ์ถูก commit แล้ว (ไม่ยิงคำขอเรท 2 ตั้งแต่ตัวอักษรแรก)
+  const downTyped = useRef(false);
+  const [downEdited, setDownEdited] = useState(false);
+  const markDownTyped = useCallback(() => {
+    downTyped.current = true;
+  }, []);
   const commitPct = useCallback((value: number) => {
+    if (downTyped.current) setDownEdited(true);
     setDownMode('PCT');
     setDownPct(value);
     setDownAmountInput(null);
   }, []);
   const commitAmount = useCallback(
     (value: number) => {
+      if (downTyped.current) setDownEdited(true);
       setDownMode('AMOUNT');
       setDownAmountInput(value);
       setDownPct(Math.round((value / installmentPrice) * 100));
@@ -355,6 +415,8 @@ function InstallmentCalculator({
   const quotes = useQueries({
     queries: (['BC', 'GFIN'] as const).map((provider) => {
       const term = provider === 'BC' ? months : gfinMonths;
+      // เรท 1 ใช้เงินดาวน์ในช่องเสมอ · เรท 2 ใช้เมื่อลูกค้าแก้ช่องแล้วเท่านั้น
+      const sendDown = provider === 'BC' || downEdited;
       return {
         queryKey: [
           'shop-installment-options',
@@ -362,20 +424,19 @@ function InstallmentCalculator({
           installmentPrice,
           provider,
           term,
-          downPct,
-          downMode,
-          downAmountInput,
+          sendDown ? downPct : null,
+          sendDown ? downMode : null,
+          sendDown ? downAmountInput : null,
         ],
         queryFn: async ({ signal }: { signal: AbortSignal }) => {
-          // Endpoint expects a fraction; exact baht are also sent to BOTH providers.
-          const params = new URLSearchParams({
-            productId,
-            provider,
-            downPct: String(downPct / 100),
-          });
+          // Endpoint expects a fraction; exact baht are also sent to BOTH providers once edited.
+          const params = new URLSearchParams({ productId, provider });
+          if (sendDown) {
+            params.set('downPct', String(downPct / 100));
+            if (downMode === 'AMOUNT' && downAmountInput != null)
+              params.set('customDownAmount', String(downAmountInput));
+          }
           if (term != null) params.set('months', String(term));
-          if (downMode === 'AMOUNT' && downAmountInput != null)
-            params.set('customDownAmount', String(downAmountInput));
           const { data } = await api.get<PreviewResponse>(
             `/api/shop/installment-preview?${params}`,
             {
@@ -431,6 +492,7 @@ function InstallmentCalculator({
             amount={effectiveDownAmount}
             onCommitPct={commitPct}
             onCommitAmount={commitAmount}
+            onUserEdit={markDownTyped}
           />
         </div>
         <p role="status" aria-live="polite" className="text-sm text-muted-foreground leading-snug">
@@ -444,15 +506,17 @@ function InstallmentCalculator({
         </p>
         <div aria-label="ผลคำนวณค่างวด" aria-busy={loading} className="grid gap-3 md:grid-cols-2">
           <QuoteOption
-            label="BESTCHOICE"
+            label={PROVIDER_LABEL.BC}
             query={quotes[0]}
+            badges={compareBadges(bcResult, gfinResult)}
             term={
               <TermSelect provider="BC" options={termOptions} value={months} onChange={setMonths} />
             }
           />
           <QuoteOption
-            label="GFIN"
+            label={PROVIDER_LABEL.GFIN}
             query={quotes[1]}
+            badges={compareBadges(gfinResult, bcResult)}
             term={
               <TermSelect
                 provider="GFIN"

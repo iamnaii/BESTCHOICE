@@ -8,7 +8,7 @@ export default function ShopLayout({ children, mobileFloatingContact = true }: {
     <div className="min-h-screen flex flex-col">
       <ShopHeader />
       <main className="flex-1">{children}</main>
-      <ShopFooter />
+      <ShopFooter clearFloatingContact={mobileFloatingContact} />
       <FloatingLineButton showOnMobile={mobileFloatingContact} />
     </div>
   );

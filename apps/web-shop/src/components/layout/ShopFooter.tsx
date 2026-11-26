@@ -24,7 +24,19 @@ const socialCls =
   'size-11 rounded-full bg-white/10 ring-1 ring-inset ring-white/15 grid place-items-center ' +
   'text-white/75 transition-colors';
 
-export default function ShopFooter() {
+/**
+ * `clearFloatingContact`: on phones the round chat button floats 80–136px above the
+ * bottom edge, on the left. Scrolled to the very end, that is exactly where the
+ * last left-aligned line of the "ติดต่อเรา" column (opening hours) lands, so the
+ * button covers it. The extra gap above the © row lifts every column above the
+ * button while the © row stays in the free strip below it. md+ is unaffected
+ * (the button sits 24–80px from the bottom there, beside the centred © text).
+ */
+export default function ShopFooter({
+  clearFloatingContact = false,
+}: {
+  clearFloatingContact?: boolean;
+}) {
   return (
     <footer className="mt-12 bg-ink text-white/85">
       <div className="container mx-auto max-w-7xl px-4 md:px-6 pt-12 pb-8">
@@ -129,7 +141,9 @@ export default function ShopFooter() {
           </div>
         </div>
 
-        <div className="mt-10 border-t border-white/15 pt-6 text-center text-xs text-white/75 leading-snug">
+        <div
+          className={`${clearFloatingContact ? 'mt-18 md:mt-10' : 'mt-10'} border-t border-white/15 pt-6 text-center text-xs text-white/75 leading-snug`}
+        >
           © 2026 BESTCHOICE Phone Shop — ลพบุรี
         </div>
       </div>

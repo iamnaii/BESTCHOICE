@@ -7,19 +7,25 @@
  * config file was deleted in the 2026-08 redesign so nobody "fixes" a color
  * in a file the build never reads.
  *
- * Palette source: bestchoice-web-style-guide.html (2026-08-31). The logo
- * gradient runs #38EDCC (mint) -> #1DA479 (green); text/UI greens step down
- * to #167F5E (buttons/links/prices, 5.0:1 on white) and #0F5F44 (dark
- * sections). The ONE warm attention color is #F25C1A, reserved for the chat
- * CTA; #FFC933 carries price/promo badges. Neutrals keep a slight green
- * bias so they read as chosen rather than inherited.
+ * Palette: navy + green (owner 2026-11-26 — "สีเขียวเยอะไปจนเลี่ยน", picked
+ * from a whole-page comparison of green / navy / charcoal / cream). Replaces
+ * the all-green palette of bestchoice-web-style-guide.html (2026-08-31).
+ *   - Navy (#1D3A5C, ink #14263D) = actions, prices, links, selected states,
+ *     dark sections. White on #1D3A5C reads 11.6:1.
+ *   - Green (emerald-*) = brand identity and meaning only: logo/wordmark,
+ *     the mint gradient, stand-alone icons, check marks, success/pass states.
+ *     Tinted surfaces are pale navy (muted/accent), not mint.
+ * The ONE warm attention color is #F25C1A, reserved for the chat CTA (orange
+ * is navy's complement, so it still isolates); #FFC933 carries price/promo
+ * badges. Neutrals keep a slight navy bias so they read as chosen.
+ * The sell/trade-in flow keeps its own approved green set (.sell-flow below).
  */
 
 @theme {
   /* Semantic core — every bg-/text-/border- token utility the app uses must
      have its --color-* declared here. */
   /* Canvas is WHITE per the style guide's 60/30/10 rule; card-vs-canvas
-     separation now comes from borders (#DCE7E3) and mint-tint (#E8FAF4)
+     separation comes from borders (#DDE3EA) and pale-navy (#F2F5F9)
      section backgrounds, not an off-white page. */
   --color-background: #FFFFFF;
   /* Sell flow: soft canvas separates the white assessment card. */
@@ -29,20 +35,21 @@
   --color-sell-price: #EAF6EE;
   --color-sell-price-border: #ACCFB8;
   --color-foreground: #2B2B2B;
-  --color-muted: #E8FAF4;
-  --color-muted-foreground: #6B7370;
-  --color-border: #DCE7E3;
-  /* Brand primary = the guide's "green-deep": buttons, links, price text.
-     White text on it passes 5.0:1 at any size. The brighter logo green
-     #1DA479 lives at emerald-500 for large lockups/decoration only. */
-  --color-primary: #167F5E;
+  --color-muted: #F2F5F9;
+  /* 4.67:1 on accent, 5.17:1 on muted, 5.65:1 on white (the old green-grey
+     #6B7370 fell to 4.45:1 on the pale tints). */
+  --color-muted-foreground: #5F6873;
+  --color-border: #DDE3EA;
+  /* Primary = navy: buttons, links, price text, selected states. White text on
+     it reads 11.6:1. Brand green stays on the emerald scale (logo, icons). */
+  --color-primary: #1D3A5C;
   --color-primary-foreground: #FFFFFF;
   --color-card: #FFFFFF;
   --color-card-foreground: #2B2B2B;
-  --color-secondary: #E8FAF4;
-  --color-secondary-foreground: #0F5F44;
-  --color-accent: #DDF5EC;
-  --color-accent-foreground: #0F5F44;
+  --color-secondary: #EEF2F7;
+  --color-secondary-foreground: #14263D;
+  --color-accent: #E4EAF2;
+  --color-accent-foreground: #14263D;
 
   /* CTA — the ONE warm attention color (Von Restorff isolation effect).
      Reserved for the chat/conversion CTA only. Hover = orange-600. */
@@ -73,24 +80,37 @@
   --color-emerald-800: #0B4735;
   --color-emerald-900: #073527;
 
+  /* Navy scale — the action color. 50/100 = muted/accent tints, 700 = primary,
+     800 = ink (dark buttons, footer), 900 = hover on ink. */
+  --color-navy-50:  #F2F5F9;
+  --color-navy-100: #E4EAF2;
+  --color-navy-200: #C9D4E2;
+  --color-navy-300: #9DB0C8;
+  --color-navy-400: #6B84A3;
+  --color-navy-500: #435F82;
+  --color-navy-600: #2A4769;
+  --color-navy-700: #1D3A5C;
+  --color-navy-800: #14263D;
+  --color-navy-900: #0E1C2E;
+
   /* Neutrals — kept under the zinc-* names so the ~90 existing utility
-     classes keep working, re-tinted to the guide's ink/charcoal/gray/line
-     ramp. A pure grey next to this green reads as an accident. */
-  --color-zinc-50:  #F7FAF9;
-  --color-zinc-100: #EFF4F2;
-  --color-zinc-200: #DCE7E3;
-  --color-zinc-300: #C3D2CC;
-  --color-zinc-400: #93A39D;
-  --color-zinc-500: #6B7370;
-  --color-zinc-600: #5B655F;
+     classes keep working, re-tinted with a slight navy bias. A pure grey
+     next to the navy reads as an accident. */
+  --color-zinc-50:  #F7F8FA;
+  --color-zinc-100: #EEF1F5;
+  --color-zinc-200: #DDE3EA;
+  --color-zinc-300: #C5CED9;
+  --color-zinc-400: #949EAA;
+  --color-zinc-500: #6A7380;
+  --color-zinc-600: #57606B;
   --color-zinc-700: #4D4D4D;
-  --color-zinc-800: #3A423E;
+  --color-zinc-800: #363C44;
   --color-zinc-900: #2B2B2B;
 
-  /* Ink — the guide's darkest green (#0F5F44): footer, trust band, and the
-     solid-green capsule buttons. Distinct from --color-cta, which stays
-     reserved for the single highest-intent action (chat). */
-  --color-ink: #0F5F44;
+  /* Ink — dark navy (#14263D): footer, trust band, and the solid capsule
+     buttons. Distinct from --color-cta, which stays reserved for the single
+     highest-intent action (chat). */
+  --color-ink: #14263D;
   --color-ink-foreground: #FFFFFF;
 
   /* Sand — warm accent for local-shop sections, retinted toward the promo
@@ -115,9 +135,9 @@
   --color-red-100: #FEE2E2;
   --color-red-900: #7F1D1D;
 
-  /* Semantic: condition badges (used-iPhone grading). Grade A uses the
-     600 green so small white text keeps 4.5:1 (guide contrast rule). */
-  --color-condition-a: var(--color-emerald-600);
+  /* Semantic: condition badges (used-iPhone grading). Grade A follows the
+     primary navy (owner 2026-11-26 — was the 600 green); white text 11.6:1. */
+  --color-condition-a: var(--color-primary);
   --color-condition-b: var(--color-amber-500);
   --color-condition-c: var(--color-orange-500);
 
@@ -127,7 +147,7 @@
 
   /* Focus ring — was never declared, so every ring-ring utility silently
      failed to generate and keyboard focus had NO indicator at all. */
-  --color-ring: #167F5E;
+  --color-ring: #1D3A5C;
 
   /* Neutral shadows. Green-tinted shadows read as a smudge under the white
      cards; stack plain near-black at low alpha. */
@@ -178,8 +198,20 @@
 }
 
 /* Approved sell/trade-in option A: white/mint. Keep other storefront routes
-   on their existing palette; all sell screens inherit these semantic pairs. */
+   on their existing palette; all sell screens inherit these semantic pairs.
+   The storefront moved to navy on 2026-11-26 but this flow keeps its approved
+   green set, so it also pins the mint muted tint and the green-biased zinc
+   ramp it was designed on. */
 .sell-flow {
+  --color-muted: #E8FAF4;
+  --color-zinc-50:  #F7FAF9;
+  --color-zinc-100: #EFF4F2;
+  --color-zinc-200: #DCE7E3;
+  --color-zinc-300: #C3D2CC;
+  --color-zinc-400: #93A39D;
+  --color-zinc-500: #6B7370;
+  --color-zinc-600: #5B655F;
+  --color-zinc-800: #3A423E;
   --color-foreground: #172e25;
   --color-card-foreground: #172e25;
   --color-primary: #12724f;

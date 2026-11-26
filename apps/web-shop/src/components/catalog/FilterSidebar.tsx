@@ -71,7 +71,7 @@ function bandId(f: CatalogFilters): string {
 
 const selectCls =
   'w-full h-11 rounded-xl border-0 bg-muted px-3.5 text-base md:text-sm text-foreground leading-snug ' +
-  'focus:outline-none focus:ring-2 focus:ring-emerald-500/50';
+  'focus:outline-none focus:ring-2 focus:ring-ring/50';
 
 const labelCls = 'block text-sm text-muted-foreground mb-2 leading-snug';
 
@@ -122,12 +122,12 @@ export function FilterSidebar({ filters, onChange, models, plan, onClearAll, bar
                 className={cn(
                   'flex flex-col items-center justify-center gap-2 rounded-2xl px-2 py-4 text-sm leading-snug transition-colors',
                   on
-                    ? 'bg-emerald-50 text-emerald-700 ring-2 ring-inset ring-emerald-500/45'
+                    ? 'bg-accent text-accent-foreground ring-2 ring-inset ring-primary/45'
                     : 'bg-muted text-muted-foreground hover:bg-zinc-200',
                 )}
               >
                 <Icon
-                  className={cn('size-6', on ? 'text-emerald-600' : 'text-zinc-400')}
+                  className={cn('size-6', on ? 'text-primary' : 'text-zinc-400')}
                   aria-hidden
                 />
                 {label}
@@ -236,7 +236,7 @@ function PlanBlock({ plan, bare }: { plan: PlanControls; bare?: boolean }) {
   const downId = bare ? 'mobile-filter-down' : 'filter-down';
   const monthsId = bare ? 'mobile-filter-months' : 'filter-months';
   return (
-    <div className="rounded-2xl bg-emerald-50 p-3.5">
+    <div className="rounded-2xl bg-muted p-3.5">
       <DownAmountField
         id={downId}
         hintId={`${downId}-hint`}
@@ -244,7 +244,7 @@ function PlanBlock({ plan, bare }: { plan: PlanControls; bare?: boolean }) {
         disabled={plan.freeDown}
         onCommit={plan.onDown}
       />
-      <p id={`${downId}-hint`} className="mt-1.5 text-xs text-emerald-800/70 leading-snug">
+      <p id={`${downId}-hint`} className="mt-1.5 text-xs text-muted-foreground leading-snug">
         {plan.freeDown
           ? 'กำลังแสดงเฉพาะเครื่องที่ไม่ต้องวางดาวน์ — เอาติ๊กออกเพื่อตั้งเงินดาวน์เอง'
           : copy.catalog.downHint}
@@ -256,14 +256,14 @@ function PlanBlock({ plan, bare }: { plan: PlanControls; bare?: boolean }) {
             'mt-3 flex min-h-11 cursor-pointer items-center gap-2.5 rounded-xl px-3 text-sm leading-snug',
             plan.freeDown
               ? 'bg-sand-50 font-semibold text-sand-900 ring-1 ring-inset ring-promo/60'
-              : 'bg-card text-emerald-900',
+              : 'bg-card text-foreground',
           )}
         >
           <input
             type="checkbox"
             checked={plan.freeDown}
             onChange={(e) => plan.onFreeDown(e.target.checked)}
-            className="size-5 shrink-0 accent-emerald-600"
+            className="size-5 shrink-0 accent-primary"
           />
           ฟรีดาวน์
           <span className="num ml-auto text-xs font-normal text-muted-foreground">
@@ -275,14 +275,14 @@ function PlanBlock({ plan, bare }: { plan: PlanControls; bare?: boolean }) {
       {plan.monthsOptions.length > 0 && (
         <div className="mt-3">
           <label
-            className="block text-sm text-emerald-900 mb-2 leading-snug"
+            className="block text-sm text-foreground mb-2 leading-snug"
             htmlFor={monthsId}
           >
             จำนวนงวด
           </label>
           <NativeSelect wrapperClassName="max-w-full w-full"
             id={monthsId}
-            className="h-10 rounded-xl border-0 bg-card px-3 text-base md:text-sm text-foreground leading-snug focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+            className="h-10 rounded-xl border-0 bg-card px-3 text-base md:text-sm text-foreground leading-snug focus:outline-none focus:ring-2 focus:ring-ring/50"
             value={plan.months ?? ''}
             disabled={plan.freeDown}
             onChange={(e) => plan.onMonths(e.target.value ? Number(e.target.value) : null)}

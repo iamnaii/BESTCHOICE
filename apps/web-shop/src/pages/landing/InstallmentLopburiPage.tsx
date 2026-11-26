@@ -123,7 +123,7 @@ export default function InstallmentLopburiPage() {
                 <Card key={s.no} variant="outlined">
                   <CardBody>
                     <div className="flex items-start gap-3 leading-snug">
-                      <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 text-sm font-semibold">
+                      <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground text-sm font-semibold">
                         {s.no}
                       </span>
                       <div>
@@ -136,14 +136,14 @@ export default function InstallmentLopburiPage() {
               ))}
             </div>
             <p className="mt-3 reading-block text-muted-foreground">
-              อ่านขั้นตอนละเอียดได้ที่ <Link to="/how-it-works" className="text-emerald-700 underline">วิธีผ่อน</Link>{' '}
-              และเงื่อนไขทั้งหมดที่ <Link to="/installment-terms" className="text-emerald-700 underline">เงื่อนไขการผ่อน</Link>
+              อ่านขั้นตอนละเอียดได้ที่ <Link to="/how-it-works" className="text-primary underline">วิธีผ่อน</Link>{' '}
+              และเงื่อนไขทั้งหมดที่ <Link to="/installment-terms" className="text-primary underline">เงื่อนไขการผ่อน</Link>
             </p>
           </section>
 
           <LandingFaq title="คำถามที่คนลพบุรีถามบ่อย" items={FAQS} />
 
-          <section className="rounded-2xl bg-emerald-50 p-6 md:p-8">
+          <section className="rounded-2xl bg-muted p-6 md:p-8">
             <Stack gap={3} className="items-start leading-snug">
               <h2 className="text-xl font-bold leading-snug">พร้อมผ่อนแล้ว?</h2>
               <p className="text-sm text-muted-foreground leading-snug">

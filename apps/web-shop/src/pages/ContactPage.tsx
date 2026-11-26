@@ -43,15 +43,15 @@ export default function ContactPage() {
       <Container>
         <Stack gap={6} className="py-8">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Card variant="outlined" className="bg-emerald-50 border-emerald-200">
+            <Card variant="outlined" className="bg-muted border-border">
               <CardBody>
                 <Stack gap={4} className="leading-snug">
-                  <span className="inline-flex size-11 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+                  <span className="inline-flex size-11 items-center justify-center rounded-full bg-accent text-emerald-700">
                     <MessageCircle className="size-6" aria-hidden="true" />
                   </span>
                   <div className="space-y-1">
                     <h3 className="text-lg font-semibold leading-snug">{copy.contact.lineTitle}</h3>
-                    <p className="text-base font-medium text-emerald-700 leading-snug">
+                    <p className="text-base font-medium text-primary leading-snug">
                       {copy.contact.lineHandle}
                     </p>
                     <p className="text-sm text-muted-foreground leading-snug">

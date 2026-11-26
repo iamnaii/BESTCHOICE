@@ -22,7 +22,7 @@ export function CategoryHero({ title, description, breadcrumbs }: Props) {
               {breadcrumbs.map((b, i) => (
                 <span key={i} className="inline-flex items-center gap-1">
                   {b.to ? (
-                    <Link to={b.to} className="hover:text-emerald-600">
+                    <Link to={b.to} className="hover:text-primary">
                       {b.label}
                     </Link>
                   ) : (

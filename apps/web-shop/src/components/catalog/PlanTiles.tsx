@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils';
+import { formatNumber } from '@/lib/format';
 
 /** หนึ่งทางผ่อนบนการ์ด: วางดาวน์เท่าไร ผ่อนเดือนละเท่าไร กี่งวด */
 export interface PlanQuote {
@@ -16,9 +17,11 @@ export function showsRate2Tile(rate1: PlanQuote | null, rate2: PlanQuote | null)
   return !rate1 || rate2.down < rate1.down;
 }
 
-// px-1.5 บนมือถือ: ที่จอ 360px กล่องกว้าง 126px — ค่างวดห้าหลัก ("ผ่อน ฿12,345 × 12 งวด")
-// กว้าง 120px ต้องได้พื้นที่ครบจึงไม่ยื่นออกนอกกล่อง
-const TILE = 'rounded-2xl px-1.5 py-2 sm:px-3';
+// แถวราคาไม่มีพื้นสี (เจ้าของ 2026-11-26 "ดูเลี่ยนเกิน") — กล่องมิ้นต์ซ้อนบนการ์ดขาวทำให้เขียว
+// ทับกันสามชั้น · ตอนนี้คั่นสองทางผ่อนด้วยเส้นบาง สีหลัก (กรมท่า) เหลือที่ตัวเลขดาวน์อย่างเดียว
+// ไม่มี padding ซ้าย-ขวาของตัวเอง: ที่จอ 360px เนื้อที่การ์ดกว้าง ~130px ค่างวดห้าหลัก
+// ("ผ่อน ฿12,345 × 12 งวด") กว้าง 120px ต้องได้พื้นที่ครบ
+const ROW = 'py-2 first:pt-0 last:pb-0';
 const BIG = 'num text-xl md:text-2xl font-bold whitespace-nowrap';
 const BIG_NUM = 'leading-tight';
 
@@ -31,7 +34,7 @@ function InstallmentLine({ plan }: { plan: PlanQuote }) {
       className="num mt-0.5 text-xs text-muted-foreground leading-snug min-[360px]:whitespace-nowrap"
     >
       <span className="whitespace-nowrap">
-        ผ่อน <span className="font-semibold text-primary">฿{plan.monthly.toLocaleString()}</span>
+        ผ่อน <span className="font-semibold text-foreground">฿{formatNumber(plan.monthly)}</span>
       </span>{' '}
       <span className="whitespace-nowrap">
         {plan.months ? `× ${plan.months} งวด` : 'ต่อเดือน'}
@@ -42,9 +45,13 @@ function InstallmentLine({ plan }: { plan: PlanQuote }) {
 
 function DownTile({ plan, kind }: { plan: PlanQuote; kind: 'rate1' | 'rate2' }) {
   return (
-    <div data-plan={kind} className={cn(TILE, 'bg-muted')}>
-      <div className="font-head text-xs font-medium text-muted-foreground leading-snug">ดาวน์</div>
-      <div className={cn(BIG, BIG_NUM, 'text-primary')}>฿{plan.down.toLocaleString()}</div>
+    <div data-plan={kind} className={ROW}>
+      <div className="flex items-baseline gap-1.5">
+        <span className="font-head text-xs font-medium text-muted-foreground leading-snug">
+          ดาวน์
+        </span>
+        <span className={cn(BIG, BIG_NUM, 'text-primary')}>฿{formatNumber(plan.down)}</span>
+      </div>
       <InstallmentLine plan={plan} />
     </div>
   );
@@ -69,16 +76,16 @@ export function PlanTiles({ rate1, rate2, freeDownOnly = false }: Props) {
   }
 
   return (
-    <div className="space-y-1.5">
+    <div className="divide-y divide-border">
       {top && <DownTile plan={top} kind="rate1" />}
       {bottom &&
         (bottom.down === 0 ? (
           // เหลืองสงวนให้โปรจริง — ฟรีดาวน์เข้าข่าย · มีคำกำกับเสมอ ไม่บอกด้วยสีอย่างเดียว
-          <div
-            data-plan="free-down"
-            className={cn(TILE, 'bg-sand-50 ring-1 ring-inset ring-promo/60')}
-          >
-            <div className={cn(BIG, 'font-head leading-snug text-sand-900')}>ฟรีดาวน์</div>
+          // เป็นป้ายเล็ก ไม่ใช่กล่องเต็มความกว้าง: สีอุ่นจุดเดียวบนการ์ดพอให้สะดุดตา
+          <div data-plan="free-down" className={ROW}>
+            <div className="inline-flex rounded-lg bg-promo px-2 py-0.5 font-head text-base font-bold leading-snug text-promo-foreground whitespace-nowrap">
+              ฟรีดาวน์
+            </div>
             <InstallmentLine plan={bottom} />
           </div>
         ) : (

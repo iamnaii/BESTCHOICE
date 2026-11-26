@@ -38,6 +38,7 @@ import {
   StickyBottomBar,
   StickyBottomBarSpacer,
 } from '@/components';
+import { formatNumber } from '@/lib/format';
 
 interface ProductDetail {
   shopWarrantyDays?: number;
@@ -294,7 +295,8 @@ export default function ProductDetailPage() {
   }
 
   return (
-    <ShopLayout>
+    // มือถือมีปุ่มแชทในแถบล่างแล้ว — ปุ่มแชทลอยจะซ้ำและบังชื่อรุ่น (แบบเดียวกับหน้ารวมสินค้า)
+    <ShopLayout mobileFloatingContact={false}>
       <Container className="py-6 md:py-8">
         <Breadcrumb
           items={[
@@ -340,8 +342,8 @@ export default function ProductDetailPage() {
             <div className="space-y-1">
               <div className="flex flex-wrap items-baseline gap-2">
                 {price != null && price > 0 ? (
-                  <div className="num text-3xl md:text-4xl font-bold text-emerald-600 leading-snug">
-                    ฿{price.toLocaleString()}
+                  <div className="num text-3xl md:text-4xl font-bold text-primary leading-snug">
+                    ฿{formatNumber(price)}
                   </div>
                 ) : (
                   <div className="text-2xl md:text-3xl font-semibold text-muted-foreground leading-snug">
@@ -362,8 +364,8 @@ export default function ProductDetailPage() {
                 )}
               </div>
               {monthlyFrom && (
-                <div className="num text-base font-semibold text-emerald-700 leading-snug">
-                  ผ่อนเริ่ม ฿{monthlyFrom.toLocaleString()}/เดือน
+                <div className="num text-base font-semibold text-primary leading-snug">
+                  ผ่อนเริ่ม ฿{formatNumber(monthlyFrom)}/เดือน
                   <span className="text-xs font-normal text-muted-foreground">
                     {' '}
                     (12 งวด ดาวน์ 15%)
@@ -517,7 +519,7 @@ export default function ProductDetailPage() {
         <button
           type="button"
           onClick={handleShare}
-          className="inline-flex items-center justify-center gap-1.5 min-h-11 px-4 text-sm text-emerald-700 hover:underline underline-offset-4 leading-snug"
+          className="inline-flex items-center justify-center gap-1.5 min-h-11 px-4 text-sm text-primary hover:underline underline-offset-4 leading-snug"
         >
           <Share2 className="size-4" aria-hidden="true" />
           {copy.product.shareCta}

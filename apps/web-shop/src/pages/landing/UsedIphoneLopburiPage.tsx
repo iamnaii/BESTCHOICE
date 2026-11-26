@@ -108,15 +108,15 @@ export default function UsedIphoneLopburiPage() {
             </div>
             <p className="mt-3 reading-block text-muted-foreground">
               ทุกเครื่องแสดงรูปถ่ายเครื่องจริง ราคาเงินสด และค่างวดผ่อนบนหน้า{' '}
-              <Link to="/products" className="text-emerald-700 underline">สินค้าทั้งหมด</Link>{' '}
+              <Link to="/products" className="text-primary underline">สินค้าทั้งหมด</Link>{' '}
               — เงื่อนไขประกันอ่านได้ที่{' '}
-              <Link to="/returns" className="text-emerald-700 underline">การรับประกันและคืนสินค้า</Link>
+              <Link to="/returns" className="text-primary underline">การรับประกันและคืนสินค้า</Link>
             </p>
           </section>
 
           <LandingFaq title="คำถามที่พบบ่อยเรื่องเครื่องมือสอง" items={FAQS} />
 
-          <section className="rounded-2xl bg-emerald-50 p-6 md:p-8">
+          <section className="rounded-2xl bg-muted p-6 md:p-8">
             <Stack gap={3} className="items-start leading-snug">
               <h2 className="text-xl font-bold leading-snug">เลือกเครื่องมือสองที่ถูกใจ</h2>
               <p className="text-sm text-muted-foreground leading-snug">

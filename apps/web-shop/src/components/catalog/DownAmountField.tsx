@@ -56,7 +56,7 @@ export function DownAmountField({
       className={cn(
         'flex items-center gap-2',
         pill
-          ? 'min-h-11 min-w-40 flex-1 rounded-full bg-muted pl-4 pr-3.5 ring-1 ring-inset ring-border/70 focus-within:ring-2 focus-within:ring-emerald-500/50'
+          ? 'min-h-11 min-w-40 flex-1 rounded-full bg-muted pl-4 pr-3.5 ring-1 ring-inset ring-border/70 focus-within:ring-2 focus-within:ring-ring/50'
           : 'justify-between',
       )}
     >
@@ -64,7 +64,7 @@ export function DownAmountField({
         htmlFor={id}
         className={cn(
           'text-sm leading-snug whitespace-nowrap',
-          pill ? 'font-head text-accent-foreground' : 'text-emerald-900',
+          pill ? 'font-head text-accent-foreground' : 'text-foreground',
         )}
       >
         {copy.catalog.downLabel}
@@ -90,13 +90,13 @@ export function DownAmountField({
             'num h-11 text-right text-base font-bold leading-snug disabled:opacity-50 focus:outline-none',
             pill
               ? 'min-w-0 flex-1 bg-transparent text-primary'
-              : 'w-28 rounded-lg bg-card px-2 text-emerald-800 focus:ring-2 focus:ring-emerald-500/50',
+              : 'w-28 rounded-lg bg-card px-2 text-primary focus:ring-2 focus:ring-ring/50',
           )}
         />
         <span
           className={cn(
             'text-sm leading-snug',
-            pill ? 'font-head text-accent-foreground' : 'font-bold text-emerald-800',
+            pill ? 'font-head text-accent-foreground' : 'font-bold text-foreground',
           )}
         >
           {copy.catalog.downUnit}

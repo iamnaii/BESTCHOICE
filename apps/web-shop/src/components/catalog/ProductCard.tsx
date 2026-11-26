@@ -1,10 +1,13 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
+import { ChevronLeft, ChevronRight } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import { shopInfo } from '@/lib/copy';
 import { deviceOriginLabel, type DeviceOrigin } from '@/lib/device-origin';
 import { DEFAULT_DETAIL_MONTHS, MAX_DETAIL_MONTHS } from '@/lib/installment-defaults';
 import { PlanTiles } from './PlanTiles';
+import { useGallerySwipe } from './useGallerySwipe';
+import { formatNumber } from '@/lib/format';
 
 export interface ProductGroup {
   deviceOrigin?: DeviceOrigin | null;
@@ -65,11 +68,11 @@ interface Props {
 
 /**
  * ป้ายเกรด = ข้อมูล ไม่ใช่คำเตือน (คำตัดสินเจ้าของ 2026-08-31)
- * ห้ามใช้เหลือง/ส้ม/แดง — ทุกใบดีไซน์เดียวกัน ต่างแค่ความเข้มในโทนเขียวแบรนด์
+ * ห้ามใช้เหลือง/ส้ม/แดง — ทุกใบดีไซน์เดียวกัน ต่างแค่ความเข้มในสีหลัก (กรมท่า ตั้งแต่ 2026-11-26)
  * (ยิ่งสภาพใหม่ยิ่งเข้ม) ส้มถูกสงวนให้ปุ่มแชทอย่างเดียวตาม style guide ข้อ 2
  */
 const GRADE_STYLES: Record<string, string> = {
-  A: 'bg-primary text-white',
+  A: 'bg-primary text-white ring-transparent',
   B: 'bg-white text-primary ring-border',
   C: 'bg-white text-zinc-700 ring-border',
 };
@@ -79,10 +82,22 @@ const GRADE_CHIP: Record<string, string> = {
   C: 'bg-zinc-700 text-white',
 };
 
-/** Max thumbnails rendered before the strip collapses into a "+N" tile. */
-const THUMB_SLOTS = 4;
-/** The reference stacks up to five tags and buries the product photo. */
+/** ป้ายข้อมูลใต้ชื่อรุ่น — เกินสองใบแถวป้ายจะยาวกว่าราคา */
 const MAX_TAGS = 2;
+/**
+ * ป้ายข้อมูลเครื่อง (ไทย/นอก · แบต · เข้าใหม่) — เทากลาง (2026-11-26 "สีเขียวเยอะไปจนเลี่ยน"):
+ * สีบนการ์ดเหลือแค่ตัวเลขราคากับปุ่ม (กรมท่า) เพราะรูปสินค้ามีมุมมิ้นต์ของแม่แบบอยู่แล้ว
+ */
+const INFO_CHIP =
+  'inline-flex items-center gap-1 rounded-full bg-zinc-100 px-1.5 sm:px-2 py-0.5 text-xs text-zinc-700 leading-snug max-w-full whitespace-nowrap';
+
+/**
+ * การ์ดยืม 3 แถวของกริดแม่ (รูป · ข้อมูล · แถบราคา) ด้วย subgrid ⇒ แถบราคาทุกใบในแถวเดียวกันเริ่มระดับเดียวกัน
+ * แม้ชื่อรุ่นหรือป้ายของบางใบตกบรรทัด · ผู้วางการ์ดที่ห่อการ์ดด้วย element อื่น (CatalogResults) ต้องใส่คลาสนี้ที่ตัวห่อด้วย
+ * · การ์ดต้องมีลูกตรง 3 ตัวพอดี · เบราว์เซอร์ที่ไม่รู้จัก subgrid ได้การ์ด flex เดิม (แถบอาจไม่ตรงกัน แต่ไม่เพี้ยน)
+ */
+export const CARD_ROW_SUBGRID =
+  'supports-[grid-template-rows:subgrid]:row-span-3 supports-[grid-template-rows:subgrid]:grid supports-[grid-template-rows:subgrid]:grid-rows-subgrid supports-[grid-template-rows:subgrid]:gap-y-0';
 
 export function ProductCard({
   product: p,
@@ -113,7 +128,13 @@ export function ProductCard({
   const to = p.id ? `/products/${p.id}${qs ? `?${qs}` : ''}` : '/products';
   const photos = (p.images?.length ? p.images : p.thumbnailUrl ? [p.thumbnailUrl] : []).slice(0, 5);
   const [active, setActive] = useState(0);
-  const current = photos[Math.min(active, photos.length - 1)];
+  const shown = Math.min(active, Math.max(photos.length - 1, 0));
+  const current = photos[shown];
+  const many = photos.length > 1;
+  // รูปเต็มขอบการ์ด ไม่มีแถบรูปย่อ — เลื่อนดูมุมอื่นด้วยการปัดรูป (มือถือ) หรือลูกศรตอนชี้ (เมาส์)
+  const step = (direction: number) =>
+    setActive((shown + direction + photos.length) % photos.length);
+  const swipe = useGallerySwipe(step, many);
 
   const isNew = p.condition === 'NEW';
   const isUnit = p.kind === 'UNIT';
@@ -129,253 +150,228 @@ export function ProductCard({
       ? [{ label: 'ใกล้หมด', warm: true }]
       : [];
 
-  const visibleThumbs = photos.length > THUMB_SLOTS ? photos.slice(0, THUMB_SLOTS - 1) : photos;
-  const overflow = photos.length - visibleThumbs.length;
   const specValue = [p.storage, isUnit ? p.color : isNew ? 'ของใหม่' : undefined]
     .filter(Boolean)
     .join(' · ');
 
+  // New stock gets a plain chip; only a graded second-hand device earns the
+  // letter, so the letter always means "this is the grade". Below sm the
+  // two-column grid leaves ~160px of card, so the word GRADE drops and the
+  // coloured letter carries it alone.
+  const conditionChip = (
+    <span
+      className={cn(
+        'inline-flex items-center gap-1 rounded-full ring-1 ring-inset text-xs leading-snug whitespace-nowrap',
+        isNew
+          ? 'bg-ink text-white ring-transparent px-1.5 py-0.5 sm:px-2'
+          : cn(
+              grade ? 'p-0.5 sm:pr-2' : 'px-1.5 py-0.5 sm:px-2',
+              GRADE_STYLES[grade ?? ''] ?? 'bg-zinc-700 text-white ring-transparent',
+            ),
+      )}
+      aria-label={
+        isNew ? 'เครื่องมือ 1 ของใหม่' : grade ? `สภาพเครื่องเกรด ${grade}` : 'เครื่องมือสอง'
+      }
+    >
+      {!isNew && grade && (
+        <span
+          className={cn(
+            'size-4 rounded-full grid place-items-center font-brand text-[10px] font-bold leading-snug shrink-0',
+            GRADE_CHIP[grade] ?? 'bg-white text-zinc-700',
+          )}
+          aria-hidden
+        >
+          {grade}
+        </span>
+      )}
+      <span
+        className={cn(
+          'font-brand font-bold uppercase',
+          isNew || !grade ? '' : 'hidden sm:inline',
+        )}
+        aria-hidden
+      >
+        {isNew ? 'มือ 1' : grade ? `GRADE ${grade}` : 'มือ 2'}
+      </span>
+    </span>
+  );
+
   return (
     <article
       className={cn(
-        'group flex flex-col rounded-[26px] md:rounded-[30px] border border-border bg-card p-2 md:p-2.5',
-        'shadow-lg backdrop-blur-sm transition-transform duration-200 ease-out',
-        'hover:-translate-y-0.5 motion-reduce:transform-none motion-reduce:transition-none',
+        'group flex flex-col overflow-hidden rounded-2xl md:rounded-3xl border border-border bg-card',
+        CARD_ROW_SUBGRID,
+        'shadow-sm transition-[transform,box-shadow] duration-200 ease-out',
+        'hover:-translate-y-0.5 hover:shadow-lg motion-reduce:transform-none motion-reduce:transition-none',
       )}
     >
-      <Link to={to} className="block rounded-[20px] md:rounded-3xl">
-        <div
-          className={cn(
-            'relative aspect-[4/3] rounded-[20px] md:rounded-3xl bg-muted overflow-hidden flex items-center justify-center',
-            soldOut && 'opacity-60',
-          )}
-        >
-          {current ? (
-            <img
-              src={current}
-              alt={`${p.brand} ${p.model}`}
-              className="max-h-[80%] max-w-[80%] object-contain"
-              loading="lazy"
-            />
-          ) : (
-            <div className="text-muted-foreground text-xs">ไม่มีรูป</div>
-          )}
+      {/* รูปเต็มขอบการ์ด (เจ้าของ 2026-11-26) ไม่มีกรอบสีซ้อน · ใช้ object-contain ไม่ใช่ cover:
+          รูปจัตุรัส (รูปจากแอปแม่แบบของร้าน) เต็มกรอบเท่ากันทุกอย่าง แต่ระบบไม่ได้บังคับให้รูปเป็นจัตุรัส
+          (หน้าอัปโหลด/รับของย่อรูปโดยคงสัดส่วน) — รูปแนวตั้ง/แนวนอนจึงต้องแสดงครบ ห้ามตัดหัวท้ายเครื่อง
+          · บนรูปไม่มีป้ายของการ์ด เพราะรูปจริงมีป้ายมุมถ่าย ("ด้านหน้า") ฝังมาแล้ว */}
+      <div className="relative touch-pan-y select-none" {...swipe}>
+        <Link to={to} className="block">
+          <div
+            className={cn(
+              'relative aspect-square overflow-hidden bg-zinc-100',
+              soldOut && 'opacity-60',
+            )}
+          >
+            {current ? (
+              <img
+                src={current}
+                alt={`${p.brand} ${p.model}`}
+                className="size-full object-contain"
+                loading="lazy"
+                draggable={false}
+              />
+            ) : (
+              <div className="grid size-full place-items-center text-xs text-muted-foreground">
+                ไม่มีรูป
+              </div>
+            )}
 
-          <div className="absolute top-1.5 inset-x-1.5 md:top-2 md:inset-x-2 flex flex-wrap items-start justify-between gap-1.5">
-            {/* New stock gets a plain pill; only a graded second-hand device earns
-              the letter chip, so the chip always means "this is the grade".
-              Below sm the two-column grid leaves ~168px of card, so the word
-              GRADE drops and the coloured letter carries it alone. */}
-            <span
-              className={cn(
-                'inline-flex items-center gap-1.5 rounded-full backdrop-blur-md ring-1 ring-inset max-w-full',
-                isNew
-                  ? 'bg-ink text-white ring-white/55 px-2 py-1 md:px-2.5'
-                  : cn(
-                      // The 2px left padding only makes sense around the grade
-                      // circle — an ungraded "มือ 2" pill needs even padding or
-                      // the label hugs the left edge.
-                      grade ? 'p-0.5 sm:pr-2' : 'px-2 py-1 md:px-2.5',
-                      'ring-white/55',
-                      GRADE_STYLES[grade ?? ''] ?? 'bg-zinc-700 text-white',
-                    ),
-              )}
-              aria-label={
-                isNew
-                  ? 'เครื่องมือ 1 ของใหม่'
-                  : grade
-                    ? `สภาพเครื่องเกรด ${grade}`
-                    : 'เครื่องมือสอง'
-              }
-            >
-              {!isNew && grade && (
-                <span
-                  className={cn(
-                    'size-[18px] md:size-5 rounded-full grid place-items-center font-brand text-xs font-bold leading-snug shrink-0',
-                    GRADE_CHIP[grade ?? ''] ?? 'bg-white text-zinc-700',
-                  )}
-                  aria-hidden
-                >
-                  {grade ?? '·'}
-                </span>
-              )}
-              <span
-                className={cn(
-                  'font-brand text-xs font-bold uppercase leading-snug whitespace-nowrap',
-                  isNew || !grade ? '' : 'hidden sm:inline',
-                )}
+            {many && (
+              <div
+                className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1 rounded-full bg-white/75 px-1.5 py-1 shadow-sm"
                 aria-hidden
               >
-                {isNew ? (
-                  <>
-                    มือ 1<span className="hidden md:inline"> · ของใหม่</span>
-                  </>
-                ) : grade ? (
-                  `GRADE ${grade}`
-                ) : (
-                  'มือ 2'
-                )}
-              </span>
-            </span>
-
-            {tags.length > 0 && (
-              <div className="ml-auto flex min-w-0 max-w-full flex-col items-end gap-1">
-                {tags.map((t) => (
+                {photos.map((_, i) => (
                   <span
-                    key={t.label}
-                    className="inline-flex items-center gap-1.5 rounded-full bg-card/70 px-2 py-0.5 text-xs text-foreground ring-1 ring-inset ring-white/90 backdrop-blur-sm leading-snug max-w-full whitespace-nowrap"
-                  >
-                    <span
-                      className={cn(
-                        'size-1.5 rounded-full shrink-0',
-                        t.warm ? 'bg-orange-500' : 'bg-emerald-500',
-                      )}
-                      aria-hidden
-                    />
-                    <span className="truncate" title={t.label}>{t.label}</span>
-                  </span>
+                    key={i}
+                    className={cn(
+                      'h-1 rounded-full transition-[width,background-color] motion-reduce:transition-none',
+                      i === shown ? 'w-3 bg-foreground/70' : 'w-1 bg-foreground/25',
+                    )}
+                  />
                 ))}
               </div>
             )}
           </div>
+        </Link>
 
-          {photos.length > 1 && (
-            <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1" aria-hidden>
-              {photos.map((_, i) => (
-                <span
-                  key={i}
-                  className={cn(
-                    'h-1 rounded-full transition-all',
-                    i === active ? 'w-3 bg-foreground/55' : 'w-1 bg-foreground/20',
-                  )}
-                />
-              ))}
-            </div>
+        {/* ลูกศรอยู่นอก <a> (ปุ่มซ้อนในลิงก์ไม่ได้) · โผล่เฉพาะอุปกรณ์ที่ชี้ได้ — บนจอสัมผัส
+            group-hover ไม่ทำงาน ปุ่มจึงทั้งมองไม่เห็นและกดไม่โดน (pointer-events-none) */}
+        {many &&
+          ([-1, 1] as const).map((direction) => (
+            <button
+              key={direction}
+              type="button"
+              data-gallery-control
+              onClick={() => step(direction)}
+              aria-label={direction < 0 ? 'รูปก่อนหน้า' : 'รูปถัดไป'}
+              className={cn(
+                'absolute top-1/2 -translate-y-1/2 grid size-8 place-items-center rounded-full bg-white/90 text-foreground shadow-md',
+                'opacity-0 pointer-events-none transition-opacity motion-reduce:transition-none',
+                'group-hover:opacity-100 group-hover:pointer-events-auto',
+                'focus-visible:opacity-100 focus-visible:pointer-events-auto focus-visible:outline-2 focus-visible:outline-primary',
+                'hover:bg-white',
+                direction < 0 ? 'left-2' : 'right-2',
+              )}
+            >
+              {direction < 0 ? (
+                <ChevronLeft className="size-4" aria-hidden="true" />
+              ) : (
+                <ChevronRight className="size-4" aria-hidden="true" />
+              )}
+            </button>
+          ))}
+      </div>
+
+      <Link to={to} className="block px-2.5 pt-2.5 sm:px-3.5 sm:pt-3">
+        <h3 className="font-display text-base font-bold text-foreground leading-snug">
+          {p.model}
+        </h3>
+
+        {/* Spec as one quiet line; the device number shares it so the title keeps
+            the full card width (a two-column phone grid leaves ~130px). */}
+        <div className="mt-0.5 flex items-baseline justify-between gap-2">
+          <span className="min-w-0 truncate text-xs text-muted-foreground leading-snug">
+            {specValue || '—'}
+          </span>
+          {/* The device number is what a customer quotes in chat ("สนใจ #4218").
+              New stock has no single device to point at, so it shows depth. */}
+          {isUnit ? (
+            p.displayNo && (
+              <span className="num text-xs font-bold text-muted-foreground shrink-0">
+                #{p.displayNo}
+              </span>
+            )
+          ) : (
+            <span className="num text-xs font-semibold text-muted-foreground shrink-0">
+              {p.stockCount} เครื่อง
+            </span>
           )}
+        </div>
+
+        {/* ป้ายข้อมูลอยู่ใต้ชื่อรุ่น ไม่ทับรูป (เจ้าของ 2026-11-26 "ทำรูปให้เต็ม") — ป้ายสภาพเครื่องนำหน้า
+            · จุดส้มสงวนให้ "ใกล้หมด" ที่เป็นสัญญาณเร่งจริง และมีคำกำกับเสมอ */}
+        <div className="mt-2 flex flex-wrap gap-1">
+          {conditionChip}
+          <span className={INFO_CHIP}>{deviceOriginLabel(p.deviceOrigin)}</span>
+          {tags.map((t) => (
+            <span key={t.label} className={INFO_CHIP}>
+              {t.warm && (
+                <span className="size-1.5 rounded-full shrink-0 bg-orange-500" aria-hidden />
+              )}
+              <span className="truncate" title={t.label}>
+                {t.label}
+              </span>
+            </span>
+          ))}
         </div>
       </Link>
 
-      {/* Thumbnail strip — real photos of this device. Hidden when there is only
-          one photo so the card never shows a fake filmstrip. */}
-      {photos.length > 1 && (
-        <div className="hidden sm:flex gap-1.5 mt-2">
-          {visibleThumbs.map((src, i) => (
-            <button
-              key={src + i}
-              type="button"
-              onClick={() => setActive(i)}
-              aria-label={`ดูรูปที่ ${i + 1}`}
-              aria-pressed={i === active}
-              className={cn(
-                'flex-1 aspect-square rounded-xl bg-muted overflow-hidden flex items-center justify-center transition-shadow',
-                i === active
-                  ? 'ring-2 ring-emerald-500'
-                  : 'ring-1 ring-inset ring-border hover:ring-emerald-300',
-              )}
-            >
-              <img
-                src={src}
-                alt=""
-                className="max-h-[78%] max-w-[78%] object-contain"
-                loading="lazy"
-              />
-            </button>
-          ))}
-          {overflow > 0 && (
-            <Link
-              to={to}
-              aria-label={`ดูรูปทั้งหมด ${photos.length} รูป`}
-              className="flex-1 aspect-square rounded-xl bg-zinc-200 grid place-items-center text-xs font-bold text-muted-foreground hover:bg-zinc-300 transition-colors"
-            >
-              +{overflow}
-            </Link>
-          )}
-        </div>
-      )}
-
-      <div className="flex flex-col flex-1 px-1 pt-2.5">
+      {/* แถบราคา: พื้นเทาอ่อนแถบเดียวต่อการ์ด เต็มความกว้าง ยาวลงถึงปุ่ม — แยกส่วนราคาออกจากส่วนข้อมูล
+          โดยไม่ใช้พื้นสี (พื้นมิ้นต์ทั้งแบบกล่องซ้อนและแบบแถบเดียวโดนว่าเลี่ยนทั้งคู่) */}
+      <div className="mt-2.5 flex flex-1 flex-col border-t border-zinc-100 bg-zinc-50 px-2.5 pt-2.5 pb-2.5 sm:px-3.5 sm:pt-3 sm:pb-3.5">
+        {/* Price zone — one left-aligned block in every mode: a small
+            eyebrow names the number, the figure sits under it, details on a
+            third line. No lone right-aligned figures, no zigzag. */}
         <Link to={to} className="block">
-          <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-2 sm:min-h-[38px]">
-            <h3 className="font-display text-base font-bold text-foreground leading-snug">
-              {p.model}
-            </h3>
-            {/* The device number is what a customer quotes in chat ("สนใจ #4218").
-                New stock has no single device to point at, so it shows depth. */}
-            {isUnit ? (
-              p.displayNo && (
-                <span className="num text-xs font-bold text-muted-foreground shrink-0">
-                  #{p.displayNo}
-                </span>
-              )
-            ) : (
-              <span className="num text-xs font-semibold text-muted-foreground shrink-0">
-                {p.stockCount} เครื่อง
-              </span>
-            )}
-          </div>
-
-          {/* Spec as one quiet line — the label:value form row read as a
-              spreadsheet cell and left a dead gap across the card. */}
-          <div className="mt-1 text-xs text-muted-foreground leading-snug truncate">
-            {specValue || '—'}
-          </div>
-          <div className="mt-2">
-            <span className="inline-flex rounded-full border border-border px-2 py-0.5 text-xs text-accent-foreground leading-snug">
-              {deviceOriginLabel(p.deviceOrigin)}
-            </span>
-          </div>
-
-          {/* Installment figure sits where the reference puts its view count:
-              it is the differentiator, and the full price stays the biggest
-              number on the card. */}
-          {/* Price zone — one left-aligned block in every mode: a small
-              eyebrow names the number, the figure sits under it, details on a
-              third line. No lone right-aligned figures, no zigzag. */}
-          <div className="mt-2">
-            {p.minPrice == null ? (
-              <span className="text-sm font-medium text-muted-foreground">สอบถามราคา</span>
-            ) : priceMode === 'installment' ? (
-              <PlanTiles
-                rate1={
-                  hasQuote && p.downAmount != null
-                    ? {
-                        down: p.downAmount,
-                        monthly: p.monthlyPaymentFrom!,
-                        months: p.installmentMonths ?? null,
-                      }
-                    : null
-                }
-                rate2={p.rate2 ?? null}
-                freeDownOnly={freeDownOnly}
-              />
-            ) : priceMode === 'cash' ? (
-              <>
-                <div className="font-head text-xs font-medium text-muted-foreground leading-snug">
-                  ราคาเงินสด
-                </div>
-                <div className="num text-xl md:text-2xl font-bold text-primary leading-tight whitespace-nowrap">
-                  ฿{p.minPrice.toLocaleString()}
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="num text-xl md:text-2xl font-bold text-primary leading-tight whitespace-nowrap">
-                  ฿{p.minPrice.toLocaleString()}
-                </div>
-                {/* A monthly figure with no down payment beside it is a
-                    half-truth — always print what it was quoted on. */}
-                <p className="num mt-0.5 text-xs text-muted-foreground leading-snug">
-                  {hasQuote ? `ผ่อน ฿${p.monthlyPaymentFrom!.toLocaleString()}/ด.` : 'ผ่อนได้'}
-                  {hasQuote && p.downAmount != null
-                    ? ` · ดาวน์ ฿${p.downAmount.toLocaleString()}`
-                    : ''}
-                </p>
-              </>
-            )}
-          </div>
+          {p.minPrice == null ? (
+            <span className="text-sm font-medium text-muted-foreground">สอบถามราคา</span>
+          ) : priceMode === 'installment' ? (
+            <PlanTiles
+              rate1={
+                hasQuote && p.downAmount != null
+                  ? {
+                      down: p.downAmount,
+                      monthly: p.monthlyPaymentFrom!,
+                      months: p.installmentMonths ?? null,
+                    }
+                  : null
+              }
+              rate2={p.rate2 ?? null}
+              freeDownOnly={freeDownOnly}
+            />
+          ) : priceMode === 'cash' ? (
+            <>
+              <div className="font-head text-xs font-medium text-muted-foreground leading-snug">
+                ราคาเงินสด
+              </div>
+              <div className="num text-xl md:text-2xl font-bold text-primary leading-tight whitespace-nowrap">
+                ฿{formatNumber(p.minPrice)}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="num text-xl md:text-2xl font-bold text-primary leading-tight whitespace-nowrap">
+                ฿{formatNumber(p.minPrice)}
+              </div>
+              {/* A monthly figure with no down payment beside it is a
+                  half-truth — always print what it was quoted on. */}
+              <p className="num mt-0.5 text-xs text-muted-foreground leading-snug">
+                {hasQuote ? `ผ่อน ฿${formatNumber(p.monthlyPaymentFrom!)}/ด.` : 'ผ่อนได้'}
+                {hasQuote && p.downAmount != null
+                  ? ` · ดาวน์ ฿${formatNumber(p.downAmount)}`
+                  : ''}
+              </p>
+            </>
+          )}
         </Link>
 
-        <div className="mt-auto pt-2.5">
+        <div className="mt-auto pt-3">
           {soldOut ? (
             <a
               href={shopInfo.lineUrl}
@@ -388,7 +384,7 @@ export function ProductCard({
           ) : (
             <Link
               to={to}
-              className="flex min-h-11 items-center justify-center px-2 py-2 text-center rounded-full bg-ink text-ink-foreground font-head text-sm font-semibold hover:bg-emerald-800 transition-colors leading-snug"
+              className="flex min-h-11 items-center justify-center px-2 py-2 text-center rounded-full bg-ink text-ink-foreground font-head text-sm font-semibold hover:bg-navy-900 transition-colors leading-snug"
             >
               {isUnit ? 'ดูเครื่องนี้' : 'เลือกเครื่อง'}
             </Link>

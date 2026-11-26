@@ -1,12 +1,13 @@
 import { useRef } from 'react';
 import { Search } from '@/lib/icons';
-import { ProductCard, type ProductGroup } from './ProductCard';
+import { CARD_ROW_SUBGRID, ProductCard, type ProductGroup } from './ProductCard';
 import { LoadingState } from '@/components/states/LoadingState';
 import { EmptyState } from '@/components/states/EmptyState';
 import { ErrorState } from '@/components/states/ErrorState';
 import { Button } from '@/components/ui/button';
 import { gsap, useGSAP } from '@/components/motion/gsap';
 import { copy } from '@/lib/copy';
+import { cn } from '@/lib/utils';
 
 interface Props {
   products: ProductGroup[] | undefined;
@@ -155,7 +156,7 @@ export function CatalogResults({
                 <div
                   key={product.id}
                   data-product-card={product.id}
-                  className="flex [&>article]:w-full"
+                  className={cn('flex [&>article]:w-full', CARD_ROW_SUBGRID)}
                 >
                   <ProductCard
                     product={product}

@@ -10,6 +10,7 @@ import { lineOaMessageUrl, productShareUrl } from '@/lib/copy';
 import { cn } from '@/lib/utils';
 import { DEFAULT_DETAIL_MONTHS } from '@/lib/installment-defaults';
 import { compareBadges, FREE_DOWN_BADGE, isFreeDown } from './installment-compare';
+import { formatNumber } from '@/lib/format';
 
 interface PreviewResponse {
   available: boolean;
@@ -44,7 +45,7 @@ interface Props {
 }
 
 function formatTHB(n: number): string {
-  return n.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  return formatNumber(n, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
 
 /** งวดของคำขอแรกของ BESTCHOICE — ตัวเลือกจริงมาจากคำตอบ BC (allowedMonths) · GFIN ให้ server เลือกงวดตั้งต้นเอง */
@@ -215,8 +216,8 @@ function DownPaymentInput({
         role={belowMin ? 'status' : undefined}
       >
         {belowMin
-          ? `ต่ำกว่าขั้นต่ำ — กำลังปรับขึ้นเป็น ${minDownPct}% (฿${minAmount.toLocaleString()})`
-          : `พิมพ์เป็น % หรือเป็นบาทก็ได้ · ขั้นต่ำ ${minDownPct}% (฿${minAmount.toLocaleString()})`}
+          ? `ต่ำกว่าขั้นต่ำ — กำลังปรับขึ้นเป็น ${minDownPct}% (฿${formatNumber(minAmount)})`
+          : `พิมพ์เป็น % หรือเป็นบาทก็ได้ · ขั้นต่ำ ${minDownPct}% (฿${formatNumber(minAmount)})`}
       </p>
     </>
   );

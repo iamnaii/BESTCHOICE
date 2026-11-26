@@ -96,7 +96,7 @@ export default function HowItWorksPage() {
                   <CardBody>
                     <Stack gap={3} className="leading-snug">
                       <div className="flex items-center gap-3">
-                        <span className="inline-flex size-9 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 text-sm font-semibold">
+                        <span className="inline-flex size-9 items-center justify-center rounded-full bg-accent text-accent-foreground text-sm font-semibold">
                           {step.number}
                         </span>
                         <step.Icon className="size-5 text-emerald-600" aria-hidden="true" />

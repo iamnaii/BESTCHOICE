@@ -8,6 +8,7 @@ import type { WorkScope } from '@installment/shared';
 import { ResponseCycleService } from './response-cycle.service';
 import type { InboundAttribution } from '../interfaces/channel-adapter.interface';
 import { isAdAttribution } from '../utils/ad-attribution.util';
+import { isHumanStaffEchoTiming } from '../utils/staff-echo-rule';
 import {
   Injectable,
   Logger,
@@ -973,6 +974,36 @@ export class RoomManagerService {
   }
 
   /**
+   * echo ของพนักงานใบนี้เป็น "คนตอบ" ไหม — ผู้ตัดสินตัวเดียว ใช้ทั้งตอนเปิด/ปิดสวิตช์คิวงานแชท
+   * (สเปก 2026-11-26-fb-echo-closes-response-cycle-design.md) ห้ามเขียนเงื่อนไขชุดที่สอง:
+   *   1. ไม่ใช่ข้อความทักทายใบแรกของห้อง (`shouldSkipFirstOutboundClear` — เรียกหลังบันทึก echo เท่านั้น)
+   *   2. ไม่มีข้อความลูกค้าภายใน 5 วิก่อน echo (`isHumanStaffEchoTiming`) — เร็วกว่านั้น = เพจตอบเอง
+   * อ่านแถว echo ไม่ได้ = ไม่ใช่ (ห้องค้างในคิว — ทางปลอดภัย)
+   */
+  async isHumanStaffEcho(roomId: string, messageId: string): Promise<boolean> {
+    const echo = await this.prisma.chatMessage.findUnique({
+      where: { id: messageId },
+      select: { createdAt: true },
+    });
+    if (!echo) return false;
+    if (await this.shouldSkipFirstOutboundClear(roomId, messageId)) return false;
+    const customer = await this.prisma.chatMessage.findFirst({
+      where: {
+        roomId,
+        role: MessageRole.CUSTOMER,
+        deletedAt: null,
+        createdAt: { lte: echo.createdAt },
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    });
+    return isHumanStaffEchoTiming({
+      echoAt: echo.createdAt,
+      customerAtBefore: customer?.createdAt ?? null,
+    });
+  }
+
+  /**
    * ล้าง "รอตอบ" — เรียกได้เฉพาะเมื่อคำตอบจาก "คน" ถึงลูกค้าแล้ว (สเปก §3 / §4.3):
    *   markOutboundSent (inbox ส่งสำเร็จ) · mirrorOutbound STAFF (echo จาก Page Inbox) · resolve
    * ห้ามเรียกจาก saveMessage / BOT / การส่งที่ล้ม / markAsRead
@@ -1005,9 +1036,13 @@ export class RoomManagerService {
     await this.responseCycles?.failAttempt(messageId, definitelyNotSent, forceDeliveryTracking);
   }
 
-  async confirmExternalEcho(messageId: string): Promise<boolean> {
+  /** echo จาก Meta — `closeAsHuman` (ผลของ `isHumanStaffEcho`) ให้ response cycle ปิดรอบได้ · คืน true เมื่อสวิตช์คิวงานแชทเปิด */
+  async confirmExternalEcho(
+    messageId: string,
+    opts: { closeAsHuman?: boolean } = {},
+  ): Promise<boolean> {
     if (!this.responseCycles || !(await this.responseCycles.enabled())) return false;
-    await this.responseCycles.confirmUnknownEcho(messageId);
+    await this.responseCycles.confirmUnknownEcho(messageId, opts);
     return true;
   }
 

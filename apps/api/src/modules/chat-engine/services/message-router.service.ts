@@ -870,19 +870,20 @@ export class MessageRouterService {
       throw err;
     }
 
-    // echo STAFF = Facebook ยืนยันว่าข้อความจากคนถึงลูกค้าแล้ว → ล้าง "รอตอบ" (สเปก §4.3)
-    // BOT (เช่น greeting อัตโนมัติของเพจ) ไม่ล้าง — ลูกค้ายังรอคน (สเปก §3)
-    // ข้อยกเว้น: echo ที่หน้าตาเป็น "ข้อความทักทายอัตโนมัติของเพจ" (ใบแรกของห้อง +
-    // มาภายใน 60 วิ) ก็ถูก stamp เป็น STAFF เหมือนกัน — ห้ามล้าง ไม่งั้นลูกค้าใหม่
-    // หลุดคิวโดยไม่มีใครตอบ (ดู RoomManagerService.shouldSkipFirstOutboundClear)
-    // `?.` เพราะ spec หลายตัว mock roomManager บางส่วน
-    const trackedEcho = saved?.id ? await this.roomManager.confirmExternalEcho?.(saved.id) : false;
-    if (params.role === MessageRole.STAFF && !trackedEcho) {
-      const skip = saved?.id
-        ? await this.roomManager.shouldSkipFirstOutboundClear?.(room.id, saved.id)
+    // echo STAFF = ข้อความถึงลูกค้าแล้ว — "คนตอบ" ตัดสินด้วยกติกาเดียว RoomManagerService.isHumanStaffEcho
+    // (ไม่ใช่ข้อความทักทายใบแรก + ไม่มีลูกค้าทักภายใน 5 วิก่อนหน้า — เร็วกว่านั้น = เพจตอบเอง)
+    // ใช้ทั้งสองโหมด (สเปก 2026-11-26-fb-echo-closes-response-cycle-design.md):
+    //   สวิตช์คิวงานแชทเปิด → response cycle ปิดรอบให้ (closeAsHuman) — เดิมไม่ปิดเลย คิวรอตอบสะสมไม่หยุด
+    //   สวิตช์ปิด → clearWaiting เฉพาะคนตอบ — เดิมล้างทุก echo ยกเว้นทักทาย (ข้อความอัตโนมัติปลดห้องได้)
+    // BOT ไม่ใช่คำตอบจากคน · `?.` เพราะ spec หลายตัว mock roomManager บางส่วน — ไม่มีเมธอด = ถือว่าคน (พฤติกรรมเดิม)
+    const human =
+      params.role === MessageRole.STAFF && !!saved?.id
+        ? (await this.roomManager.isHumanStaffEcho?.(room.id, saved.id)) !== false
         : false;
-      if (!skip) await this.roomManager.clearWaiting?.(room.id);
-    }
+    const trackedEcho = saved?.id
+      ? await this.roomManager.confirmExternalEcho?.(saved.id, { closeAsHuman: human })
+      : false;
+    if (human && !trackedEcho) await this.roomManager.clearWaiting?.(room.id);
 
     this.gateway?.emitNewMessage(room.id, {
       role: params.role === MessageRole.BOT ? 'BOT' : 'STAFF',

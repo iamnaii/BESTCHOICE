@@ -217,8 +217,13 @@ export class ResponseCycleService {
         });
     });
   }
-  /** Echo proves delivery, but no verified inbound watermark means it cannot close work by inference. */
-  async confirmUnknownEcho(messageId: string) {
+  /**
+   * echo จาก Meta (พนักงานตอบนอก inbox ของเรา): ประทับว่าส่งถึงแล้วเสมอ ·
+   * `closeAsHuman` = ผลของ `RoomManagerService.isHumanStaffEcho` (ไม่ใช่ทักทายใบแรก + ไม่มีลูกค้าใน 5 วิก่อนหน้า)
+   * → ปิดรอบที่เปิดอยู่ด้วยเส้นแบ่งจากข้อความลูกค้าที่บันทึกก่อน echo (สเปก 2026-11-26-fb-echo-closes-response-cycle-design.md)
+   * เดิมไม่ปิดเลย ⇒ พนักงานที่ตอบผ่าน Meta ทั้งหมดทำให้คิวรอตอบ/แจ้งเตือนเวลารอสะสมไม่หยุด
+   */
+  async confirmUnknownEcho(messageId: string, opts: { closeAsHuman?: boolean } = {}) {
     await this.prisma.$transaction(async (tx) => {
       const message = await tx.chatMessage.findUniqueOrThrow({ where: { id: messageId } });
       await this.lock(tx, message.roomId);
@@ -229,6 +234,55 @@ export class ResponseCycleService {
       });
       if (message.role === 'BOT')
         await this.recordBotSentInTx(tx, { roomId: message.roomId, sentAt });
+      if (message.role === 'STAFF' && opts.closeAsHuman)
+        await this.closeByEchoInTx(tx, {
+          id: message.id,
+          roomId: message.roomId,
+          createdAt: message.createdAt,
+        });
+    });
+  }
+
+  /** ปิดรอบด้วย echo ของคน — ผู้ตอบ "ไม่ทราบ" (Meta ไม่บอกว่าพนักงานคนไหน) · เวลาตอบ = เวลาที่บันทึก echo */
+  private async closeByEchoInTx(
+    tx: Prisma.TransactionClient,
+    echo: { id: string; roomId: string; createdAt: Date },
+  ) {
+    const cycle = await tx.chatResponseCycle.findFirst({
+      where: { roomId: echo.roomId, endedAt: null },
+      select: { id: true, startedAt: true },
+    });
+    // ไม่มีรอบเปิด = ไม่มีใครรอ · รอบเริ่มหลัง echo = echo ตอบข้อความเก่า ไม่ใช่ข้อความที่เปิดรอบนี้
+    if (!cycle || cycle.startedAt > echo.createdAt) return;
+    // เส้นแบ่ง = ข้อความลูกค้า (มีเลขลำดับ) ใบล่าสุดที่บันทึกไม่หลัง echo — ข้อความที่มาหลัง echo
+    // ถูก closeHumanInTx เปิดรอบใหม่ให้ (ต่างจาก prepareAttempt ที่ใช้ตัวนับของห้อง เพราะ echo มาถึงหลังส่งจริง)
+    const through = await tx.chatMessage.findFirst({
+      where: {
+        roomId: echo.roomId,
+        role: 'CUSTOMER',
+        deletedAt: null,
+        inboundSequence: { not: null },
+        createdAt: { lte: echo.createdAt },
+      },
+      orderBy: { inboundSequence: 'desc' },
+      select: { id: true, inboundSequence: true },
+    });
+    if (!through || through.inboundSequence === null) return;
+    await tx.chatMessage.update({
+      where: { id: echo.id },
+      data: {
+        cycleId: cycle.id,
+        answeredThroughMessageId: through.id,
+        answeredThroughSequence: through.inboundSequence,
+      },
+    });
+    await this.closeHumanInTx(tx, {
+      roomId: echo.roomId,
+      cycleId: cycle.id,
+      messageId: echo.id,
+      answeredThroughMessageId: through.id,
+      staffId: null,
+      sentAt: echo.createdAt,
     });
   }
   async resolveInTx(tx: Prisma.TransactionClient, input: { roomId: string; resolvedAt: Date }) {

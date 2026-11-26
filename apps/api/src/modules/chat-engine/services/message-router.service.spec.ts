@@ -740,6 +740,47 @@ describe('MessageRouterService.mirrorOutbound — echo ล้าง waiting', ()
     await router.mirrorOutbound({ ...base, role: MessageRole.STAFF, externalMessageId: 'mid-1' });
     expect(roomManager.clearWaiting).not.toHaveBeenCalled();
   });
+
+  it('กติกาบอกว่าไม่ใช่คน (เพจตอบเอง) → ไม่ล้าง waiting', async () => {
+    const { router, roomManager } = makeRouter({});
+    (roomManager as any).isHumanStaffEcho = jest.fn().mockResolvedValue(false);
+    await router.mirrorOutbound({ ...base, role: MessageRole.STAFF, externalMessageId: 'mid-3' });
+    expect((roomManager as any).isHumanStaffEcho).toHaveBeenCalledWith('r1', 'm1');
+    expect(roomManager.clearWaiting).not.toHaveBeenCalled();
+  });
+
+  it('สวิตช์คิวงานแชทเปิด + คนตอบ → ส่ง closeAsHuman: true ให้ response cycle และไม่เรียก clearWaiting', async () => {
+    const { router, roomManager } = makeRouter({});
+    (roomManager as any).isHumanStaffEcho = jest.fn().mockResolvedValue(true);
+    (roomManager as any).confirmExternalEcho = jest.fn().mockResolvedValue(true);
+    await router.mirrorOutbound({ ...base, role: MessageRole.STAFF, externalMessageId: 'mid-4' });
+    expect((roomManager as any).confirmExternalEcho).toHaveBeenCalledWith('m1', {
+      closeAsHuman: true,
+    });
+    expect(roomManager.clearWaiting).not.toHaveBeenCalled();
+  });
+
+  it('สวิตช์เปิด + เพจตอบเอง → ส่ง closeAsHuman: false', async () => {
+    const { router, roomManager } = makeRouter({});
+    (roomManager as any).isHumanStaffEcho = jest.fn().mockResolvedValue(false);
+    (roomManager as any).confirmExternalEcho = jest.fn().mockResolvedValue(true);
+    await router.mirrorOutbound({ ...base, role: MessageRole.STAFF, externalMessageId: 'mid-5' });
+    expect((roomManager as any).confirmExternalEcho).toHaveBeenCalledWith('m1', {
+      closeAsHuman: false,
+    });
+    expect(roomManager.clearWaiting).not.toHaveBeenCalled();
+  });
+
+  it('BOT echo → ไม่ถามกติกา · closeAsHuman: false', async () => {
+    const { router, roomManager } = makeRouter({});
+    (roomManager as any).isHumanStaffEcho = jest.fn();
+    (roomManager as any).confirmExternalEcho = jest.fn().mockResolvedValue(true);
+    await router.mirrorOutbound({ ...base, role: MessageRole.BOT, externalMessageId: 'mid-6' });
+    expect((roomManager as any).isHumanStaffEcho).not.toHaveBeenCalled();
+    expect((roomManager as any).confirmExternalEcho).toHaveBeenCalledWith('m1', {
+      closeAsHuman: false,
+    });
+  });
 });
 
 describe('MessageRouterService.sendStaffMessage — ใครตอบก่อนได้เป็นเจ้าของ', () => {
@@ -795,9 +836,9 @@ describe('MessageRouterService.mirrorOutbound — ข้อความทัก
   const base = { externalUserId: 'PSID-1', channel: ChatChannel.FACEBOOK, text: 'สวัสดีค่ะ BESTCHOICE ยินดีให้บริการ' };
 
   /**
-   * ใช้ RoomManagerService "ตัวจริง" เป็นคนตัดสิน shouldSkipFirstOutboundClear
-   * (บน prisma จำลอง) — เทสต์ชุดนี้จึงพิสูจน์เงื่อนไขจริง (ใบแรก + ใน 60 วินาที)
-   * ไม่ใช่ค่าที่ mock ตอบกลับมา
+   * ใช้ RoomManagerService "ตัวจริง" เป็นคนตัดสิน isHumanStaffEcho (ทักทายใบแรก + กติกา 5 วินาที)
+   * (บน prisma จำลอง) — เทสต์ชุดนี้จึงพิสูจน์เงื่อนไขจริง ไม่ใช่ค่าที่ mock ตอบกลับมา ·
+   * ลูกค้าทักหนึ่งครั้งที่เวลาเริ่มรอ (WAITING_SINCE)
    */
   function makeEchoRouter(opts: {
     waitingSince?: Date | null;
@@ -805,7 +846,15 @@ describe('MessageRouterService.mirrorOutbound — ข้อความทัก
     echoAt: Date;
     duplicate?: boolean;
   }) {
-    const messages: any[] = [];
+    const messages: any[] = [
+      {
+        id: 'cust-0',
+        roomId: 'r1',
+        role: MessageRole.CUSTOMER,
+        createdAt: WAITING_SINCE,
+        deletedAt: null,
+      },
+    ];
     for (let i = 0; i < (opts.priorOutbound ?? 0); i++) {
       messages.push({
         id: `prior-${i}`,
@@ -829,6 +878,18 @@ describe('MessageRouterService.mirrorOutbound — ข้อความทัก
               m.roomId === where.roomId && m.deletedAt === null && where.role.in.includes(m.role),
           ).length,
         ),
+        findFirst: jest.fn(
+          async ({ where }: any) =>
+            messages
+              .filter(
+                (m) =>
+                  m.roomId === where.roomId &&
+                  m.role === where.role &&
+                  m.deletedAt === null &&
+                  m.createdAt.getTime() <= where.createdAt.lte.getTime(),
+              )
+              .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0] ?? null,
+        ),
       },
     };
     const realRoomManager = new RoomManagerService(prisma as any, {} as any);
@@ -851,8 +912,8 @@ describe('MessageRouterService.mirrorOutbound — ข้อความทัก
         return row;
       }),
       clearWaiting: jest.fn().mockResolvedValue(undefined),
-      shouldSkipFirstOutboundClear: jest.fn((roomId: string, msgId: string) =>
-        realRoomManager.shouldSkipFirstOutboundClear(roomId, msgId),
+      isHumanStaffEcho: jest.fn((roomId: string, msgId: string) =>
+        realRoomManager.isHumanStaffEcho(roomId, msgId),
       ),
     };
     const router = new MessageRouterService(
@@ -880,12 +941,21 @@ describe('MessageRouterService.mirrorOutbound — ข้อความทัก
     expect(roomManager.clearWaiting).toHaveBeenCalledWith('r1');
   });
 
-  it('ห้องที่เคยมี outbound แล้ว → echo ใบถัดไปล้างเสมอ แม้จะมาเร็ว', async () => {
+  it('ห้องที่เคยมี outbound แล้ว + echo มาภายใน 5 วิหลังลูกค้าทัก (= เพจตอบเอง) → ไม่ล้าง', async () => {
     const { router, roomManager } = makeEchoRouter({
       priorOutbound: 1,
       echoAt: new Date(WAITING_SINCE.getTime() + 2_000),
     });
     await router.mirrorOutbound({ ...base, role: MessageRole.STAFF, externalMessageId: 'mid-g3' } as any);
+    expect(roomManager.clearWaiting).not.toHaveBeenCalled();
+  });
+
+  it('ห้องที่เคยมี outbound แล้ว + echo มาหลังลูกค้าทัก 30 วิ (= คนตอบ) → ล้าง', async () => {
+    const { router, roomManager } = makeEchoRouter({
+      priorOutbound: 1,
+      echoAt: new Date(WAITING_SINCE.getTime() + 30_000),
+    });
+    await router.mirrorOutbound({ ...base, role: MessageRole.STAFF, externalMessageId: 'mid-g3b' } as any);
     expect(roomManager.clearWaiting).toHaveBeenCalledWith('r1');
   });
 
@@ -895,7 +965,7 @@ describe('MessageRouterService.mirrorOutbound — ข้อความทัก
     });
     await router.mirrorOutbound({ ...base, role: MessageRole.BOT, externalMessageId: 'mid-g4' } as any);
     expect(roomManager.clearWaiting).not.toHaveBeenCalled();
-    expect(roomManager.shouldSkipFirstOutboundClear).not.toHaveBeenCalled();
+    expect(roomManager.isHumanStaffEcho).not.toHaveBeenCalled();
   });
 
   it('echo ซ้ำ (P2002) → ไม่ล้าง และไม่ถามด่าน (ออกก่อนตั้งแต่ saveMessage)', async () => {
@@ -905,7 +975,7 @@ describe('MessageRouterService.mirrorOutbound — ข้อความทัก
     });
     await router.mirrorOutbound({ ...base, role: MessageRole.STAFF, externalMessageId: 'mid-g5' } as any);
     expect(roomManager.clearWaiting).not.toHaveBeenCalled();
-    expect(roomManager.shouldSkipFirstOutboundClear).not.toHaveBeenCalled();
+    expect(roomManager.isHumanStaffEcho).not.toHaveBeenCalled();
   });
 });
 

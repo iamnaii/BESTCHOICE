@@ -84,6 +84,13 @@
     "category": "content"
   },
   {
+    "path": "apps/web-shop/src/components/catalog/PlanTiles.tsx",
+    "kind": "unicode-symbol",
+    "context": "InstallmentLine > <p data-plan-line className=\"num mt-0.5 text-xs text-muted-foreground leading-snug min-[360px]:whitespace-nowrap\" > > <span className=\"whitespace-nowrap\"> > `× ${plan.months} งวด`",
+    "reason": "Multiplication sign in the installment line: monthly amount times number of instalments. The words on both sides carry the meaning.",
+    "category": "content"
+  },
+  {
     "path": "apps/web-shop/src/components/catalog/SortDropdown.tsx",
     "kind": "unicode-symbol",
     "context": "SortDropdown > <NativeSelect wrapperClassName=\"max-w-full w-auto\" className=\"border border-border rounded p-2\" value={value} onChange={(e) => onChange(e.target.value)} > > <option value=\"price_asc\"> > ราคา: ต่ำ → สูง",

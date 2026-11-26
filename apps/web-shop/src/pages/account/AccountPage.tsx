@@ -50,16 +50,16 @@ export default function AccountPage() {
             >
               <CardBody>
                 <div className="flex items-center gap-3 leading-snug">
-                  <div className="flex size-12 items-center justify-center rounded-full bg-emerald-600 text-white">
+                  <div className="flex size-12 items-center justify-center rounded-full bg-primary text-primary-foreground">
                     <BadgeCheck className="size-6" />
                   </div>
                   <div>
-                    <div className="text-sm text-emerald-900">คะแนนสะสม</div>
+                    <div className="text-sm text-foreground">คะแนนสะสม</div>
                     <div className="leading-snug">
-                      <span className="text-3xl font-bold text-emerald-600 num">
+                      <span className="text-3xl font-bold text-primary num">
                         {customer.loyaltyBalance ?? 0}
                       </span>
-                      <span className="ml-1 text-sm text-emerald-900">คะแนน</span>
+                      <span className="ml-1 text-sm text-foreground">คะแนน</span>
                     </div>
                   </div>
                 </div>

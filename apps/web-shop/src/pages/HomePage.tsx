@@ -135,7 +135,7 @@ export default function HomePage() {
             {WHY_US_ITEMS.map((item, i) => (
               <Card key={i} variant="outlined" className="h-full">
                 <CardBody className="space-y-3 leading-snug">
-                  <span className="inline-flex items-center justify-center size-12 rounded-xl bg-emerald-100 text-emerald-600">
+                  <span className="inline-flex items-center justify-center size-12 rounded-xl bg-accent text-emerald-600">
                     {item.icon}
                   </span>
                   <div className="font-semibold text-base">{item.title}</div>
@@ -157,7 +157,7 @@ export default function HomePage() {
             {SERVICE_ITEMS.map((s) => (
               <Card key={s.to} variant="outlined" className="h-full">
                 <CardBody className="flex h-full flex-col space-y-3 leading-snug">
-                  <span className="inline-flex items-center justify-center size-12 rounded-xl bg-emerald-100 text-emerald-600">
+                  <span className="inline-flex items-center justify-center size-12 rounded-xl bg-accent text-emerald-600">
                     {s.icon}
                   </span>
                   <div className="font-semibold text-base">{s.title}</div>
@@ -231,6 +231,7 @@ export default function HomePage() {
                   <img
                     src={shopInfo.storePhotoUrl}
                     alt={copy.home.visitTitle}
+                    loading="lazy"
                     className="aspect-video size-full rounded-2xl object-cover"
                   />
                 </div>

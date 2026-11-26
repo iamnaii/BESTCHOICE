@@ -119,7 +119,7 @@ export default function InstallmentTermsPage() {
                 <Card key={i} variant="outlined">
                   <CardBody className="space-y-3 leading-snug">
                     <div className="flex items-center gap-3">
-                      <span className="size-11 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+                      <span className="size-11 rounded-xl bg-accent text-emerald-600 flex items-center justify-center shrink-0">
                         {s.icon}
                       </span>
                       <h2 className="font-semibold text-base md:text-lg leading-snug">{s.title}</h2>

@@ -1,3 +1,5 @@
+import { formatNumber } from '@/lib/format';
+
 /**
  * Thai user-facing microcopy. Centralizing makes tone consistent and
  * eases future i18n. Keys follow <page>.<element> naming.
@@ -75,7 +77,7 @@ export function lineProductPrefill(
 
 export const copy = {
   common: {
-    loading: 'กำลังโหลด...',
+    loading: 'กำลังโหลด…',
     error: 'เกิดข้อผิดพลาด',
     retry: 'ลองใหม่',
     cancel: 'ยกเลิก',
@@ -125,15 +127,15 @@ export const copy = {
     downLabel: 'เงินดาวน์',
     downUnit: 'บาท',
     foundWithDown: (count: number, down: number) =>
-      `พบ ${count} เครื่องที่ดาวน์ได้ด้วยเงิน ฿${down.toLocaleString()}`,
+      `พบ ${count} เครื่องที่ดาวน์ได้ด้วยเงิน ฿${formatNumber(down)}`,
     foundFreeDown: (count: number) => `พบ ${count} เครื่องฟรีดาวน์`,
     /** บรรทัดท้ายรายการสถานะ ② — `from` = เงินดาวน์น้อยสุดที่ทำให้เครื่องถัดไปขึ้น */
     overBudget: (count: number, down: number, from: number | null) =>
-      `อีก ${count} เครื่องต้องดาวน์มากกว่า ฿${down.toLocaleString()}` +
-      (from != null ? ` (เริ่มที่ ฿${from.toLocaleString()})` : ''),
+      `อีก ${count} เครื่องต้องดาวน์มากกว่า ฿${formatNumber(down)}` +
+      (from != null ? ` (เริ่มที่ ฿${formatNumber(from)})` : ''),
     showAll: 'ดูทั้งหมด',
-    emptyDownTitle: (down: number) => `เงินดาวน์ ฿${down.toLocaleString()} ยังไม่พอ`,
-    emptyDownDescription: (from: number) => `ดาวน์ต่ำสุดเริ่มที่ ฿${from.toLocaleString()}`,
+    emptyDownTitle: (down: number) => `เงินดาวน์ ฿${formatNumber(down)} ยังไม่พอ`,
+    emptyDownDescription: (from: number) => `ดาวน์ต่ำสุดเริ่มที่ ฿${formatNumber(from)}`,
     seeFreeDown: 'ดูเครื่องฟรีดาวน์',
     clearDown: 'ล้างเงินดาวน์',
     clearAll: 'ล้างตัวกรองทั้งหมด',
@@ -350,7 +352,7 @@ export const copy = {
       'บัญชี LINE นี้ยังไม่ถูกผูกกับข้อมูลลูกค้าของร้าน ทักไลน์แจ้งทีมงานเพื่อผูกบัญชี แล้วลองเข้าสู่ระบบใหม่อีกครั้ง',
     errorTitle: 'เข้าสู่ระบบไม่สำเร็จ',
     errorDescription: 'เกิดข้อผิดพลาดระหว่างเข้าสู่ระบบ ลองใหม่อีกครั้ง หรือทักไลน์แจ้งทีมงาน',
-    loggingIn: 'กำลังเข้าสู่ระบบ...',
+    loggingIn: 'กำลังเข้าสู่ระบบ…',
     backToLogin: 'กลับไปหน้าเข้าสู่ระบบ',
   },
 

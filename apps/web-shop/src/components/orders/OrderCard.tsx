@@ -1,5 +1,6 @@
 import { Link } from 'react-router';
 import OrderStatusBadge from './OrderStatusBadge';
+import { formatNumber } from '@/lib/format';
 
 interface Props {
   order: {
@@ -25,7 +26,7 @@ export default function OrderCard({ order }: Props) {
         <OrderStatusBadge status={order.status} />
       </div>
       <div className="num mt-2 text-right font-bold text-primary">
-        ฿{Number(order.totalAmount).toLocaleString()}
+        ฿{formatNumber(Number(order.totalAmount))}
       </div>
     </Link>
   );

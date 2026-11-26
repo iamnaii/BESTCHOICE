@@ -1,6 +1,7 @@
 import { MapPin, MessageCircle, UserPlus } from '@/lib/icons';
 import { lineOaMessageUrl, shopInfo } from '@/lib/copy';
 import { quoteDate } from '../quote-window';
+import { formatNumber } from '@/lib/format';
 
 export type SellContactContext = {
   model?: string;
@@ -33,7 +34,7 @@ function prepareMessage({
   if (reference) lines.push(`เลขรายการ ${reference}`);
   if (estimate) {
     lines.push(
-      `${flow === 'EXCHANGE' ? 'เครดิตเทิร์น' : 'ราคาขายสด'}โดยประมาณ ${price.toLocaleString('th-TH', { maximumFractionDigits: 2 })} บาท`,
+      `${flow === 'EXCHANGE' ? 'เครดิตเทิร์น' : 'ราคาขายสด'}โดยประมาณ ${formatNumber(price, { maximumFractionDigits: 2 })} บาท`,
     );
     if (flow === 'EXCHANGE') lines.push('เครดิตใช้ซื้อเครื่องในร้าน ไม่จ่ายเป็นเงินสด');
     if (assessedAt && expiresAt) {

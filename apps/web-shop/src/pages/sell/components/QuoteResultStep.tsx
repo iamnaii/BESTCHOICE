@@ -4,6 +4,7 @@ import { Clock3, ShieldCheck } from '@/lib/icons';
 import { quoteDate } from '../quote-window';
 import { modelLabel, storageLabel } from '../device-options';
 import ChoiceButton from './ChoiceButton';
+import { formatNumber } from '@/lib/format';
 import './quote-summary.css';
 
 export default function QuoteResultStep({
@@ -34,7 +35,7 @@ export default function QuoteResultStep({
   const exchange = flow === 'EXCHANGE';
   const amount = exchange ? quote.exchangePrice : (quote.cashPrice ?? quote.price);
   const money = (value: string | number | undefined) =>
-    Number(value).toLocaleString('th-TH', { maximumFractionDigits: 2 });
+    formatNumber(Number(value), { maximumFractionDigits: 2 });
   const bonus = Math.max(
     0,
     Number(quote.exchangePrice ?? 0) - Number(quote.cashPrice ?? quote.price ?? 0),

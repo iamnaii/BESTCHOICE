@@ -16,6 +16,7 @@ import {
 } from '@/components';
 import { copy } from '@/lib/copy';
 import { media } from '@/lib/media-placeholders';
+import { formatNumber } from '@/lib/format';
 
 // Horizontal Stepper steps derived from status enum:
 // PENDING_PAYMENT -> PAID -> PACKING -> SHIPPED -> DELIVERED -> COMPLETED
@@ -128,29 +129,29 @@ export default function OrderDetailPage() {
                     <div className="font-semibold truncate">{data.product?.name}</div>
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">ราคาสินค้า</span>
-                      <span className="num">฿{Number(data.productPrice).toLocaleString()}</span>
+                      <span className="num">฿{formatNumber(Number(data.productPrice))}</span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">
                         ค่าจัดส่ง ({data.shippingMethod})
                       </span>
-                      <span>฿{Number(data.shippingFee).toLocaleString()}</span>
+                      <span>฿{formatNumber(Number(data.shippingFee))}</span>
                     </div>
                     {Number(data.promoDiscount) > 0 && (
                       <div className="flex justify-between text-sm text-primary">
                         <span>ส่วนลด ({data.promoCode})</span>
-                        <span>-฿{Number(data.promoDiscount).toLocaleString()}</span>
+                        <span>-฿{formatNumber(Number(data.promoDiscount))}</span>
                       </div>
                     )}
                     {Number(data.loyaltyDiscount) > 0 && (
                       <div className="flex justify-between text-sm text-primary">
                         <span>ใช้แต้ม {data.loyaltyPointsUsed} แต้ม</span>
-                        <span>-฿{Number(data.loyaltyDiscount).toLocaleString()}</span>
+                        <span>-฿{formatNumber(Number(data.loyaltyDiscount))}</span>
                       </div>
                     )}
                     <div className="border-t pt-2 mt-2 flex justify-between font-bold">
                       <span>รวม</span>
-                      <span className="num text-primary">฿{Number(data.totalAmount).toLocaleString()}</span>
+                      <span className="num text-primary">฿{formatNumber(Number(data.totalAmount))}</span>
                     </div>
                   </div>
                 </div>

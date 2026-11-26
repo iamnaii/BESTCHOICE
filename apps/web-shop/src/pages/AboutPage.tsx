@@ -96,6 +96,7 @@ export default function AboutPage() {
               <img
                 src={media('staff.team')}
                 alt={copy.about.storyTitle}
+                loading="lazy"
                 className="w-full rounded-3xl aspect-[4/3] object-cover"
               />
             </div>
@@ -108,7 +109,7 @@ export default function AboutPage() {
                 <Card key={i} variant="outlined">
                   <CardBody>
                     <Stack gap={2} className="leading-snug">
-                      <span className="inline-flex items-center justify-center px-3 py-1 rounded-full bg-emerald-100 text-emerald-700 text-sm font-semibold w-fit">
+                      <span className="inline-flex items-center justify-center px-3 py-1 rounded-full bg-accent text-accent-foreground text-sm font-semibold w-fit">
                         {m.year}
                       </span>
                       <h3 className="text-base font-semibold leading-snug">{m.title}</h3>
@@ -127,7 +128,7 @@ export default function AboutPage() {
                 <Card key={i} variant="outlined">
                   <CardBody>
                     <Stack gap={3} className="leading-snug">
-                      <span className="inline-flex size-11 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+                      <span className="inline-flex size-11 items-center justify-center rounded-full bg-accent text-emerald-600">
                         <v.Icon className="size-6" aria-hidden="true" />
                       </span>
                       <h3 className="text-lg font-semibold leading-snug">{v.title}</h3>

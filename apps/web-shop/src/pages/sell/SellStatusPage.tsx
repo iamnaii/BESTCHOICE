@@ -18,6 +18,7 @@ import {
 } from '@/components';
 import type { Buyback, BuybackStatus } from '@/types/buyback';
 import SellContactLinks from './components/SellContactLinks';
+import { formatNumber } from '@/lib/format';
 
 const STATUS_LABEL: Record<BuybackStatus, string> = {
   PENDING_APPRAISAL: 'รอทีมงานประเมินราคา',
@@ -138,20 +139,20 @@ export default function SellStatusPage() {
                   {isExchange ? 'มูลค่าเครดิตเทิร์นโดยประมาณ' : copy.sell.quotedTitle}
                 </div>
                 <div className="text-4xl font-bold text-emerald-600 leading-snug num">
-                  ฿{estimated.toLocaleString()}
+                  ฿{formatNumber(estimated)}
                 </div>
                 {data.quoteBreakdown && (
                   <div className="space-y-0.5 text-xs text-emerald-800 leading-snug">
                     <div className="flex justify-between">
                       <span>ราคาสูงสุด</span>
-                      <span>฿{Number(data.quoteBreakdown.maxPrice).toLocaleString()}</span>
+                      <span>฿{formatNumber(Number(data.quoteBreakdown.maxPrice))}</span>
                     </div>
                     {data.quoteBreakdown.lines
                       .filter((l) => l.applied !== false && Number(l.amount) > 0)
                       .map((l, i) => (
                         <div key={i} className="flex justify-between">
                           <span>{l.label}</span>
-                          <span>−฿{Number(l.amount).toLocaleString()}</span>
+                          <span>−฿{formatNumber(Number(l.amount))}</span>
                         </div>
                       ))}
                     {isExchange &&
@@ -161,10 +162,10 @@ export default function SellStatusPage() {
                           <span>โบนัสเทิร์น</span>
                           <span>
                             +฿
-                            {(
+                            {formatNumber(
                               Number(data.quoteBreakdown.exchangePrice) -
-                              Number(data.quoteBreakdown.cashPrice)
-                            ).toLocaleString()}
+                                Number(data.quoteBreakdown.cashPrice),
+                            )}
                           </span>
                         </div>
                       )}
@@ -178,7 +179,7 @@ export default function SellStatusPage() {
                 )}
                 {offered !== null && offered !== estimated && (
                   <p className="text-xs font-semibold text-emerald-900 leading-snug">
-                    ราคายืนยันหน้าร้าน: ฿{offered.toLocaleString()}
+                    ราคายืนยันหน้าร้าน: ฿{formatNumber(offered)}
                   </p>
                 )}
               </CardBody>
@@ -192,11 +193,11 @@ export default function SellStatusPage() {
                   ราคาที่ทีมงานเสนอ
                 </div>
                 <div className="text-4xl font-bold text-emerald-600 leading-snug num">
-                  ฿{offered.toLocaleString()}
+                  ฿{formatNumber(offered)}
                 </div>
                 {agreed !== null && (
                   <div className="text-sm text-emerald-800 leading-snug">
-                    ราคาที่ตกลง: ฿{agreed.toLocaleString()}
+                    ราคาที่ตกลง: ฿{formatNumber(agreed)}
                   </div>
                 )}
               </CardBody>

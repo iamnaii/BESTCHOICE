@@ -101,7 +101,7 @@ export default function ShopHeader() {
                 aria-current={active ? 'page' : undefined}
                 className={cn(
                   'relative py-1 leading-snug transition-colors',
-                  'after:absolute after:left-0 after:-bottom-0.5 after:h-0.5 after:rounded-full after:bg-emerald-400 after:transition-all after:duration-200',
+                  'after:absolute after:left-0 after:-bottom-0.5 after:h-0.5 after:rounded-full after:bg-emerald-400 after:transition-[width] after:duration-200',
                   active
                     ? 'text-primary font-semibold after:w-full'
                     : 'text-foreground/80 hover:text-primary after:w-0 hover:after:w-full',
@@ -135,7 +135,7 @@ export default function ShopHeader() {
 
         <Link
           to="/how-it-works"
-          className="hidden md:inline-flex h-11 items-center rounded-full bg-ink px-5 font-head text-sm font-semibold text-ink-foreground hover:bg-emerald-800 transition-colors whitespace-nowrap leading-snug"
+          className="hidden md:inline-flex h-11 items-center rounded-full bg-ink px-5 font-head text-sm font-semibold text-ink-foreground hover:bg-navy-900 transition-colors whitespace-nowrap leading-snug"
         >
           เช็คยอดผ่อนทันที
         </Link>
@@ -162,7 +162,7 @@ export default function ShopHeader() {
             />
             <button
               type="submit"
-              className="h-11 px-4 rounded-full bg-ink text-ink-foreground font-head text-sm font-semibold hover:bg-emerald-800 transition-colors leading-snug"
+              className="h-11 px-4 rounded-full bg-ink text-ink-foreground font-head text-sm font-semibold hover:bg-navy-900 transition-colors leading-snug"
             >
               ค้นหา
             </button>

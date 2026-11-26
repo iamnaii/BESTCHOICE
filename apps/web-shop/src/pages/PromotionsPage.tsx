@@ -20,6 +20,7 @@ import {
 import { usePageMeta } from '@/hooks/usePageMeta';
 import { shopInfo } from '@/lib/copy';
 import type { ShopPromotion } from '@/types/promotion';
+import { formatNumber } from '@/lib/format';
 
 const CATEGORY_LABELS: Record<string, string> = {
   PHONE_NEW: 'มือถือใหม่',
@@ -31,7 +32,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 function conditionChips(p: ShopPromotion): string[] {
   const chips: string[] = [];
   if (p.conditions?.minPurchase) {
-    chips.push(`ซื้อขั้นต่ำ ฿${Number(p.conditions.minPurchase).toLocaleString()}`);
+    chips.push(`ซื้อขั้นต่ำ ฿${formatNumber(Number(p.conditions.minPurchase))}`);
   }
   for (const c of p.conditions?.categories ?? []) {
     chips.push(CATEGORY_LABELS[c] ?? c);
@@ -74,7 +75,7 @@ export default function PromotionsPage() {
               <Card key={p.id} variant="outlined" className="h-full">
                 <CardBody className="space-y-3 leading-snug">
                   <div className="flex items-start gap-3">
-                    <span className="size-12 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+                    <span className="size-12 rounded-xl bg-accent text-emerald-600 flex items-center justify-center shrink-0">
                       {promoIcon(p)}
                     </span>
                     <div className="min-w-0 flex-1 space-y-1">

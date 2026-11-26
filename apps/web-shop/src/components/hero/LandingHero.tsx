@@ -18,13 +18,13 @@ interface Props {
 
 export function LandingHero({ eyebrow, title, description, cta, steps }: Props) {
   return (
-    <section className="bg-gradient-to-b from-emerald-50 to-background">
+    <section className="bg-gradient-to-b from-muted to-background">
       <Container>
         <div className="py-10 md:py-16 space-y-10 leading-snug">
           <Reveal>
             <div className="space-y-4 text-center md:text-left max-w-2xl">
               {eyebrow && (
-                <span className="text-xs font-semibold uppercase tracking-wider text-emerald-700">
+                <span className="text-xs font-semibold uppercase tracking-wider text-primary">
                   {eyebrow}
                 </span>
               )}

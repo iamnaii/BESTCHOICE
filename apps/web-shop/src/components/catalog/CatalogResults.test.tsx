@@ -76,9 +76,11 @@ it('preserves existing cards, focus and photo selection when more results arrive
       <CatalogResults {...props} />
     </MemoryRouter>,
   );
-  const photo = screen.getByRole('button', { name: 'ดูรูปที่ 2' });
-  fireEvent.click(photo);
-  photo.focus();
+  // การ์ดไม่มีแถบรูปย่อแล้ว (รูปเต็มขอบ) — เลื่อนรูปด้วยลูกศร
+  const next = screen.getByRole('button', { name: 'รูปถัดไป' });
+  fireEvent.click(next);
+  next.focus();
+  expect(screen.getByRole('img', { name: 'Apple iPhone 13' })).toHaveAttribute('src', '/back.jpg');
   const first = screen.getByRole('article');
   rerender(
     <MemoryRouter>
@@ -89,8 +91,11 @@ it('preserves existing cards, focus and photo selection when more results arrive
     </MemoryRouter>,
   );
   expect(screen.getAllByRole('article')[0]).toBe(first);
-  expect(photo).toHaveFocus();
-  expect(photo).toHaveAttribute('aria-pressed', 'true');
+  expect(next).toHaveFocus();
+  expect(screen.getAllByRole('img', { name: 'Apple iPhone 13' })[0]).toHaveAttribute(
+    'src',
+    '/back.jpg',
+  );
   expect(screen.getByRole('status')).toHaveTextContent('พบ 2 รายการ');
 });
 

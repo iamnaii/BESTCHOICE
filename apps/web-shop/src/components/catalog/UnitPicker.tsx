@@ -1,6 +1,7 @@
 import type { ProductUnit } from '@/types/product';
 import { cn } from '@/lib/utils';
 import { deviceOriginLabel } from '@/lib/device-origin';
+import { formatNumber } from '@/lib/format';
 
 function unitLabel(u: ProductUnit, isNew: boolean): string {
   const parts = [
@@ -43,13 +44,13 @@ export function UnitPicker({
               className={cn(
                 'flex flex-col items-start px-3 py-2 rounded-xl border text-left transition-colors leading-snug',
                 active
-                  ? 'border-emerald-500 ring-2 ring-emerald-200 bg-emerald-50'
+                  ? 'border-primary ring-2 ring-primary/20 bg-accent'
                   : 'border-border hover:border-foreground/40',
               )}
             >
               <span className="text-sm font-medium text-foreground">{unitLabel(u, isNew)}</span>
-              <span className="num text-sm text-emerald-600 font-semibold">
-                {u.cashPrice > 0 ? `฿${u.cashPrice.toLocaleString()}` : 'สอบถามราคา'}
+              <span className="num text-sm text-primary font-semibold">
+                {u.cashPrice > 0 ? `฿${formatNumber(u.cashPrice)}` : 'สอบถามราคา'}
               </span>
             </button>
           );

@@ -1,6 +1,7 @@
 import type { BuybackCatalog } from '@/types/buyback';
 import { modelLabel, storageLabel, type SeriesGroup } from '../device-options';
 import ChoiceButton from './ChoiceButton';
+import { formatNumber } from '@/lib/format';
 export default function DeviceStep({
   stage,
   groups,
@@ -40,7 +41,7 @@ export default function DeviceStep({
             >
               <span className="font-semibold">{storageLabel(item.storage)}</span>
               <span className="mt-1 block text-sm">
-                รับซื้อสูงสุด {Number(item.maxPrice).toLocaleString('th-TH')} บาท
+                รับซื้อสูงสุด {formatNumber(Number(item.maxPrice))} บาท
               </span>
             </ChoiceButton>
           ))}

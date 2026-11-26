@@ -3,6 +3,7 @@ import { Link } from 'react-router';
 import { Gift, Percent, Tag, Sparkles, ChevronRight } from '@/lib/icons';
 import { api } from '@/lib/api';
 import type { ShopPromotion } from '@/types/promotion';
+import { formatNumber } from '@/lib/format';
 
 export function usePromotions() {
   return useQuery<ShopPromotion[]>({
@@ -19,7 +20,7 @@ export function promoBenefitLabel(p: ShopPromotion): string {
     case 'PERCENTAGE_DISCOUNT':
       return `ลด ${trimZeros(Number(p.discountValue ?? 0))}%`;
     case 'FIXED_DISCOUNT':
-      return `ลดทันที ฿${Number(p.discountValue ?? 0).toLocaleString()}`;
+      return `ลดทันที ฿${formatNumber(Number(p.discountValue ?? 0))}`;
     case 'FREE_ACCESSORY':
       return 'รับของแถมฟรี';
     case 'SPECIAL_RATE':
@@ -72,20 +73,20 @@ export default function PromotionsStrip() {
             <Link
               key={p.id}
               to="/promotions"
-              className="snap-start shrink-0 w-[280px] md:w-auto md:flex-1 flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 transition-colors px-4 py-3 leading-snug"
+              className="snap-start shrink-0 w-[280px] md:w-auto md:flex-1 flex items-center gap-3 rounded-2xl border border-border bg-muted hover:bg-accent transition-colors px-4 py-3 leading-snug"
             >
               <span className="size-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0">
                 {promoIcon(p)}
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block text-sm font-semibold text-emerald-800 truncate">
+                <span className="block text-sm font-semibold text-foreground truncate">
                   {p.name}
                 </span>
-                <span className="block text-xs text-emerald-700">
+                <span className="block text-xs text-muted-foreground">
                   {promoBenefitLabel(p)} · {promoEndsLabel(p)}
                 </span>
               </span>
-              <ChevronRight className="size-4 text-emerald-600 shrink-0" aria-hidden="true" />
+              <ChevronRight className="size-4 text-muted-foreground shrink-0" aria-hidden="true" />
             </Link>
           ))}
         </div>

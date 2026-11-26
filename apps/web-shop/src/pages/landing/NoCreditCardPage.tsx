@@ -118,7 +118,7 @@ export default function NoCreditCardPage() {
 
           <LandingFaq title="คำถามที่พบบ่อย" items={FAQS} />
 
-          <section className="rounded-2xl bg-emerald-50 p-6 md:p-8">
+          <section className="rounded-2xl bg-muted p-6 md:p-8">
             <Stack gap={3} className="items-start leading-snug">
               <h2 className="text-xl font-bold leading-snug">เริ่มเลือกเครื่องได้เลย</h2>
               <p className="text-sm text-muted-foreground leading-snug">

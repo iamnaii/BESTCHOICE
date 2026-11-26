@@ -12,7 +12,7 @@ const variantClass: Record<CardVariant, string> = {
   elevated: 'bg-card border border-border shadow-md',
   outlined: 'bg-card border border-zinc-200',
   interactive:
-    'bg-card border border-zinc-200 hover:shadow-lg hover:border-emerald-200 transition-all duration-base cursor-pointer',
+    'bg-card border border-zinc-200 hover:shadow-lg hover:border-zinc-300 transition-[box-shadow,border-color] duration-base cursor-pointer',
 };
 
 export function Card({ variant = 'outlined', className, ...props }: CardProps) {

@@ -358,7 +358,7 @@ export default function CatalogPage() {
                 type="button"
                 onClick={() => updateFilters({ ...filters, deviceOrigin: undefined })}
                 aria-label={`ล้างตัวกรอง${deviceOriginLabel(filters.deviceOrigin)}`}
-                className="mb-3 min-h-11 inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 font-head text-sm text-emerald-800"
+                className="mb-3 min-h-11 inline-flex items-center gap-2 rounded-full bg-accent px-3 py-1.5 font-head text-sm text-accent-foreground"
               >
                 {deviceOriginLabel(filters.deviceOrigin)}
                 <X className="size-4" aria-hidden />
@@ -384,7 +384,7 @@ export default function CatalogPage() {
                       aria-pressed={active}
                       onClick={() => setPriceMode(m.v)}
                       className={cn(
-                        'min-h-11 flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3.5 py-1 font-head text-sm rounded-full leading-snug whitespace-nowrap transition-all',
+                        'min-h-11 flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3.5 py-1 font-head text-sm rounded-full leading-snug whitespace-nowrap transition-[color,background-color,box-shadow]',
                         active
                           ? 'bg-white text-primary font-semibold shadow-sm'
                           : 'font-medium text-zinc-600 hover:text-primary',
@@ -420,7 +420,7 @@ export default function CatalogPage() {
                         type="checkbox"
                         checked={freeDown}
                         onChange={(e) => setFreeDown(e.target.checked)}
-                        className="size-4 shrink-0 accent-emerald-600"
+                        className="size-4 shrink-0 accent-primary"
                       />
                       ฟรีดาวน์
                       <span className="num text-xs font-normal text-muted-foreground">
@@ -482,7 +482,7 @@ export default function CatalogPage() {
                 <button
                   type="button"
                   onClick={clearSearch}
-                  className="min-h-11 inline-flex items-center gap-1.5 px-3 py-1.5 font-head text-sm rounded-full bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors leading-snug"
+                  className="min-h-11 inline-flex items-center gap-1.5 px-3 py-1.5 font-head text-sm rounded-full bg-accent text-accent-foreground hover:bg-navy-200 transition-colors leading-snug"
                 >
                   ค้นหา: “{filters.search}”
                   <X className="size-4" aria-label="ล้างคำค้นหา" />
@@ -536,7 +536,7 @@ export default function CatalogPage() {
                               className={cn(
                                 'min-h-11 sm:min-h-0 block w-full text-left px-3.5 py-2 font-head text-sm leading-snug',
                                 selected
-                                  ? 'text-emerald-700 font-medium bg-emerald-50'
+                                  ? 'text-accent-foreground font-medium bg-accent'
                                   : 'text-foreground hover:bg-muted',
                               )}
                             >

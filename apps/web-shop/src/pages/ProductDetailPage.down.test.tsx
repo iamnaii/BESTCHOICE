@@ -12,11 +12,16 @@ vi.mock('@/components/layout/ShopLayout', () => ({
 }));
 // เทสต์นี้ดูแค่ว่าหน้าอ่าน ?down= แล้วส่งให้เครื่องคิด — ส่วนอื่นของหน้าแทนด้วยตัวเปล่า
 vi.mock('@/components/InstallmentCalculatorCard', () => ({
-  InstallmentCalculatorCard: (p: { productId: string; initialDown?: number | null }) => (
+  InstallmentCalculatorCard: (p: {
+    productId: string;
+    initialDown?: number | null;
+    initialMonths?: number | null;
+  }) => (
     <div
       data-testid="calc"
       data-product={p.productId}
       data-down={p.initialDown == null ? 'none' : String(p.initialDown)}
+      data-months={p.initialMonths == null ? 'none' : String(p.initialMonths)}
     />
   ),
 }));
@@ -95,4 +100,21 @@ it('ไม่มี ?down= หรือไม่ใช่จำนวนเต�
   first.unmount();
   open('/products/u1?down=abc');
   expect(await screen.findByTestId('calc')).toHaveAttribute('data-down', 'none');
+});
+
+it('เปิดด้วย ?months=6 → ส่งจำนวนงวดให้เครื่องคิด (ใช้ร่วมกับ ?down= ได้)', async () => {
+  open('/products/u1?down=5000&months=6');
+  const calc = await screen.findByTestId('calc');
+  expect(calc).toHaveAttribute('data-months', '6');
+  expect(calc).toHaveAttribute('data-down', '5000');
+});
+
+it('?months= ที่ไม่ใช่จำนวนเต็ม 1..36 → ไม่ส่ง', async () => {
+  for (const bad of ['abc', '0', '48', '99']) {
+    const view = open(`/products/u1?months=${bad}`);
+    expect(await screen.findByTestId('calc')).toHaveAttribute('data-months', 'none');
+    view.unmount();
+  }
+  open('/products/u1');
+  expect(await screen.findByTestId('calc')).toHaveAttribute('data-months', 'none');
 });

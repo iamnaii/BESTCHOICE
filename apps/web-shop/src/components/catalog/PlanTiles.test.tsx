@@ -119,3 +119,45 @@ describe('ProductCard โหมดผ่อน', () => {
     expect(screen.getByText('฿29,900')).toBeInTheDocument();
   });
 });
+
+describe('บรรทัดค่างวดไม่มีจำนวนงวด / การ์ดฟรีดาวน์อย่างเดียว', () => {
+  it('months เป็น null → "ผ่อน ฿X ต่อเดือน" (ไม่มี × N งวด)', () => {
+    const { container } = render(
+      <PlanTiles rate1={{ down: 4485, monthly: 2890, months: null }} rate2={null} />,
+    );
+    const lines = Array.from(container.querySelectorAll('[data-plan-line]')).map((el) =>
+      el.textContent?.replace(/\s+/g, ' ').trim(),
+    );
+    expect(lines).toEqual(['ผ่อน ฿2,890 ต่อเดือน']);
+    expect(container.textContent).not.toContain('งวด');
+  });
+
+  it('ProductCard freeDownOnly: เครื่องที่มีทั้งสองแผน แสดงเฉพาะกล่องฟรีดาวน์', () => {
+    const both: ProductGroup = {
+      id: 'u1',
+      kind: 'UNIT',
+      brand: 'Apple',
+      model: 'iPhone 16 Pro Max',
+      storage: '256GB',
+      condition: 'USED',
+      minPrice: 29900,
+      stockCount: 1,
+      monthlyPaymentFrom: 2890,
+      downAmount: 4485,
+      installmentMonths: 12,
+      rate2: { down: 0, monthly: 4061, months: 15 },
+      stock: { display: 'พร้อมขาย', tone: 'normal' },
+      images: [],
+      tags: [],
+    };
+    const { container } = render(
+      <MemoryRouter>
+        <ProductCard product={both} priceMode="installment" freeDownOnly />
+      </MemoryRouter>,
+    );
+    expect(container.querySelectorAll('[data-plan]')).toHaveLength(1);
+    expect(container.querySelector('[data-plan="free-down"]')).not.toBeNull();
+    expect(container.querySelector('[data-plan="rate1"]')).toBeNull();
+    expect(screen.queryByText('฿4,485')).not.toBeInTheDocument();
+  });
+});

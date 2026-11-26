@@ -321,3 +321,63 @@ it('แถวเงินดาวน์บนมือถือห่อบร�
   expect(row.className).toContain('flex-wrap');
   expect(toolbar.closest('div.rounded-full')?.className).toContain('min-w-40');
 });
+
+it('หน่วง 250ms: commit แล้วยังไม่ยิงคำขอที่มี downAmount จนครบ 250ms · commit ซ้ำในช่วงนั้นใช้ค่าหลังสุดค่าเดียว', async () => {
+  open('/products');
+  const input = await downInput();
+  await waitFor(() => expect(listCalls().length).toBe(1));
+  vi.useFakeTimers();
+  try {
+    fireEvent.change(input, { target: { value: '3000' } });
+    fireEvent.blur(input);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(249);
+    });
+    expect(listCalls().filter((u) => paramsOf(u).has('downAmount'))).toHaveLength(0);
+
+    // commit ครั้งที่สองก่อนครบ 250ms → ตัวจับเวลาของครั้งแรกถูกแทนที่
+    fireEvent.change(input, { target: { value: '4000' } });
+    fireEvent.blur(input);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(249);
+    });
+    expect(listCalls().filter((u) => paramsOf(u).has('downAmount'))).toHaveLength(0);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    const withDown = listCalls().filter((u) => paramsOf(u).has('downAmount'));
+    expect(withDown).toHaveLength(1);
+    expect(paramsOf(withDown[0]).get('downAmount')).toBe('4000');
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it('มือถือ: ติ๊กฟรีดาวน์ในแถว data-mobile-plan → ?freeDown=1 และช่องเงินดาวน์ของแถวนั้นใช้ไม่ได้', async () => {
+  open('/products');
+  await screen.findAllByRole('checkbox', { name: /ฟรีดาวน์/ });
+  const row = document.querySelector('[data-mobile-plan]') as HTMLElement;
+  fireEvent.click(within(row).getByRole('checkbox', { name: /ฟรีดาวน์/ }));
+  await waitFor(() => expect(urlParams().get('freeDown')).toBe('1'));
+  expect(urlParams().has('down')).toBe(false);
+  expect(within(row).getByLabelText('เงินดาวน์')).toBeDisabled();
+  expect(within(row).getByRole('checkbox', { name: /ฟรีดาวน์/ })).toBeChecked();
+});
+
+it('แผงตัวกรองบนมือถือมีคำอธิบายของ dialog (ไม่มีคำเตือน Missing Description)', async () => {
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  try {
+    open('/products');
+    await screen.findAllByRole('checkbox', { name: /ฟรีดาวน์/ });
+    fireEvent.click(screen.getByRole('button', { name: 'ตัวกรอง' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveAccessibleDescription('เลือกเงื่อนไขเพื่อกรองรายการสินค้า');
+    const logged = [...warn.mock.calls, ...error.mock.calls].map((c) => String(c[0]));
+    expect(logged.filter((m) => m.includes('Description'))).toEqual([]);
+  } finally {
+    warn.mockRestore();
+    error.mockRestore();
+  }
+});

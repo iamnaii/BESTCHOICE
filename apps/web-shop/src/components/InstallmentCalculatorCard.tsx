@@ -8,6 +8,7 @@ import { Card, CardHeader, CardBody, CardTitle, Button } from '@/components';
 import { displayInstallment, minDownAmountFromPct } from '@installment/shared';
 import { lineOaMessageUrl, productShareUrl } from '@/lib/copy';
 import { cn } from '@/lib/utils';
+import { DEFAULT_DETAIL_MONTHS } from '@/lib/installment-defaults';
 import { compareBadges, FREE_DOWN_BADGE, isFreeDown } from './installment-compare';
 
 interface PreviewResponse {
@@ -38,6 +39,8 @@ interface Props {
   installmentPrice: number | null;
   /** เงินดาวน์ที่ลูกค้าพิมพ์ในหน้ารวม (`?down=`) — ค่าเริ่มต้นของเรท 1 ตอนเปิดหน้า · ไม่นับว่าลูกค้าแก้ช่อง */
   initialDown?: number | null;
+  /** จำนวนงวดที่การ์ดหน้ารวมแสดง (`?months=`) — ค่าเริ่มต้นของเรท 1 เท่านั้น · เรท 2 ไม่ใช้ */
+  initialMonths?: number | null;
 }
 
 function formatTHB(n: number): string {
@@ -45,7 +48,7 @@ function formatTHB(n: number): string {
 }
 
 /** งวดของคำขอแรกของ BESTCHOICE — ตัวเลือกจริงมาจากคำตอบ BC (allowedMonths) · GFIN ให้ server เลือกงวดตั้งต้นเอง */
-const INITIAL_MONTHS = 12;
+const INITIAL_MONTHS = DEFAULT_DETAIL_MONTHS;
 
 /** Only used until the first BC answer arrives with the real floor. */
 const DEFAULT_DOWN_PCT = 15;
@@ -367,6 +370,7 @@ function InstallmentCalculator({
   productId,
   installmentPrice,
   initialDown,
+  initialMonths,
 }: Props & { installmentPrice: number }) {
   // เปิดจากการ์ดหน้ารวมสถานะ ② (คำตัดสิน ข1): เรท 1 เริ่มที่เงินดาวน์นั้น ไม่เกินเพดาน 90%
   // ต่ำกว่าขั้นต่ำของเครื่อง → ช่องเงินดาวน์ปรับขึ้นเองตามกติกาเดิมของมัน
@@ -375,8 +379,13 @@ function InstallmentCalculator({
     initialDown != null && Number.isInteger(initialDown) && initialDown > 0
       ? Math.min(initialDown, Math.floor((installmentPrice * MAX_DOWN_PCT) / 100))
       : null;
-  const [months, setMonths] = useState(INITIAL_MONTHS);
-  const [termOptions, setTermOptions] = useState<number[]>([INITIAL_MONTHS]);
+  // งวดจากการ์ด: ใส่เป็นค่าเริ่มต้นของเรท 1 เท่านั้น — ถ้าไม่อยู่ใน allowedMonths effect ด้านล่างจัดการเอง
+  const seedMonths =
+    initialMonths != null && Number.isInteger(initialMonths) && initialMonths > 0
+      ? initialMonths
+      : INITIAL_MONTHS;
+  const [months, setMonths] = useState(seedMonths);
+  const [termOptions, setTermOptions] = useState<number[]>([seedMonths]);
   // GFIN: null = ยังไม่เลือก → ให้ server ใช้งวดตั้งต้นของเครื่อง (งวดเรท 2 ของราคากลาง / เพดานกติกา OVER)
   const [gfinMonths, setGfinMonths] = useState<number | null>(null);
   const [gfinTerms, setGfinTerms] = useState<{ options: number[]; defaultMonths: number | null }>({

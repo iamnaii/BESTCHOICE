@@ -39,6 +39,22 @@ export interface PreviewResult {
   defaultMonths?: number;
 }
 
+/**
+ * ผลที่ส่งออก storefront (HTTP) — เรท 2 (GFIN) ไม่ส่งยอดจัด/ยอดรวม: คำตอบเดียวก็ได้
+ * financedAmount ÷ (1 − ดาวน์%) = ราคาที่ส่งไฟแนนซ์ · ผลของ service เองไม่ถูกแก้ (ผู้เรียกในระบบได้ครบ) ·
+ * BC / ไม่พร้อม คงเดิมทุกฟิลด์
+ *
+ * ยังไม่ปิดทั้งหมด: ผู้เรียกที่ขอเรท 2 สองครั้งด้วยดาวน์ % ต่างกันยังคำนวณราคานั้นกลับได้จากเงินดาวน์สองค่า —
+ * ปิดได้ด้วยการจำกัดดาวน์ % ของเรท 2 ซึ่งเปลี่ยนพฤติกรรมเครื่องคิด (รอเจ้าของตัดสิน)
+ */
+export function toStorefrontPreview(result: PreviewResult): PreviewResult {
+  if (result.provider !== 'GFIN') return result;
+  const safe = { ...result };
+  delete safe.financedAmount;
+  delete safe.totalWithVat;
+  return safe;
+}
+
 @Injectable()
 export class InstallmentPreviewService {
   constructor(private prisma: PrismaService) {}

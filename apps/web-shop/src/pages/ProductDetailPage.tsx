@@ -26,7 +26,7 @@ import { WarrantyDetails } from '@/components/catalog/WarrantyDetails';
 import { deviceOriginLabel, type DeviceOrigin } from '@/lib/device-origin';
 import { RelatedSection } from '@/components/catalog/RelatedSection';
 import { StockIndicator } from '@/components/catalog/StockIndicator';
-import { parseDownParam } from './catalog-params';
+import { parseDownParam, parseMonthsParam } from './catalog-params';
 import {
   Container,
   Section,
@@ -76,6 +76,8 @@ export default function ProductDetailPage() {
   const [searchParams] = useSearchParams();
   // เงินดาวน์ที่ลูกค้าพิมพ์ในหน้ารวม (ลิงก์จากการ์ดสถานะ ②) — ใช้กับเรท 1 ตอนเปิดหน้าเท่านั้น (คำตัดสิน ข1)
   const initialDown = parseDownParam(searchParams.get('down'));
+  // จำนวนงวดที่การ์ดแสดง (`?months=`) — เรท 1 เปิดที่งวดนั้น เรท 2 ไม่เกี่ยว
+  const initialMonths = parseMonthsParam(searchParams.get('months'));
   const track = useTrackEvent();
   const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
 
@@ -458,6 +460,7 @@ export default function ProductDetailPage() {
               cashPrice={selectedUnit?.cashPrice ?? data.cashPrice}
               installmentPrice={selectedUnit?.installmentPrice ?? data.installmentPrice}
               initialDown={initialDown}
+              initialMonths={initialMonths}
             />
           </Container>
         </Section>

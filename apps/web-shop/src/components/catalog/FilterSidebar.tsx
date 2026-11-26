@@ -93,19 +93,13 @@ export function FilterSidebar({ filters, onChange, models, plan, onClearAll, bar
     filters.deviceOrigin ||
     filters.condition ||
     filters.model ||
-    filters.conditionGrade ||
     filters.minPrice !== undefined ||
     filters.maxPrice !== undefined ||
     (plan != null && (plan.down != null || plan.freeDown));
 
   function pickType(v: 'NEW' | 'USED') {
     const next = filters.condition === v ? undefined : v;
-    onChange({
-      ...filters,
-      condition: next,
-      // มือ 1 ไม่มีเกรดตำหนิ — ล้างตัวกรองเกรดทิ้ง
-      conditionGrade: next === 'NEW' ? undefined : filters.conditionGrade,
-    });
+    onChange({ ...filters, condition: next });
   }
 
   const body = (
@@ -208,7 +202,6 @@ export function FilterSidebar({ filters, onChange, models, plan, onClearAll, bar
                   search: filters.search,
                   condition: undefined,
                   model: undefined,
-                  conditionGrade: undefined,
                   minPrice: undefined,
                   maxPrice: undefined,
                 })

@@ -1,4 +1,5 @@
 import type { CatalogFilters } from '@/components/catalog/FilterSidebar';
+import { MAX_DETAIL_MONTHS } from '@/lib/installment-defaults';
 
 export interface CatalogQuery {
   filters: CatalogFilters;
@@ -15,6 +16,13 @@ export interface CatalogQuery {
 export function parseDownParam(raw: string | null): number | null {
   if (raw == null || !/^\d{1,7}$/.test(raw)) return null;
   return Number(raw);
+}
+
+/** อ่าน `?months=` (หน้ารายละเอียด): จำนวนเต็ม 1..36 (เพดานที่ API รับ) · อย่างอื่น = null */
+export function parseMonthsParam(raw: string | null): number | null {
+  if (raw == null || !/^\d{1,2}$/.test(raw)) return null;
+  const n = Number(raw);
+  return n >= 1 && n <= MAX_DETAIL_MONTHS ? n : null;
 }
 
 /** query string ของ GET /api/shop/products — ที่เดียว ให้หน้ารวมกับเทสต์ใช้ร่วมกัน */

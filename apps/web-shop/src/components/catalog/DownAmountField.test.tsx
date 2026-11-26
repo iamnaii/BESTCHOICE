@@ -17,6 +17,18 @@ describe('parseDownInput', () => {
     expect(parseDownInput('5000.9')).toBe(5000);
     expect(parseDownInput('.5')).toBeNull();
   });
+
+  it('"0.5" ไม่ใช่ฟรีดาวน์: เศษที่ไม่ใช่ศูนย์ + ส่วนจำนวนเต็มว่าง/ศูนย์ → null · "0" "0.00" ยัง = 0', () => {
+    expect(parseDownInput('0.5')).toBeNull();
+    expect(parseDownInput('00.5')).toBeNull();
+    expect(parseDownInput('0.05')).toBeNull();
+    expect(parseDownInput('0.00')).toBe(0);
+    expect(parseDownInput('0')).toBe(0);
+    expect(parseDownInput('0.')).toBe(0);
+    expect(parseDownInput('')).toBeNull();
+    expect(parseDownInput('1.5')).toBe(1);
+    expect(parseDownInput('5,000.00')).toBe(5000);
+  });
 });
 
 describe('DownAmountField', () => {

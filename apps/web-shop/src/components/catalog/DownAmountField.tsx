@@ -8,8 +8,11 @@ export const MAX_DOWN_BAHT = 9_999_999;
 /** ข้อความในช่อง → จำนวนเต็มบาท · ว่าง / ไม่มีตัวเลข = null (ไม่ได้ใส่เงินดาวน์) */
 export function parseDownInput(raw: string): number | null {
   // ตัดที่จุดทศนิยมตัวแรกก่อน — "5,000.00" ต้องได้ 5000 ไม่ใช่ 500000
-  const digits = raw.split('.')[0].replace(/[^\d]/g, '');
+  const [intPart, ...rest] = raw.split('.');
+  const digits = intPart.replace(/[^\d]/g, '');
   if (digits === '') return null;
+  // "0.5" ไม่ใช่ฟรีดาวน์ — มีเศษที่ไม่ใช่ศูนย์แต่ส่วนจำนวนเต็มเป็นศูนย์ = ไม่ได้ใส่เงินดาวน์
+  if (/^0+$/.test(digits) && /[1-9]/.test(rest.join('').replace(/[^\d]/g, ''))) return null;
   return Math.min(MAX_DOWN_BAHT, Number(digits));
 }
 

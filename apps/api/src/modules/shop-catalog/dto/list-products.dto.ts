@@ -114,8 +114,12 @@ export class ListProductsDto {
   @IsOptional()
   @Transform(({ obj }) => {
     const raw = (obj as { downAmount?: unknown }).downAmount;
-    if (raw === undefined || raw === null || raw === '') return undefined;
-    return typeof raw === 'number' ? raw : Number(raw);
+    if (raw === undefined || raw === null) return undefined;
+    if (typeof raw === 'number') return raw;
+    // ช่องว่างล้วน (?downAmount=%20) ก็คือ "ไม่ได้ส่ง" เช่นกัน — Number(' ') = 0 = ฟรีดาวน์
+    const text = String(raw).trim();
+    if (text === '') return undefined;
+    return Number(text);
   })
   @IsInt({ message: 'เงินดาวน์ต้องเป็นจำนวนเต็มบาท' })
   @Min(0, { message: 'เงินดาวน์ต้องไม่ติดลบ' })

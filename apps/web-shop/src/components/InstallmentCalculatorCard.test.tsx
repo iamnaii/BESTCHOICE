@@ -37,7 +37,12 @@ beforeEach(() => {
   );
 });
 afterEach(() => clients.splice(0).forEach((client) => client.clear()));
-function setup(id = 'device-1', price = 20000, initialDown?: number | null) {
+function setup(
+  id = 'device-1',
+  price = 20000,
+  initialDown?: number | null,
+  initialMonths?: number | null,
+) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   clients.push(client);
   const view = (productId: string) => (
@@ -47,6 +52,7 @@ function setup(id = 'device-1', price = 20000, initialDown?: number | null) {
         cashPrice={12000}
         installmentPrice={price}
         initialDown={initialDown}
+        initialMonths={initialMonths}
       />
     </QueryClientProvider>
   );
@@ -338,5 +344,37 @@ describe('เปิดด้วยเงินดาวน์จากหน้�
       expect(bc.params.has('customDownAmount')).toBe(false);
       view.unmount();
     }
+  });
+});
+
+describe('เปิดด้วยจำนวนงวดจากการ์ด (initialMonths)', () => {
+  it('เรท 1 ขอที่งวดนั้น · เรท 2 ไม่ส่งงวดและไม่ส่งดาวน์ · ไม่นับว่าลูกค้าแก้ช่องเงินดาวน์', async () => {
+    setup('device-1', 20000, null, 6);
+    const [bc, gfin] = requests;
+    expect(provider(bc)).toBe('BC');
+    expect(bc.params.get('months')).toBe('6');
+    expect(provider(gfin)).toBe('GFIN');
+    expect(gfin.params.has('months')).toBe(false);
+    expect(gfin.params.has('downPct')).toBe(false);
+    expect(gfin.params.has('customDownAmount')).toBe(false);
+    await answer([bc], 1960);
+    await answer([gfin], 4061, { months: 15, allowedMonths: [12, 15], defaultMonths: 15 });
+    expect(screen.getByLabelText(BC_TERM)).toHaveValue('6');
+    expect(requests).toHaveLength(2);
+  });
+
+  it('งวดที่ส่งมาไม่อยู่ในงวดที่เรท 1 รับ → ใช้กติกาเดิม (12 ถ้ามี) ไม่ค้างที่งวดนั้น', async () => {
+    setup('device-1', 20000, null, 7);
+    const [bc, gfin] = requests;
+    expect(bc.params.get('months')).toBe('7');
+    await answer([bc], 1960);
+    await answer([gfin], 4061, { allowedMonths: [12, 15], defaultMonths: 15 });
+    await waitFor(() => expect(requests.at(-1)!.params.get('months')).toBe('12'));
+    expect(screen.getByLabelText(BC_TERM)).toHaveValue('12');
+  });
+
+  it('ไม่ส่ง / null → เปิดที่ 12 เหมือนเดิม', () => {
+    setup('device-1', 20000, null, null);
+    expect(requests[0].params.get('months')).toBe('12');
   });
 });

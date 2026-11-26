@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildCatalogParams, parseDownParam } from './catalog-params';
+import { buildCatalogParams, parseDownParam, parseMonthsParam } from './catalog-params';
 
 const base = {
   filters: {},
@@ -60,6 +60,17 @@ describe('parseDownParam', () => {
     expect(parseDownParam('0')).toBe(0);
     for (const bad of [null, '', '-1', '12.5', 'abc', '5,000', '12345678']) {
       expect(parseDownParam(bad)).toBeNull();
+    }
+  });
+});
+
+describe('parseMonthsParam', () => {
+  it('รับเฉพาะจำนวนเต็ม 1..36 (เพดานที่ API รับ) · อย่างอื่น = null', () => {
+    expect(parseMonthsParam('6')).toBe(6);
+    expect(parseMonthsParam('1')).toBe(1);
+    expect(parseMonthsParam('36')).toBe(36);
+    for (const bad of [null, '', '0', '37', '48', '60', '99', '-3', '6.5', 'abc', '1e1', ' 6', '06x']) {
+      expect(parseMonthsParam(bad)).toBeNull();
     }
   });
 });

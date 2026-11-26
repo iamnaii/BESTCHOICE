@@ -1,7 +1,7 @@
 import { Controller, Get, Param, Query, NotFoundException, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { ShopCatalogService } from './shop-catalog.service';
-import { InstallmentPreviewService } from './installment-preview.service';
+import { InstallmentPreviewService, toStorefrontPreview } from './installment-preview.service';
 import { ListProductsDto } from './dto/list-products.dto';
 import { InstallmentPreviewDto } from './dto/installment-preview.dto';
 import { ShopBotDefenseGuard } from '../shop-bot-defense/shop-bot-defense.guard';
@@ -47,6 +47,6 @@ export class ShopCatalogController {
   @Get('installment-preview')
   @Throttle({ short: { limit: 60, ttl: 60_000 } })
   async getInstallmentPreview(@Query() dto: InstallmentPreviewDto) {
-    return this.previewSvc.preview(dto);
+    return toStorefrontPreview(await this.previewSvc.preview(dto));
   }
 }

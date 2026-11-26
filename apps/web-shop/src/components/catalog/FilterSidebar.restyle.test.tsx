@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { FilterSidebar, type CatalogFilters, type PlanControls } from './FilterSidebar';
@@ -134,3 +135,18 @@ describe('id ไม่ซ้ำระหว่างแถบข้าง (deskt
   });
 });
 
+
+describe('ช่วงราคาที่เลือกอยู่', () => {
+  it('กดช่วงที่เลือกอยู่ซ้ำ → ยังเลือกอยู่ (aria-pressed ยัง true) ไม่ถูกสลับปิด', () => {
+    function Harness() {
+      const [filters, setFilters] = useState<CatalogFilters>({ minPrice: 10000, maxPrice: 15000 });
+      return <FilterSidebar filters={filters} onChange={setFilters} models={[]} />;
+    }
+    render(<Harness />);
+    const band = () => within(price()).getByRole('button', { name: '฿10,000 – ฿15,000' });
+    expect(isPressed(band())).toBe(true);
+    fireEvent.click(band());
+    expect(isPressed(band())).toBe(true);
+    expect(isPressed(within(price()).getByRole('button', { name: 'ทุกช่วงราคา' }))).toBe(false);
+  });
+});

@@ -16,6 +16,7 @@ import {
   Container,
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -34,8 +35,6 @@ interface CatalogResponse {
   total: number;
   page: number;
   limit: number;
-  /** Floor for the down-payment slider — the API refuses to quote below it. */
-  minDownPct: number | null;
   /** Tenures the rate table allows. */
   monthsOptions: number[];
   /** จำนวนเครื่องฟรีดาวน์ตามตัวกรองอื่น. ไม่มีใน API รุ่นเก่า. */
@@ -464,6 +463,9 @@ export default function CatalogPage() {
                 <DialogContent>
                   <DialogHeader>
                     <DialogTitle>ตัวกรองสินค้า</DialogTitle>
+                    <DialogDescription className="sr-only">
+                      เลือกเงื่อนไขเพื่อกรองรายการสินค้า
+                    </DialogDescription>
                   </DialogHeader>
                   <FilterSidebar
                     filters={filters}

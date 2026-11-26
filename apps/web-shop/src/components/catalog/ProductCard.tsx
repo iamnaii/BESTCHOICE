@@ -3,6 +3,7 @@ import { Link } from 'react-router';
 import { cn } from '@/lib/utils';
 import { shopInfo } from '@/lib/copy';
 import { deviceOriginLabel, type DeviceOrigin } from '@/lib/device-origin';
+import { DEFAULT_DETAIL_MONTHS, MAX_DETAIL_MONTHS } from '@/lib/installment-defaults';
 import { PlanTiles } from './PlanTiles';
 
 export interface ProductGroup {
@@ -89,8 +90,27 @@ export function ProductCard({
   freeDownOnly = false,
   down = null,
 }: Props) {
-  // เงินดาวน์ที่พิมพ์ไว้ตามไปหน้ารายละเอียด (ใช้กับเรท 1 — คำตัดสิน ข1)
-  const to = p.id ? `/products/${p.id}${down ? `?down=${down}` : ''}` : '/products';
+  const hasQuote = p.monthlyPaymentFrom != null && p.monthlyPaymentFrom > 0;
+  // เงินดาวน์ที่พิมพ์ไว้ + งวดที่การ์ดโชว์เรท 1 ตามไปหน้ารายละเอียด (คำตัดสิน ข1) ·
+  // งวดเท่าค่าตั้งต้นของหน้านั้นไม่ต้องส่ง · การ์ดที่ไม่โชว์กล่องเรท 1 ก็ไม่ส่งงวด ·
+  // งวดเกินเพดานที่หน้ารายละเอียดคิดได้ก็ไม่ส่ง (หน้านั้นเปิดที่ค่าตั้งต้นตามเดิม)
+  const shownMonths =
+    priceMode === 'installment' &&
+    !freeDownOnly &&
+    hasQuote &&
+    p.downAmount != null &&
+    typeof p.installmentMonths === 'number' &&
+    Number.isInteger(p.installmentMonths) &&
+    p.installmentMonths >= 1 &&
+    p.installmentMonths <= MAX_DETAIL_MONTHS &&
+    p.installmentMonths !== DEFAULT_DETAIL_MONTHS
+      ? p.installmentMonths
+      : null;
+  const query = new URLSearchParams();
+  if (down) query.set('down', String(down));
+  if (shownMonths != null) query.set('months', String(shownMonths));
+  const qs = query.toString();
+  const to = p.id ? `/products/${p.id}${qs ? `?${qs}` : ''}` : '/products';
   const photos = (p.images?.length ? p.images : p.thumbnailUrl ? [p.thumbnailUrl] : []).slice(0, 5);
   const [active, setActive] = useState(0);
   const current = photos[Math.min(active, photos.length - 1)];
@@ -109,7 +129,6 @@ export function ProductCard({
       ? [{ label: 'ใกล้หมด', warm: true }]
       : [];
 
-  const hasQuote = p.monthlyPaymentFrom != null && p.monthlyPaymentFrom > 0;
   const visibleThumbs = photos.length > THUMB_SLOTS ? photos.slice(0, THUMB_SLOTS - 1) : photos;
   const overflow = photos.length - visibleThumbs.length;
   const specValue = [p.storage, isUnit ? p.color : isNew ? 'ของใหม่' : undefined]

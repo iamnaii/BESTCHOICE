@@ -338,8 +338,11 @@ describe('ListProductsDto.downAmount', () => {
     expect(parse({ downAmount: '0' }).downAmount).toBe(0);
     expect(parse({ downAmount: '' }).downAmount).toBeUndefined();
     expect(parse({}).downAmount).toBeUndefined();
+    expect(parse({ downAmount: ' ' }).downAmount).toBeUndefined();
+    expect(parse({ downAmount: '  5000 ' }).downAmount).toBe(5000);
     expect(messages({ downAmount: '5000' })).toEqual([]);
     expect(messages({ downAmount: '' })).toEqual([]);
+    expect(messages({ downAmount: ' ' })).toEqual([]);
   });
 
   it('ติดลบ / ทศนิยม / ไม่ใช่ตัวเลข / เกินเพดาน → ปฏิเสธด้วยข้อความไทย', () => {

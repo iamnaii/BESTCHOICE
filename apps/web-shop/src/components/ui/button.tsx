@@ -9,8 +9,10 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
+        // Buttons are brand green (owner 2026-11-27): white on #0B7F5A reads 5.0:1. Hover/press
+        // darken the same hue instead of fading toward white (a /90 tint drops to 4.2:1).
         primary:
-          'bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 shadow-sm',
+          'bg-brand-green-dark text-white hover:brightness-[0.92] active:brightness-[0.85] shadow-sm',
         // The one warm attention variant — chat/reserve CTAs only
         // (isolation effect: it converts because it is rare on the page).
         cta: 'bg-cta text-cta-foreground hover:bg-orange-600 active:bg-orange-700 shadow-sm',
@@ -65,7 +67,7 @@ const buttonVariants = cva(
       mode: {
         default: 'focus-visible:ring-2 focus-visible:ring-ring/80 focus-visible:ring-offset-2',
         icon: 'focus-visible:ring-2 focus-visible:ring-ring/80 focus-visible:ring-offset-2 shrink-0',
-        link: 'text-primary h-auto p-0 bg-transparent rounded-none hover:bg-transparent data-[state=open]:bg-transparent',
+        link: 'text-brand-green-dark h-auto p-0 bg-transparent rounded-none hover:bg-transparent data-[state=open]:bg-transparent',
         input: `
             justify-start font-normal hover:bg-background [&_svg]:transition-colors [&_svg]:hover:text-foreground data-[state=open]:bg-background
             focus-visible:border-ring focus-visible:outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring/80
@@ -219,28 +221,28 @@ const buttonVariants = cva(
         mode: 'link',
         underline: 'solid',
         className:
-          'font-medium text-primary hover:text-primary/90 [&_svg:not([role=img]):not([class*=text-])]:opacity-60 hover:underline hover:underline-offset-4 hover:decoration-solid',
+          'font-medium text-brand-green-dark hover:text-brand-green-dark/90 [&_svg:not([role=img]):not([class*=text-])]:opacity-60 hover:underline hover:underline-offset-4 hover:decoration-solid',
       },
       {
         variant: 'primary',
         mode: 'link',
         underline: 'dashed',
         className:
-          'font-medium text-primary hover:text-primary/90 [&_svg:not([role=img]):not([class*=text-])]:opacity-60 hover:underline hover:underline-offset-4 hover:decoration-dashed decoration-1',
+          'font-medium text-brand-green-dark hover:text-brand-green-dark/90 [&_svg:not([role=img]):not([class*=text-])]:opacity-60 hover:underline hover:underline-offset-4 hover:decoration-dashed decoration-1',
       },
       {
         variant: 'primary',
         mode: 'link',
         underlined: 'solid',
         className:
-          'font-medium text-primary hover:text-primary/90 [&_svg:not([role=img]):not([class*=text-])]:opacity-60 underline underline-offset-4 decoration-solid',
+          'font-medium text-brand-green-dark hover:text-brand-green-dark/90 [&_svg:not([role=img]):not([class*=text-])]:opacity-60 underline underline-offset-4 decoration-solid',
       },
       {
         variant: 'primary',
         mode: 'link',
         underlined: 'dashed',
         className:
-          'font-medium text-primary hover:text-primary/90 [&_svg]:opacity-60 underline underline-offset-4 decoration-dashed decoration-1',
+          'font-medium text-brand-green-dark hover:text-brand-green-dark/90 [&_svg]:opacity-60 underline underline-offset-4 decoration-dashed decoration-1',
       },
       {
         variant: 'inverse',
@@ -302,7 +304,7 @@ const buttonVariants = cva(
         variant: 'primary',
         appearance: 'ghost',
         className:
-          'bg-transparent text-primary/90 hover:bg-primary/5 data-[state=open]:bg-primary/5',
+          'bg-transparent text-brand-green-dark hover:bg-mint-tint data-[state=open]:bg-mint-tint',
       },
       {
         variant: 'destructive',

@@ -99,7 +99,7 @@ export default function ShippingPage() {
                   <CardBody>
                     <Stack gap={3} className="leading-snug">
                       <div className="flex items-start justify-between gap-3">
-                        <span className="inline-flex size-10 items-center justify-center rounded-full bg-accent text-emerald-600">
+                        <span className="inline-flex size-10 items-center justify-center rounded-full bg-mint-tint text-brand-green-dark">
                           <m.Icon className="size-5" aria-hidden="true" />
                         </span>
                         <span className="num text-base font-semibold text-primary">{m.fee}</span>
@@ -123,13 +123,13 @@ export default function ShippingPage() {
                 <CardBody>
                   <Stack gap={3} className="leading-snug">
                     <div className="flex items-start gap-3">
-                      <MapPin className="size-5 text-emerald-600 shrink-0 mt-0.5" aria-hidden="true" />
+                      <MapPin className="size-5 text-brand-green shrink-0 mt-0.5" aria-hidden="true" />
                       <p className="text-sm text-muted-foreground leading-snug">
                         {copy.shipping.branchAddress}
                       </p>
                     </div>
                     <div className="flex items-start gap-3">
-                      <Clock className="size-5 text-emerald-600 shrink-0 mt-0.5" aria-hidden="true" />
+                      <Clock className="size-5 text-brand-green shrink-0 mt-0.5" aria-hidden="true" />
                       <p className="text-sm text-muted-foreground leading-snug">
                         {copy.shipping.branchHours}
                       </p>

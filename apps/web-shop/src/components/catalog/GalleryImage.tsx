@@ -30,7 +30,8 @@ export function GalleryImage({
         gsap.fromTo(
           image.current,
           { opacity: 0 },
-          { opacity: 1, duration: 0.28, clearProps: 'opacity' },
+          // ≤150ms (ส่วน B5/B6) — รูปต้องโผล่แทบทันทีที่โหลดเสร็จ
+          { opacity: 1, duration: 0.15, clearProps: 'opacity' },
         );
       });
       return () => media.revert();

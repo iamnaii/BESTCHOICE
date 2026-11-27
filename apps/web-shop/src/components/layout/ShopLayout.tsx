@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import ShopHeader from './ShopHeader';
 import ShopFooter from './ShopFooter';
 import FloatingLineButton from './FloatingLineButton';
+import PromoBar from './PromoBar';
 
 export default function ShopLayout({ children, mobileFloatingContact = true }: { children: ReactNode; mobileFloatingContact?: boolean }) {
   return (
@@ -13,6 +14,7 @@ export default function ShopLayout({ children, mobileFloatingContact = true }: {
       >
         ข้ามไปเนื้อหาหลัก
       </a>
+      <PromoBar />
       <ShopHeader />
       {/* scroll-mt เท่าความสูงหัวเว็บที่ติดด้านบน (≈65px) — กระโดดมาแล้วหัวเว็บไม่บังต้นเนื้อหา */}
       <main id="main" tabIndex={-1} className="flex-1 scroll-mt-17 outline-none">

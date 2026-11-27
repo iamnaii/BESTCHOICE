@@ -6,10 +6,11 @@ interface Props extends React.HTMLAttributes<HTMLElement> {
 }
 const toneClass = {
   default: '',
-  // Pale navy tint (--color-muted, 2026-11-26) — the section background; white cards
-  // sitting on it get their separation from the tint, not from shadow alone.
+  // Mint tint (--color-mint-tint, owner brief 2026-11-27 A4) — the alternating section
+  // background (white / mint / white) instead of the old pale navy; white cards sitting on
+  // it get their separation from the tint, not from shadow alone.
   // 'emerald' keeps the brand-mint tint for a deliberate green section (unused today).
-  muted: 'bg-muted',
+  muted: 'bg-mint-tint',
   emerald: 'bg-emerald-50',
   sand: 'bg-sand-50',
 };

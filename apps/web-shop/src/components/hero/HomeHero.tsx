@@ -6,35 +6,26 @@ import { Container } from '@/components/layout/Container';
 import { gsap, useGSAP } from '@/components/motion/gsap';
 import { PhoneShowcase } from './PhoneShowcase';
 import { copy, shopInfo } from '@/lib/copy';
+import { downFloorText, useKnownDownFloor } from '@/hooks/useDownFloor';
 
-// ห้ามซ้ำคำใน h1 (ไม่เช็กบูโร/ดาวน์ 900) — chip มีไม่กี่สล็อต ใช้ขาย claim ที่พาดหัวยังไม่พูดถึง
-const HERO_CHIPS = ['ไม่ต้องมีบัตรเครดิต', 'ผ่อนสูงสุด 12 งวด', 'รับประกันร้าน 60 วัน'];
+// ห้ามซ้ำคำใน h1 (ไม่เช็กบูโร / ดาวน์เริ่ม … / ไม่ต้องมีผู้ค้ำ) — chip มีไม่กี่สล็อต ใช้ขาย claim ที่พาดหัวยังไม่พูดถึง
+const HERO_CHIPS = ['ไม่ต้องมีบัตรเครดิต', 'ผ่อนสูงสุด 15 งวด', 'มือสองประกันร้าน 60 วัน'];
 
 // แหล่งเดียวของพาดหัว = copy.home.heroTitle (บรรทัดที่ 2 เป็นบรรทัดเน้นสีเขียว)
 const [HERO_LINE_1, HERO_LINE_2] = copy.home.heroTitle.split('\n');
 
 export function HomeHero() {
   const scope = useRef<HTMLElement>(null);
+  // ยอดดาวน์ตามสต๊อก (เจ้าของ 2026-11-27 "ใช้หัวพาดกับการ์ด ตามสต๊อค") · ยังไม่รู้ = ข้อความที่ไม่มีตัวเลข
+  const downFloor = useKnownDownFloor();
+  const heroDownPhrase = downFloor ? downFloorText(downFloor) : copy.home.heroTitleNoDownSuffix;
   useGSAP(
     () => {
       if (!window.matchMedia) return;
       const media = gsap.matchMedia();
-      media.add('(prefers-reduced-motion: no-preference)', () => {
-        const intro = gsap.timeline({ defaults: { ease: 'power3.out', duration: 0.85 } });
-        intro
-          .from('[data-hero-copy]', {
-            y: 24,
-            opacity: 0,
-            stagger: 0.09,
-            clearProps: 'opacity,transform',
-          })
-          .from(
-            '[data-hero-visual]',
-            { y: 30, opacity: 0, scale: 0.96, clearProps: 'opacity,transform' },
-            0.15,
-          )
-          .from('[data-hero-badge]', { y: 12, opacity: 0, clearProps: 'opacity,transform' }, 0.5);
-      });
+      // ไม่มีแอนิเมชันเปิดหน้า (เจ้าของ 2026-11-27 ส่วน B5): พาดหัว/ปุ่ม/รูปต้องเห็นทันที —
+      // เดิมจางขึ้นจากโปร่งใส 0.85 วินาที · เหลือแค่มือถือสองเครื่องเอียงตามการเลื่อนบนจอกว้าง
+      // (ตกแต่งล้วน ไม่ซ่อนเนื้อหา)
       media.add('(min-width: 768px) and (prefers-reduced-motion: no-preference)', () => {
         gsap.to('[data-phone-back]', {
           y: -28,
@@ -67,7 +58,7 @@ export function HomeHero() {
   return (
     <section
       ref={scope}
-      className="relative overflow-hidden bg-muted"
+      className="relative overflow-hidden bg-linear-to-b from-mint-tint to-white"
       aria-labelledby="home-hero-title"
     >
       <Container>
@@ -86,7 +77,11 @@ export function HomeHero() {
             >
               {HERO_LINE_1}
               <br />
-              <span className="text-primary">{HERO_LINE_2}</span>
+              <span className="text-primary">
+                {HERO_LINE_2}{' '}
+                {/* ยอดดาวน์ไม่ถูกตัดกลางวลี — จอแคบขึ้นบรรทัดใหม่ทั้งวลี ("ดาวน์เริ่ม 1,200 บาท") */}
+                <span className="whitespace-nowrap">{heroDownPhrase}</span>
+              </span>
             </h1>
             <p
               data-hero-copy
@@ -101,12 +96,8 @@ export function HomeHero() {
                   <MessageCircle className="size-5" aria-hidden="true" /> ทักแชทเช็คราคา
                 </a>
               </Button>
-              <Button
-                asChild
-                size="lg"
-                variant="outline"
-                className="border-2 border-primary text-primary hover:bg-accent"
-              >
+              {/* ปุ่มกด = เขียว (ส่วน A2) */}
+              <Button asChild size="lg" variant="primary">
                 <Link to="/products">
                   ดูรุ่นทั้งหมด <ArrowRight className="size-5" aria-hidden="true" />
                 </Link>

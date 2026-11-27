@@ -229,10 +229,20 @@ export default function ProductDetailPage() {
 
   if (isLoading || !data) {
     return (
-      <ShopLayout>
-        <Container className="py-8">
-          <div className="grid md:grid-cols-2 gap-8 leading-snug">
-            <Skeleton className="aspect-square w-full rounded-2xl" />
+      // โครงเดียวกับหน้าจริงทุกระยะ (ส่วน B6): แถบเส้นทาง + รูปจัตุรัส + แถวรูปย่อ 5 ช่อง —
+      // รูปจริงขึ้นแทนที่โดยไม่ดันเนื้อหาให้เลื่อน
+      <ShopLayout mobileFloatingContact={false}>
+        <Container className="py-6 md:py-8">
+          <Skeleton className="h-5 w-48 rounded-full" />
+          <div className="grid md:grid-cols-2 gap-8 leading-snug mt-3">
+            <div className="space-y-3">
+              <Skeleton className="aspect-square w-full rounded-2xl" />
+              <div className="grid grid-cols-5 gap-2" aria-hidden="true">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <Skeleton key={i} className="aspect-square min-h-11 rounded-xl" />
+                ))}
+              </div>
+            </div>
             <div className="space-y-4">
               <Skeleton className="h-8 w-3/4" />
               <Skeleton className="h-6 w-1/2" />

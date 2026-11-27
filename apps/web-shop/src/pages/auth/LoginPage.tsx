@@ -14,6 +14,7 @@ import {
 import { api } from '@/lib/api';
 import { copy, shopInfo } from '@/lib/copy';
 import { useAuth } from '@/hooks/useAuth';
+import { usePageMeta } from '@/hooks/usePageMeta';
 
 interface PublicAuthConfig {
   lineLoginEnabled: boolean;
@@ -35,6 +36,8 @@ export function sanitizeReturnTo(raw: string | null): string {
 }
 
 export default function LoginPage() {
+  // หัวแท็บ "เข้าสู่ระบบ | BESTCHOICE ลพบุรี" (ส่วน B8) — เดิมค้างเป็นชื่อหน้าแรก
+  usePageMeta(copy.login.pageTitle, copy.login.intro);
   const { customer, hydrating } = useAuth();
   const [searchParams] = useSearchParams();
   const returnTo = sanitizeReturnTo(searchParams.get('returnTo'));
@@ -80,10 +83,8 @@ export default function LoginPage() {
           ) : config?.lineLoginEnabled ? (
             <Card>
               <CardBody>
+                {/* คำอธิบายอยู่ใต้หัวข้อของหน้าแล้ว ไม่พิมพ์ซ้ำในการ์ด (ส่วน B8) */}
                 <Stack gap={4}>
-                  <p className="text-sm text-muted-foreground leading-snug">
-                    {copy.login.intro}
-                  </p>
                   <Button variant="line" size="lg" fullWidth onClick={startLineLogin}>
                     <MessageCircle className="size-5" aria-hidden="true" />
                     {copy.login.lineCta}

@@ -28,21 +28,39 @@
      separation comes from borders (#DDE3EA) and pale-navy (#F2F5F9)
      section backgrounds, not an off-white page. */
   --color-background: #FFFFFF;
-  /* Sell flow: soft canvas separates the white assessment card. */
-  --color-sell-canvas: #F3F7F5;
-  --color-sell-header-foreground: #244A37;
-  --color-sell-footer: #F7FAF8;
-  --color-sell-price: #EAF6EE;
-  --color-sell-price-border: #ACCFB8;
+  /* Sell flow: soft canvas separates the white assessment card. Same shared
+     set as the storefront since 2026-11-27 (was its own green family). */
+  --color-sell-canvas: #EAFBF5;
+  --color-sell-header-foreground: #14263D;
+  --color-sell-footer: #F7F8FA;
+  --color-sell-price: #EAFBF5;
+  --color-sell-price-border: #1DA479;
   --color-foreground: #2B2B2B;
   --color-muted: #F2F5F9;
   /* 4.67:1 on accent, 5.17:1 on muted, 5.65:1 on white (the old green-grey
      #6B7370 fell to 4.45:1 on the pale tints). */
   --color-muted-foreground: #5F6873;
   --color-border: #DDE3EA;
-  /* Primary = navy: buttons, links, price text, selected states. White text on
-     it reads 11.6:1. Brand green stays on the emerald scale (logo, icons). */
-  --color-primary: #1D3A5C;
+
+  /* Brand green (owner 2026-11-27 — "ทำให้ไม่จืด โดยใช้สีเขียวของโลโก้"). Roles:
+     navy = information (headings, prices, selected filters) · green = what you
+     press (buttons, links) · orange = chat · yellow = promos. Spec names are
+     aliased in :root below.
+       brand-green      #1DA479  icons, lines, check marks, highlights —
+                                 3.2:1 on white, so NEVER small text
+       brand-green-dark #0B7F5A  solid buttons with white text (5.0:1), links,
+                                 green text on mint-tint (4.7:1)
+       brand-mint       #38EDCC  gradients/decoration only — never text
+       mint-tint        #EAFBF5  pale green surfaces */
+  --color-brand-green: #1DA479;
+  --color-brand-green-dark: #0B7F5A;
+  --color-brand-mint: #38EDCC;
+  --color-mint-tint: #EAFBF5;
+
+  /* Primary = navy (#14263D since 2026-11-27, was #1D3A5C): headings, price
+     text, selected states. White text on it reads 15.3:1. Buttons and links
+     moved to brand-green-dark (Button variant="primary"). */
+  --color-primary: #14263D;
   --color-primary-foreground: #FFFFFF;
   --color-card: #FFFFFF;
   --color-card-foreground: #2B2B2B;
@@ -147,7 +165,7 @@
 
   /* Focus ring — was never declared, so every ring-ring utility silently
      failed to generate and keyboard focus had NO indicator at all. */
-  --color-ring: #1D3A5C;
+  --color-ring: #14263D;
 
   /* Neutral shadows. Green-tinted shadows read as a smudge under the white
      cards; stack plain near-black at low alpha. */
@@ -197,34 +215,37 @@
   --ease-in-out-quint: cubic-bezier(0.86, 0, 0.07, 1);
 }
 
-/* Approved sell/trade-in option A: white/mint. Keep other storefront routes
-   on their existing palette; all sell screens inherit these semantic pairs.
-   The storefront moved to navy on 2026-11-26 but this flow keeps its approved
-   green set, so it also pins the mint muted tint and the green-biased zinc
-   ramp it was designed on. */
+/* The spec's token names (owner brief 2026-11-27, part A1), aliased onto the
+   theme tokens above so there is still one source of each value. Use the
+   Tailwind utilities (bg-brand-green-dark, text-primary, …) in components;
+   these exist for hand-written CSS and for the brief's vocabulary. */
+:root {
+  --brand-green: var(--color-brand-green);
+  --brand-green-dark: var(--color-brand-green-dark);
+  --brand-mint: var(--color-brand-mint);
+  --mint-tint: var(--color-mint-tint);
+  --navy: var(--color-primary);
+  --ink: var(--color-foreground);
+  --muted: var(--color-muted-foreground);
+  --promo-yellow: var(--color-promo);
+  --chat-orange: var(--color-cta);
+}
+
+/* Sell/trade-in flow. Since 2026-11-27 it uses the SAME token set as the rest
+   of the storefront (it used to carry its own green family: #12724f,
+   #135c40, green-biased greys, a paler promo yellow). The scope only decides
+   which shared tokens its surfaces use: the flow's "primary" is what the
+   seller presses and selects, so it maps to the button green, and its tinted
+   surfaces are mint-tint. Everything else inherits the storefront values. */
 .sell-flow {
-  --color-muted: #E8FAF4;
-  --color-zinc-50:  #F7FAF9;
-  --color-zinc-100: #EFF4F2;
-  --color-zinc-200: #DCE7E3;
-  --color-zinc-300: #C3D2CC;
-  --color-zinc-400: #93A39D;
-  --color-zinc-500: #6B7370;
-  --color-zinc-600: #5B655F;
-  --color-zinc-800: #3A423E;
-  --color-foreground: #172e25;
-  --color-card-foreground: #172e25;
-  --color-primary: #12724f;
-  --color-primary-foreground: #ffffff;
-  --color-secondary: #e7f5ec;
-  --color-secondary-foreground: #135c40;
-  --color-accent: #e7f5ec;
-  --color-accent-foreground: #12724f;
-  --color-border: #bbcbc1;
-  --color-muted-foreground: #52655c;
-  --color-promo: #fff0c2;
-  --color-promo-foreground: #71500d;
-  --color-ink: #135c40;
-  --color-ink-foreground: #ffffff;
-  --color-ring: #12724f;
+  --color-muted: var(--color-mint-tint);
+  --color-primary: var(--color-brand-green-dark);
+  --color-primary-foreground: #FFFFFF;
+  --color-secondary: var(--color-mint-tint);
+  --color-secondary-foreground: var(--color-brand-green-dark);
+  --color-accent: var(--color-mint-tint);
+  --color-accent-foreground: var(--color-brand-green-dark);
+  /* Option cards are outlined controls — a step darker than the page hairline. */
+  --color-border: var(--color-zinc-300);
+  --color-ring: var(--color-brand-green-dark);
 }

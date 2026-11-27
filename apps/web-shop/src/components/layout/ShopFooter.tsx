@@ -12,7 +12,7 @@ const SERVICE_LINKS = [
 const POLICY_LINKS = [
   { to: '/installment-terms', label: 'เงื่อนไขการผ่อน' },
   { to: '/shipping', label: 'การจัดส่ง' },
-  { to: '/returns', label: 'การคืนสินค้า' },
+  { to: '/returns', label: 'การเปลี่ยนเครื่อง/ประกัน' },
   { to: '/about', label: 'เกี่ยวกับเรา' },
   // ลิงก์ landing เจาะคำค้น — ให้ crawler เดินถึงจากทุกหน้า
   { to: '/ผ่อนไอโฟนลพบุรี', label: 'ผ่อน iPhone ลพบุรี' },

@@ -2,8 +2,8 @@
 <!-- Static sitemap for primary marketing/SEO pages.
      Routes under /apply, /checkout, /orders, /account are intentionally
      excluded — they are disallowed in robots.txt (user flows, not content).
-     Product detail URLs are dynamic; revisit with a generated sitemap when
-     the catalog stabilizes. -->
+     Product detail URLs (in-stock phones) are appended at deploy time by
+     scripts/prerender.mjs — this file stays the static 13-page list. -->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://www.bestchoicephone.com/</loc>

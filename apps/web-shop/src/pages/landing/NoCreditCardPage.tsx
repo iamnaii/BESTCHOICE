@@ -11,6 +11,7 @@ import {
   Button,
 } from '@/components';
 import ShopLayout from '@/components/layout/ShopLayout';
+import { StorePhotos } from '@/components/shop/StorePhotos';
 import { shopInfo, lineOaMessageUrl } from '@/lib/copy';
 import { usePageMeta } from '@/hooks/usePageMeta';
 
@@ -28,7 +29,7 @@ const NOT_NEEDED = [
 
 const NEEDED = [
   'บัตรประชาชนตัวจริง 1 ใบ',
-  'เงินดาวน์ขั้นต่ำ 15% ของราคาเครื่อง (เริ่มต้นราว 900 บาท)',
+  'เงินดาวน์ตามที่หน้าเครื่องแสดง (บางเครื่องฟรีดาวน์)',
 ];
 
 const FAQS = [
@@ -67,7 +68,7 @@ const FAQ_JSON_LD = JSON.stringify({
 export default function NoCreditCardPage() {
   usePageMeta(
     'ผ่อนมือถือไม่ใช้บัตรเครดิต ใช้บัตรประชาชนใบเดียว',
-    'ผ่อนมือถือโดยไม่ต้องมีบัตรเครดิต ไม่เช็กบูโร ไม่ต้องมีผู้ค้ำ — ใช้บัตรประชาชนใบเดียว ผ่อน iPhone มือ 1 และมือสองได้สูงสุด 12 งวด ดาวน์เริ่ม 900 บาท',
+    'ผ่อนมือถือโดยไม่ต้องมีบัตรเครดิต ไม่เช็กบูโร ไม่ต้องมีผู้ค้ำ — ใช้บัตรประชาชนใบเดียว ผ่อน iPhone มือ 1 และมือสองได้สูงสุด 15 งวด ดาวน์เริ่ม 0 บาท',
   );
 
   return (
@@ -78,6 +79,7 @@ export default function NoCreditCardPage() {
         description="ไม่มีบัตรเครดิตก็ผ่อน iPhone ได้ — ร้านเป็นผู้ให้ผ่อนเองโดยตรง ใช้บัตรประชาชนใบเดียวกับเงินดาวน์ ไม่ต้องมีผู้ค้ำ ไม่ต้องใช้สลิปเงินเดือน"
         breadcrumbs={[{ label: 'หน้าแรก', to: '/' }, { label: 'ผ่อนมือถือไม่ใช้บัตรเครดิต' }]}
       />
+      <StorePhotos />
       <Container>
         <Stack gap={6} className="py-8">
           <section>
@@ -102,13 +104,13 @@ export default function NoCreditCardPage() {
                   <ul className="mt-3 space-y-2">
                     {NEEDED.map((item) => (
                       <li key={item} className="flex items-center gap-2 text-sm text-muted-foreground leading-snug">
-                        <Check className="size-4 shrink-0 text-emerald-600" aria-hidden="true" />
+                        <Check className="size-4 shrink-0 text-brand-green" aria-hidden="true" />
                         {item}
                       </li>
                     ))}
                   </ul>
                   <p className="mt-3 flex items-start gap-2 text-sm text-muted-foreground leading-snug">
-                    <UserCheck className="size-4 shrink-0 mt-0.5 text-emerald-600" aria-hidden="true" />
+                    <UserCheck className="size-4 shrink-0 mt-0.5 text-brand-green" aria-hidden="true" />
                     แค่นี้จริง ๆ — เดินเข้าหน้าร้านลพบุรีได้เลย หรือทักไลน์สอบถามก่อนได้จากทุกจังหวัด
                   </p>
                 </CardBody>
@@ -118,7 +120,7 @@ export default function NoCreditCardPage() {
 
           <LandingFaq title="คำถามที่พบบ่อย" items={FAQS} />
 
-          <section className="rounded-2xl bg-muted p-6 md:p-8">
+          <section className="rounded-2xl bg-mint-tint p-6 md:p-8">
             <Stack gap={3} className="items-start leading-snug">
               <h2 className="text-xl font-bold leading-snug">เริ่มเลือกเครื่องได้เลย</h2>
               <p className="text-sm text-muted-foreground leading-snug">

@@ -1,5 +1,4 @@
 import type { RefObject } from 'react';
-import { gsap, useGSAP } from './gsap';
 
 interface Options {
   once?: boolean;
@@ -8,60 +7,18 @@ interface Options {
   childCount?: number;
 }
 
-/** Content is visible by default, including prerendered HTML and reduced motion. */
+/**
+ * Scroll reveal is OFF (owner brief 2026-11-27, B5): content must be visible the moment
+ * the page renders — no fade-in, no blank area waiting for the reader to scroll to it.
+ * The previous version faded each block up over 650ms from opacity 0, so a fast scroller
+ * or a screenshot saw empty sections.
+ *
+ * The hook stays as a no-op so <Reveal> / <StaggerChildren> callers keep working; it is the
+ * one place to turn a reveal back on (keep it ≤150ms and never start from opacity 0).
+ */
 export function useScrollReveal(
-  ref: RefObject<HTMLDivElement | null>,
-  { once = true, rootMargin = '0px 0px -8% 0px', stagger = 0, childCount }: Options = {},
-) {
-  useGSAP(
-    () => {
-      const node = ref.current;
-      if (!node || !window.matchMedia || !window.IntersectionObserver) return;
-
-      const media = gsap.matchMedia();
-      media.add('(prefers-reduced-motion: no-preference)', () => {
-        const targets = childCount === undefined ? [node] : Array.from(node.children);
-        if (!targets.length) return;
-
-        const animation = gsap.fromTo(
-          targets,
-          { opacity: 0, y: 20 },
-          {
-            opacity: 1,
-            y: 0,
-            duration: 0.65,
-            stagger: stagger / 1000,
-            ease: 'power2.out',
-            paused: true,
-            clearProps: 'opacity,transform',
-          },
-        );
-        const observer = new IntersectionObserver(
-          ([entry]) => {
-            if (entry.isIntersecting) {
-              animation.play();
-              if (once) observer.disconnect();
-            } else if (!once) {
-              animation.pause(0);
-            }
-          },
-          { rootMargin },
-        );
-
-        // Tab navigation must never focus an invisible call to action.
-        const revealOnFocus = () => {
-          animation.progress(1);
-          if (once) observer.disconnect();
-        };
-        observer.observe(node);
-        node.addEventListener('focusin', revealOnFocus);
-        return () => {
-          observer.disconnect();
-          node.removeEventListener('focusin', revealOnFocus);
-        };
-      });
-      return () => media.revert();
-    },
-    { scope: ref, dependencies: [once, rootMargin, stagger, childCount], revertOnUpdate: true },
-  );
+  _ref: RefObject<HTMLDivElement | null>,
+  _options: Options = {},
+): void {
+  // intentionally empty
 }

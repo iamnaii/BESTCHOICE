@@ -22,8 +22,12 @@ export function showsRate2Tile(rate1: PlanQuote | null, rate2: PlanQuote | null)
 // ไม่มี padding ซ้าย-ขวาของตัวเอง: ที่จอ 360px เนื้อที่การ์ดกว้าง ~130px ค่างวดห้าหลัก
 // ("ผ่อน ฿12,345 × 12 งวด") กว้าง 120px ต้องได้พื้นที่ครบ
 const ROW = 'py-2 first:pt-0 last:pb-0';
-const BIG = 'num text-xl md:text-2xl font-bold whitespace-nowrap';
+// ตัวเลขดาวน์ (กรมท่า) ต้องเด่นกว่าปุ่ม "ดูเครื่องนี้" ใต้มัน — ใหญ่กว่าและหนากว่า (ส่วน A3)
+const BIG = 'num text-[1.375rem] md:text-[1.75rem] font-bold whitespace-nowrap';
 const BIG_NUM = 'leading-tight';
+/** ชื่อกำกับกล่องเมื่อการ์ดโชว์สองราคา (ส่วน B2 — แทนกติกาเดิม "บนการ์ดไม่มีคำว่าเรท") */
+const RATE_LABEL =
+  'mb-0.5 block font-head text-[0.6875rem] font-semibold leading-snug text-muted-foreground';
 
 function InstallmentLine({ plan }: { plan: PlanQuote }) {
   return (
@@ -43,9 +47,18 @@ function InstallmentLine({ plan }: { plan: PlanQuote }) {
   );
 }
 
-function DownTile({ plan, kind }: { plan: PlanQuote; kind: 'rate1' | 'rate2' }) {
+function DownTile({
+  plan,
+  kind,
+  label,
+}: {
+  plan: PlanQuote;
+  kind: 'rate1' | 'rate2';
+  label?: string;
+}) {
   return (
     <div data-plan={kind} className={ROW}>
+      {label && <span className={RATE_LABEL}>{label}</span>}
       <div className="flex items-baseline gap-1.5">
         <span className="font-head text-xs font-medium text-muted-foreground leading-snug">
           ดาวน์
@@ -66,10 +79,14 @@ interface Props {
   freeDownOnly?: boolean;
 }
 
-/** กล่องราคาโหมดผ่อนของการ์ดหน้ารวม — บนการ์ดไม่มีคำว่า "เรท" และไม่มี % (สเปค 2026-11-25 หัวข้อ 4) */
+/**
+ * กล่องราคาโหมดผ่อนของการ์ดหน้ารวม — ไม่มี % · เมื่อขึ้นสองกล่องพร้อมกัน แต่ละกล่องมีชื่อ
+ * "เรท 1" / "เรท 2" (เจ้าของ 2026-11-27 ส่วน B2) ให้ตรงกับชื่อในหน้ารายละเอียด · กล่องเดียวไม่มีชื่อ
+ */
 export function PlanTiles({ rate1, rate2, freeDownOnly = false }: Props) {
   const top = freeDownOnly ? null : rate1;
   const bottom = showsRate2Tile(top, rate2) ? rate2 : null;
+  const both = !!top && !!bottom;
 
   if (!top && !bottom) {
     return <span className="text-sm font-medium text-muted-foreground">สอบถามค่างวด</span>;
@@ -77,19 +94,20 @@ export function PlanTiles({ rate1, rate2, freeDownOnly = false }: Props) {
 
   return (
     <div className="divide-y divide-border">
-      {top && <DownTile plan={top} kind="rate1" />}
+      {top && <DownTile plan={top} kind="rate1" label={both ? 'เรท 1' : undefined} />}
       {bottom &&
         (bottom.down === 0 ? (
           // เหลืองสงวนให้โปรจริง — ฟรีดาวน์เข้าข่าย · มีคำกำกับเสมอ ไม่บอกด้วยสีอย่างเดียว
           // เป็นป้ายเล็ก ไม่ใช่กล่องเต็มความกว้าง: สีอุ่นจุดเดียวบนการ์ดพอให้สะดุดตา
           <div data-plan="free-down" className={ROW}>
+            {both && <span className={RATE_LABEL}>เรท 2</span>}
             <div className="inline-flex rounded-lg bg-promo px-2 py-0.5 font-head text-base font-bold leading-snug text-promo-foreground whitespace-nowrap">
               ฟรีดาวน์
             </div>
             <InstallmentLine plan={bottom} />
           </div>
         ) : (
-          <DownTile plan={bottom} kind="rate2" />
+          <DownTile plan={bottom} kind="rate2" label={both ? 'เรท 2' : undefined} />
         ))}
     </div>
   );

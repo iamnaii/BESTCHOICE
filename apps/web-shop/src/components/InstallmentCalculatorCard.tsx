@@ -317,7 +317,7 @@ function QuoteOption({
                   'rounded-full px-2 py-0.5 text-xs font-semibold leading-snug whitespace-nowrap',
                   badge === FREE_DOWN_BADGE
                     ? 'bg-promo text-promo-foreground'
-                    : 'bg-muted text-accent-foreground',
+                    : 'bg-mint-tint text-brand-green-dark', // ป้ายเทียบเรท = เขียวอ่อน ตัวเขียวเข้ม 4.68:1 (ส่วน A5)
                 )}
               >
                 {badge}

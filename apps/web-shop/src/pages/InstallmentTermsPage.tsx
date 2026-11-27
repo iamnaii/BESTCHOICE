@@ -35,7 +35,7 @@ const SECTIONS: TermSection[] = [
     title: 'ดอกเบี้ยและค่างวด — เห็นตัวเลขจริงก่อนตัดสินใจ',
     paragraphs: [
       'เราใช้ดอกเบี้ยแบบคงที่ (flat rate) — ค่างวดเท่ากันทุกเดือนตั้งแต่งวดแรกถึงงวดสุดท้าย ไม่มีดอกเบี้ยลอยตัว ไม่มีค่าธรรมเนียมแอบแฝง',
-      'ก่อนตัดสินใจ คุณกดลองปรับจำนวนงวด (สูงสุด 12 งวด) และเงินดาวน์ในเครื่องคิดค่างวดบนหน้าสินค้าได้เลย ตัวเลขที่เห็นคือประมาณการจากระบบจริงของเรา ไม่ใช่ตัวเลขโฆษณา',
+      'ก่อนตัดสินใจ คุณกดลองปรับจำนวนงวด (สูงสุด 15 งวด) และเงินดาวน์ในเครื่องคิดค่างวดบนหน้าสินค้าได้เลย ตัวเลขที่เห็นคือประมาณการจากระบบจริงของเรา ไม่ใช่ตัวเลขโฆษณา',
     ],
     bullets: [
       'ค่างวดรวมภาษีมูลค่าเพิ่มแล้ว — ไม่มีบวกเพิ่มทีหลัง',
@@ -60,7 +60,7 @@ const SECTIONS: TermSection[] = [
     ],
     bullets: [
       'จ่ายตรงเวลา = ไม่มีวันโดนล็อค',
-      'ถ้าโดนล็อค: ชำระยอดค้างแล้วระบบปลดล็อคให้อัตโนมัติ ไม่ต้องรอเจ้าหน้าที่',
+      'ถ้าโดนล็อค: ชำระยอดค้างแล้ว เจ้าหน้าที่จะปลดล็อคให้',
       'ผ่อนครบ: ถอนระบบออกให้ เครื่องเป็นของคุณ 100%',
     ],
   },
@@ -104,7 +104,7 @@ export default function InstallmentTermsPage() {
         <Container narrow>
           <Stack gap={8} className="leading-snug">
             <div className="text-center space-y-3">
-              <ShieldCheck className="size-12 text-emerald-500 mx-auto" aria-hidden="true" />
+              <ShieldCheck className="size-12 text-brand-green mx-auto" aria-hidden="true" />
               <h1 className="text-2xl md:text-4xl font-bold leading-snug">
                 ผ่อนแบบรู้ทุกอย่างก่อนเซ็น
               </h1>
@@ -119,7 +119,7 @@ export default function InstallmentTermsPage() {
                 <Card key={i} variant="outlined">
                   <CardBody className="space-y-3 leading-snug">
                     <div className="flex items-center gap-3">
-                      <span className="size-11 rounded-xl bg-accent text-emerald-600 flex items-center justify-center shrink-0">
+                      <span className="size-11 rounded-xl bg-mint-tint text-brand-green-dark flex items-center justify-center shrink-0">
                         {s.icon}
                       </span>
                       <h2 className="font-semibold text-base md:text-lg leading-snug">{s.title}</h2>
@@ -133,7 +133,7 @@ export default function InstallmentTermsPage() {
                       <ul className="space-y-1.5">
                         {s.bullets.map((b, j) => (
                           <li key={j} className="flex gap-2 text-sm leading-snug">
-                            <Check className="size-4 text-emerald-500 shrink-0 mt-0.5" aria-hidden="true" />
+                            <Check className="size-4 text-brand-green shrink-0 mt-0.5" aria-hidden="true" />
                             <span>{b}</span>
                           </li>
                         ))}

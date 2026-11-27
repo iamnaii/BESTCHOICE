@@ -15,8 +15,8 @@ import { usePageMeta } from '@/hooks/usePageMeta';
 
 export default function ReturnsPage() {
   usePageMeta(
-    'การเปลี่ยน/คืนสินค้าและการรับประกัน',
-    'เงื่อนไขการเปลี่ยน คืนสินค้า และการรับประกัน iPhone ที่ซื้อกับ BESTCHOICE ลพบุรี',
+    'การเปลี่ยนเครื่องและการรับประกัน',
+    'เงื่อนไขการเปลี่ยนเครื่องที่มีตำหนิภายใน 7 วัน และการรับประกัน iPhone ที่ซื้อกับ BESTCHOICE ลพบุรี',
   );
 
   return (
@@ -32,10 +32,10 @@ export default function ReturnsPage() {
       <Container>
         <Stack gap={6} className="py-8">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Card variant="outlined" className="bg-muted border-border">
+            <Card variant="outlined" className="bg-mint-tint border-border">
               <CardBody>
                 <Stack gap={3} className="leading-snug">
-                  <span className="inline-flex size-11 items-center justify-center rounded-full bg-accent text-emerald-700">
+                  <span className="inline-flex size-11 items-center justify-center rounded-full bg-mint-tint text-brand-green-dark">
                     <ShieldCheck className="size-6" aria-hidden="true" />
                   </span>
                   <h3 className="text-lg font-semibold leading-snug">
@@ -64,10 +64,10 @@ export default function ReturnsPage() {
               </CardBody>
             </Card>
 
-            <Card variant="outlined" className="bg-muted border-border">
+            <Card variant="outlined" className="bg-mint-tint border-border">
               <CardBody>
                 <Stack gap={3} className="leading-snug">
-                  <span className="inline-flex size-11 items-center justify-center rounded-full bg-accent text-emerald-700">
+                  <span className="inline-flex size-11 items-center justify-center rounded-full bg-mint-tint text-brand-green-dark">
                     <MessageCircle className="size-6" aria-hidden="true" />
                   </span>
                   <h3 className="text-lg font-semibold leading-snug">

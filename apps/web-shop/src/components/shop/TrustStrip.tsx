@@ -1,4 +1,5 @@
 import { ShieldCheck, Wallet, MessageCircle, BadgeCheck } from '@/lib/icons';
+import { type DownFloor, downFloorText, useKnownDownFloor } from '@/hooks/useDownFloor';
 
 interface Item {
   icon: React.ReactNode;
@@ -6,21 +7,35 @@ interface Item {
   description: string;
 }
 
-const DEFAULT_ITEMS: Item[] = [
+/**
+ * การ์ดดาวน์เปลี่ยนตามสต๊อก (เจ้าของ 2026-11-27 "ใช้หัวพาดกับการ์ด ตามสต๊อค"):
+ * รู้ยอด = "ดาวน์เริ่ม X บาท" · ยังไม่รู้ (โหลด / API ล่ม) = ไม่บอกตัวเลขดาวน์
+ */
+function downTrustItem(floor: DownFloor | null): Item {
+  return floor
+    ? {
+        icon: <Wallet className="size-6" />,
+        title: downFloorText(floor),
+        description: 'ผ่อนสูงสุด 15 งวด',
+      }
+    : {
+        icon: <Wallet className="size-6" />,
+        title: 'ผ่อนสูงสุด 15 งวด',
+        description: 'ดาวน์ตามที่หน้าเครื่องแสดง',
+      };
+}
+
+const defaultItems = (floor: DownFloor | null): Item[] => [
   {
     icon: <BadgeCheck className="size-6" />,
     title: 'บัตรประชาชนใบเดียว',
     description: 'ไม่เช็กบูโร ไม่ต้องใช้บัตรเครดิต',
   },
-  {
-    icon: <Wallet className="size-6" />,
-    title: 'ดาวน์เริ่ม 900 บาท',
-    description: 'ผ่อนสูงสุด 12 งวด',
-  },
+  downTrustItem(floor),
   {
     icon: <ShieldCheck className="size-6" />,
-    title: 'รับประกันร้าน 60 วัน',
-    description: 'ครอบคลุมปัญหาการใช้งานปกติ',
+    title: 'มือสองประกันร้าน 60 วัน',
+    description: 'เครื่องใหม่ใช้ประกันศูนย์',
   },
   {
     icon: <MessageCircle className="size-6" />,
@@ -34,11 +49,13 @@ interface Props {
   className?: string;
 }
 
-export function TrustStrip({ items = DEFAULT_ITEMS, className }: Props) {
+export function TrustStrip({ items, className }: Props) {
+  const downFloor = useKnownDownFloor();
+  const shown = items ?? defaultItems(downFloor);
   return (
     <div className={className}>
       <ul className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6">
-        {items.map((item, i) => (
+        {shown.map((item, i) => (
           <li key={i} className="flex items-start gap-3 leading-snug">
             {/* Guide USP tile: mint-tint box, deep-green icon. */}
             <span className="size-10 rounded-xl bg-muted text-primary grid place-items-center shrink-0">

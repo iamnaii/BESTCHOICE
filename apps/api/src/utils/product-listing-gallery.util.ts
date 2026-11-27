@@ -15,6 +15,15 @@ export const listingPhotoWhere = (): Prisma.ProductWhereInput => ({
   ],
 });
 
+/**
+ * Cover when staff have not picked one (`products.online_cover_angle` null): the BACK,
+ * because the back is what shows the phone's colour (owner brief 2026-11-27, B1).
+ * A cover staff picked still wins. A picked cover whose photo is gone falls back to the back too
+ * (not to the front by angle order), and only with no back does angle order decide.
+ * Admin `OnlineListingPanel` mirrors this rule for its "รูปปก" marker — change both together.
+ */
+export const DEFAULT_LISTING_COVER: PhotoAngle = 'back';
+
 type GalleryProduct = { id: string; gallery: string[] };
 type PhotoMetadata = { product_id: string; angles: string[]; cover: string | null; revision: string };
 
@@ -41,7 +50,8 @@ export async function hydrateListingGalleries<T extends GalleryProduct>(
   return products.map(p => {
     const row = metadata.get(p.id);
     const angles = PHOTO_ANGLES.filter(angle => row?.angles.includes(angle));
-    const coverIndex = angles.findIndex(angle => angle === row?.cover);
+    const cover = [row?.cover, DEFAULT_LISTING_COVER].find(c => angles.some(angle => angle === c));
+    const coverIndex = cover ? angles.findIndex(angle => angle === cover) : -1;
     if (coverIndex > 0) angles.unshift(...angles.splice(coverIndex, 1));
     return {
       ...p,

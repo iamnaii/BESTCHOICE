@@ -54,28 +54,23 @@ export function DownAmountField({
   return (
     <div
       className={cn(
-        pill &&
-          'flex min-h-11 min-w-40 flex-1 items-center gap-2 rounded-full bg-muted pl-4 pr-3.5 ring-1 ring-inset ring-border/70 focus-within:ring-2 focus-within:ring-ring/50',
+        'flex min-h-11 items-center gap-2 focus-within:ring-2 focus-within:ring-ring/50',
+        pill
+          ? 'min-w-40 flex-1 rounded-full bg-muted pl-4 pr-3.5 ring-1 ring-inset ring-border/70'
+          : // panel: ชื่อช่องอยู่ในกล่องแถวเดียวกับตัวเลข — ตัวกรองข้างจอสั้นลงหนึ่งบรรทัด (ให้พอดีจอ 2026-11-27)
+            'rounded-xl bg-card px-3',
       )}
     >
-      {/* panel: ชื่อช่องอยู่บนกล่องเหมือน "จำนวนงวด" ข้างล่าง — กล่องกว้างเต็มแถบ ตัวเลขไม่ล้นแม้แถบแคบ */}
       <label
         htmlFor={id}
         className={cn(
-          'text-sm leading-snug whitespace-nowrap',
-          pill ? 'font-head text-accent-foreground' : 'mb-2 block text-foreground',
+          'shrink-0 text-sm leading-snug whitespace-nowrap',
+          pill ? 'font-head text-accent-foreground' : 'text-foreground',
         )}
       >
         {copy.catalog.downLabel}
       </label>
-      <div
-        className={cn(
-          'flex min-w-0 items-center gap-1.5',
-          pill
-            ? 'flex-1'
-            : 'h-11 rounded-xl bg-card px-3 focus-within:ring-2 focus-within:ring-ring/50',
-        )}
-      >
+      <div className="flex min-w-0 flex-1 items-center gap-1.5">
         <input
           id={id}
           type="text"

@@ -34,13 +34,20 @@ describe('automatic listing photos', () => {
     await screen.findByText('รูปสินค้า 6 ด้าน');
     expect(await screen.findAllByRole('img', { name: /รูปด้าน/ })).toHaveLength(6);
     expect(screen.queryByRole('button', { name: 'ส่งขึ้นเว็บ' })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'ใช้รูปด้านหลังเป็นปก' }));
-    await waitFor(() => expect(mocks.patch).toHaveBeenCalledWith('/products/p1/online-listing', { onlineCoverAngle: 'back' }));
+    // No cover picked yet → the back photo is the cover, same as the shop (DEFAULT_LISTING_COVER).
+    expect(screen.getByRole('button', { name: 'ใช้รูปด้านหลังเป็นปก' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'ใช้รูปด้านหน้าเป็นปก' }));
+    await waitFor(() => expect(mocks.patch).toHaveBeenCalledWith('/products/p1/online-listing', { onlineCoverAngle: 'front' }));
     expect(mocks.post).not.toHaveBeenCalled();
+  });
+  it('falls back to the first angle when there is no back photo', async () => {
+    mocks.get.mockImplementation((url: string) => Promise.resolve({ data: url.endsWith('/readiness') ? { productId: 'p1', isReady: true, isOnlineVisible: true, checks: [] } : { photos: { front: photo, left: photo }, evidencePhotos: {} } }));
+    mount();
+    expect(await screen.findByRole('button', { name: 'ใช้รูปด้านหน้าเป็นปก' })).toHaveAttribute('aria-pressed', 'true');
   });
   it('prevents read-only staff changing cover', async () => {
     mount(false);
-    expect(await screen.findByRole('button', { name: 'ใช้รูปด้านหลังเป็นปก' })).toBeDisabled();
+    expect(await screen.findByRole('button', { name: 'ใช้รูปด้านหน้าเป็นปก' })).toBeDisabled();
   });
   it('does not send accessory users to an unavailable six-angle photo tab', () => {
     render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>

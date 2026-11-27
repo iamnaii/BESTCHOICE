@@ -28,6 +28,8 @@ const unit = {
   deviceOrigin: 'THAI',
   cashPrice: 18000,
   installmentPrice: 20000,
+  batteryHealth: 84,
+  shopWarrantyDays: 60,
   gallery: [PHOTO],
   gallery360: [],
 };
@@ -77,15 +79,62 @@ function mockProduct(product: unknown) {
 }
 
 const robots = () => document.querySelector<HTMLMetaElement>('meta[name="robots"]');
+const meta = (selector: string) => document.querySelector<HTMLMetaElement>(selector)?.content;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // แท็กชุดเดียวกับใน index.html — jsdom ไม่มีให้เอง
+  for (const [attr, key, content] of [
+    ['name', 'description', 'default'],
+    ['property', 'og:description', 'default'],
+    ['property', 'og:image', `${BASE}/media/og-default.jpg`],
+    ['property', 'og:image:width', '1200'],
+    ['property', 'og:image:height', '630'],
+  ]) {
+    const el = document.createElement('meta');
+    el.setAttribute(attr, key);
+    el.setAttribute('content', content);
+    document.head.appendChild(el);
+  }
 });
 
 afterEach(() => {
-  document.head.querySelectorAll('meta[name="robots"], link[rel="canonical"]').forEach((el) => {
+  document.head.querySelectorAll('meta, link[rel="canonical"]').forEach((el) => {
     el.remove();
   });
+});
+
+// ถ้อยคำเจ้าของอนุมัติ 27 พ.ย. 2569 — แบบการ์ดแชร์ LINE · title เติมสภาพ + แบต
+it('หน้าสินค้ามือสอง: title / description / og:image ของเครื่องที่เลือก', async () => {
+  mockProduct(detail);
+  const { container } = open('/products/u1');
+  await screen.findByRole('heading', { level: 1 });
+
+  const description =
+    'Apple iPhone 15 128GB ดำ · มือสอง · แบต 84% · ประกันร้าน 60 วัน · ฿18,000 — ผ่อนได้บัตรประชาชนใบเดียว ร้าน BESTCHOICE ลพบุรี';
+  await waitFor(() =>
+    expect(document.title).toBe('Apple iPhone 15 128GB ดำ มือสอง แบต 84% | BESTCHOICE ลพบุรี'),
+  );
+  expect(meta('meta[name="description"]')).toBe(description);
+  expect(meta('meta[property="og:description"]')).toBe(description);
+  expect(meta('meta[property="og:image"]')).toBe(PHOTO);
+  expect(document.querySelector('meta[property="og:image:width"]')).toBeNull();
+  expect(jsonLd(container).find((d) => d['@type'] === 'Product')?.description).toBe(description);
+});
+
+it('หมดสต็อก: ไม่มีราคา → "สอบถามราคา" · ไม่มีรูป → og:image เป็นรูป default', async () => {
+  mockProduct({ ...detail, tiers: {} });
+  open('/products/u1');
+  await screen.findByRole('heading', { level: 1 });
+
+  await waitFor(() =>
+    expect(document.title).toBe('Apple iPhone 15 128GB ดำ มือสอง | BESTCHOICE ลพบุรี'),
+  );
+  expect(meta('meta[name="description"]')).toBe(
+    'Apple iPhone 15 128GB ดำ · มือสอง · สอบถามราคา — ผ่อนได้บัตรประชาชนใบเดียว ร้าน BESTCHOICE ลพบุรี',
+  );
+  expect(meta('meta[property="og:image"]')).toBe(`${BASE}/media/og-default.jpg`);
+  expect(meta('meta[property="og:image:width"]')).toBe('1200');
 });
 
 it('หน้าสินค้ามี JSON-LD Product + Offer ตรงกับที่แสดงบนหน้า', async () => {
@@ -144,6 +193,8 @@ it('สินค้าไม่มีอยู่ (API ตอบ 404) → noinde
   await waitFor(() => expect(robots()?.content).toBe('noindex'));
   expect(document.title).toBe('สินค้านี้ไม่พร้อมขายบนเว็บ | BESTCHOICE ลพบุรี');
   expect(jsonLd(container)).toEqual([]);
+  expect(meta('meta[property="og:image"]')).toBe(`${BASE}/media/og-default.jpg`);
+  expect(meta('meta[property="og:image:width"]')).toBe('1200');
 });
 
 // หน้าลองใหม่เอง 2 ครั้งสำหรับ error ที่ไม่ใช่ 404 (รอราว 3 วินาที) ก่อนขึ้นปุ่ม "ลองใหม่"

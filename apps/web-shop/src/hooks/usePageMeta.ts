@@ -4,6 +4,8 @@ const BASE_TITLE = 'BESTCHOICE — ร้านขายไอโฟนผ่อ
 const BASE_DESCRIPTION =
   'ร้านขายไอโฟนมือสองคุณภาพ ผ่อนได้บัตรประชาชนใบเดียว ลพบุรี — BESTCHOICE Phone Shop';
 const CANONICAL_BASE = 'https://www.bestchoicephone.com';
+/** ตรงกับ og:image ใน index.html */
+const DEFAULT_OG_IMAGE = `${CANONICAL_BASE}/media/og-default.jpg`;
 
 function setContent(el: HTMLMetaElement | null, value: string): void {
   if (el) el.content = value;
@@ -21,9 +23,17 @@ function setContent(el: HTMLMetaElement | null, value: string): void {
  *   `**` → spa-shell.html ตอบ 200 เสมอ จึงบอก crawler ด้วย <meta name="robots"> แทนสถานะ 404
  *   — cleanup คืนสภาพเดิมเสมอ ไม่งั้นหน้าถัดไปใน SPA ติด noindex ไปด้วย: แท็กที่ hook สร้างเอง
  *   ถูกลบ ส่วนแท็กที่มีอยู่ก่อน (ถ้าวันหน้าใส่ไว้ใน HTML) ได้ค่าเดิมคืน ไม่ถูกลบ
+ * - `image` = URL เต็มของรูปตอนแชร์ (หน้าสินค้า) — ถอด og:image:width/height ของรูป default
+ *   (1200×630) ออกระหว่างอยู่หน้านี้ เพราะรูปสินค้าเป็นจัตุรัส ประกาศขนาดผิดแย่กว่าไม่ประกาศ
+ *   (Facebook/LINE อ่านขนาดจากไฟล์เอง) · cleanup คืนรูป default ตามกติกาข้างบน
  */
-export function usePageMeta(title?: string, description?: string, options?: { noindex?: boolean }) {
+export function usePageMeta(
+  title?: string,
+  description?: string,
+  options?: { noindex?: boolean; image?: string },
+) {
   const noindex = options?.noindex === true;
+  const image = options?.image;
   useEffect(() => {
     let restoreRobots: (() => void) | null = null;
     if (noindex) {
@@ -67,6 +77,28 @@ export function usePageMeta(title?: string, description?: string, options?: { no
     setContent(ogDesc, desc);
     setContent(ogUrl, canonicalUrl);
 
+    let restoreImage: (() => void) | null = null;
+    if (image) {
+      const existing = document.querySelector<HTMLMetaElement>('meta[property="og:image"]');
+      const ogImage = existing ?? document.createElement('meta');
+      if (!existing) {
+        ogImage.setAttribute('property', 'og:image');
+        document.head.appendChild(ogImage);
+      }
+      ogImage.setAttribute('content', image);
+      const dimensions = Array.from(
+        document.querySelectorAll<HTMLMetaElement>(
+          'meta[property="og:image:width"], meta[property="og:image:height"]',
+        ),
+      );
+      dimensions.forEach((el) => el.remove());
+      restoreImage = () => {
+        if (existing) ogImage.setAttribute('content', DEFAULT_OG_IMAGE);
+        else ogImage.remove();
+        dimensions.forEach((el) => document.head.appendChild(el));
+      };
+    }
+
     return () => {
       document.title = BASE_TITLE;
       setContent(meta, BASE_DESCRIPTION);
@@ -75,6 +107,7 @@ export function usePageMeta(title?: string, description?: string, options?: { no
       setContent(ogTitle, BASE_TITLE);
       setContent(ogDesc, BASE_DESCRIPTION);
       setContent(ogUrl, CANONICAL_BASE);
+      restoreImage?.();
     };
-  }, [title, description, noindex]);
+  }, [title, description, noindex, image]);
 }

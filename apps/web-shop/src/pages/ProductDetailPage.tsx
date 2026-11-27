@@ -20,11 +20,13 @@ import { InstallmentCalculatorCard } from '@/components/InstallmentCalculatorCar
 import type { ProductUnit } from '@/types/product';
 import { Breadcrumb, type Crumb } from '@/components/catalog/Breadcrumb';
 import {
+  absoluteUrl,
   buildBreadcrumbJsonLd,
   buildProductJsonLd,
   jsonLdForScript,
   productPageUrl,
 } from '@/lib/product-json-ld';
+import { buildProductMetaDescription, buildProductMetaTitle } from '@/lib/product-meta';
 import { SpecTable } from '@/components/catalog/SpecTable';
 import { UnitPicker } from '@/components/catalog/UnitPicker';
 import { ProductGallery } from '@/components/catalog/ProductGallery';
@@ -170,17 +172,34 @@ export default function ProductDetailPage() {
   // Hook must run every render (rules-of-hooks) — call before the loading
   // early-return below, with an undefined title while data hasn't arrived
   // yet (hook design tolerates that and swaps in the real name on re-render).
-  const metaTitle = data
-    ? [data.brand, data.model, data.storage, data.color].filter(Boolean).join(' ')
-    : undefined;
-  const metaWarrantyDays = (selectedUnit ?? data)?.shopWarrantyDays ?? null;
-  const metaDescription = metaTitle
-    ? `${metaTitle} ผ่อนได้บัตรประชาชนใบเดียว${metaWarrantyDays != null && metaWarrantyDays > 0 ? ` รับประกันร้าน ${metaWarrantyDays} วัน` : ''}`
-    : undefined;
+  // ชื่อ ราคา รูป ของเครื่องที่เลือก — ตัวเดียวกับหัวข้อ, ราคาที่โชว์ และ JSON-LD (ใช้ทั้งใน meta และบนหน้า)
+  const displayName = data
+    ? [data.brand, data.model, data.storage, selectedUnit?.color ?? data.color]
+        .filter(Boolean)
+        .join(' ')
+    : '';
+  const price = selectedUnit?.cashPrice ?? null;
+  // รูปตามเครื่องที่เลือก — ถอยไปใช้รูประดับรุ่นเมื่อเครื่องนั้นยังไม่มีรูปของตัวเอง
+  const unitGallery = selectedUnit?.gallery ?? [];
+  const gallery = unitGallery.length > 0 ? unitGallery : (data?.gallery ?? []);
+  const metaInput = data
+    ? {
+        name: displayName,
+        condition: data.condition,
+        batteryHealth: selectedUnit?.batteryHealth,
+        shopWarrantyDays: (selectedUnit ?? data).shopWarrantyDays,
+        price,
+      }
+    : null;
+  const metaTitle = metaInput ? buildProductMetaTitle(metaInput) : undefined;
+  const metaDescription = metaInput ? buildProductMetaDescription(metaInput) : undefined;
   // สินค้าที่ API ตอบ 404: Hosting ยังตอบ 200 (rewrite ** → spa-shell.html) ⇒ บอก crawler ด้วย
   // noindex + title ของหน้านี้เอง ไม่ใช่ title ของหน้าแรก. error ชั่วคราว (429/5xx) ไม่ติด noindex
   const isGone = isError && !data && notFound;
-  usePageMeta(isGone ? PRODUCT_GONE_TITLE : metaTitle, metaDescription, { noindex: isGone });
+  usePageMeta(isGone ? PRODUCT_GONE_TITLE : metaTitle, metaDescription, {
+    noindex: isGone,
+    image: gallery[0] ? absoluteUrl(gallery[0]) : undefined,
+  });
 
   // B0: head query ของ getProductDetail ผ่าน readiness แล้ว → controller ตอบ 404 ได้จริง
   // ถ้ายังรวม error เข้ากับ loading ลิงก์ที่ส่งลูกค้าจะเป็น Skeleton หมุนค้างตลอดกาล
@@ -273,19 +292,11 @@ export default function ProductDetailPage() {
     );
   }
 
-  const displayName = [data.brand, data.model, data.storage, selectedUnit?.color ?? data.color]
-    .filter(Boolean)
-    .join(' ');
-  const price = selectedUnit?.cashPrice ?? null;
   const monthlyFrom =
     preview?.available && preview.monthlyPayment ? Math.ceil(preview.monthlyPayment) : null;
   const gradeKeys = selectedUnit?.conditionGrade && ['A', 'B', 'C', 'D'].includes(selectedUnit.conditionGrade) ? [selectedUnit.conditionGrade] : [];
   const isNew = data.condition === 'NEW';
   const showGrades = !isNew && gradeKeys.length > 0;
-  // รูปตามเครื่องที่เลือก — ถอยไปใช้รูประดับรุ่นเมื่อเครื่องนั้นยังไม่มีรูปของตัวเอง
-  const unitGallery = selectedUnit?.gallery ?? [];
-  const gallerySource = unitGallery.length > 0 ? unitGallery : (data.gallery ?? []);
-  const gallery = gallerySource;
   const unitGallery360 = selectedUnit?.gallery360 ?? [];
   const gallery360 = unitGallery360.length > 0 ? unitGallery360 : data.gallery360;
   const stockCount = flatUnits.length;

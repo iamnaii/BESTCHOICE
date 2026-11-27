@@ -26,7 +26,8 @@ export interface ProductJsonLdInput {
   inStock: boolean;
 }
 
-function absoluteUrl(value: string): string {
+/** URL เต็มบนโดเมนหลัก — ใช้กับรูปใน JSON-LD และ og:image (crawler ไม่รับ path ลอย) */
+export function absoluteUrl(value: string): string {
   if (/^https?:\/\//i.test(value)) return value;
   return `${CANONICAL_ORIGIN}${value.startsWith('/') ? '' : '/'}${value}`;
 }

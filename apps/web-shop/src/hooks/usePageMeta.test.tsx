@@ -10,6 +10,69 @@ afterEach(() => {
   });
 });
 
+describe('usePageMeta — รูปตอนแชร์ (og:image)', () => {
+  const DEFAULT_IMAGE = 'https://www.bestchoicephone.com/media/og-default.jpg';
+  const og = (property: string) =>
+    document.querySelector<HTMLMetaElement>(`meta[property="${property}"]`);
+
+  // แท็กชุดเดียวกับใน index.html — jsdom ไม่มีให้เอง
+  function seedDefaultOgImage() {
+    for (const [property, content] of [
+      ['og:image', DEFAULT_IMAGE],
+      ['og:image:width', '1200'],
+      ['og:image:height', '630'],
+    ]) {
+      const el = document.createElement('meta');
+      el.setAttribute('property', property);
+      el.setAttribute('content', content);
+      document.head.appendChild(el);
+    }
+  }
+
+  afterEach(() => {
+    document.head.querySelectorAll('meta[property^="og:image"]').forEach((el) => el.remove());
+  });
+
+  it('ส่งรูปมา → og:image เป็นรูปนั้น และถอดขนาดรูป default (1200×630) ที่ไม่ตรงกับรูปสินค้า', () => {
+    seedDefaultOgImage();
+    renderHook(() => usePageMeta('สินค้า', undefined, { image: 'https://x.test/a.jpg' }));
+    expect(og('og:image')?.content).toBe('https://x.test/a.jpg');
+    expect(og('og:image:width')).toBeNull();
+    expect(og('og:image:height')).toBeNull();
+  });
+
+  it('ออกจากหน้า → คืนรูปและขนาด default', () => {
+    seedDefaultOgImage();
+    const { unmount } = renderHook(() =>
+      usePageMeta('สินค้า', undefined, { image: 'https://x.test/a.jpg' }),
+    );
+    unmount();
+    expect(og('og:image')?.content).toBe(DEFAULT_IMAGE);
+    expect(og('og:image:width')?.content).toBe('1200');
+    expect(og('og:image:height')?.content).toBe('630');
+  });
+
+  it('เปลี่ยนรูประหว่างอยู่หน้าเดิม (เลือกเครื่องอื่น) → og:image เป็นรูปใหม่ ขนาด default ยังไม่กลับมา', () => {
+    seedDefaultOgImage();
+    const { rerender } = renderHook(
+      ({ image }: { image: string }) => usePageMeta('สินค้า', undefined, { image }),
+      { initialProps: { image: 'https://x.test/a.jpg' } },
+    );
+    rerender({ image: 'https://x.test/b.jpg' });
+    expect(og('og:image')?.content).toBe('https://x.test/b.jpg');
+    expect(og('og:image:width')).toBeNull();
+    expect(og('og:image:height')).toBeNull();
+    expect(document.querySelectorAll('meta[property="og:image"]')).toHaveLength(1);
+  });
+
+  it('ไม่ส่งรูป → ไม่แตะ og:image', () => {
+    seedDefaultOgImage();
+    renderHook(() => usePageMeta('หน้าอื่น'));
+    expect(og('og:image')?.content).toBe(DEFAULT_IMAGE);
+    expect(og('og:image:width')?.content).toBe('1200');
+  });
+});
+
 describe('usePageMeta — noindex', () => {
   it('ค่าเริ่มต้นไม่ใส่ meta robots', () => {
     renderHook(() => usePageMeta('หน้าปกติ'));

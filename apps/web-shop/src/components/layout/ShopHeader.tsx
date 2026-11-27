@@ -101,7 +101,7 @@ export default function ShopHeader() {
                 aria-current={active ? 'page' : undefined}
                 className={cn(
                   'relative py-1 leading-snug transition-colors',
-                  'after:absolute after:left-0 after:-bottom-0.5 after:h-0.5 after:rounded-full after:bg-emerald-400 after:transition-[width] after:duration-200',
+                  'after:absolute after:left-0 after:-bottom-0.5 after:h-0.5 after:rounded-full after:bg-primary after:transition-[width] after:duration-200',
                   active
                     ? 'text-primary font-semibold after:w-full'
                     : 'text-foreground/80 hover:text-primary after:w-0 hover:after:w-full',
@@ -154,10 +154,13 @@ export default function ShopHeader() {
               id="shop-header-search"
               ref={searchInputRef}
               type="search"
+              name="q"
+              autoComplete="off"
+              spellCheck={false}
               value={query}
               maxLength={60}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="ค้นหารุ่น เช่น iPhone 15"
+              placeholder="ค้นหารุ่น เช่น iPhone 15…"
               className="min-w-0 flex-1 h-11 px-4 rounded-full bg-white border border-border text-base leading-snug text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
             />
             <button

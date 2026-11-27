@@ -35,6 +35,8 @@ interface Props {
 }
 
 const GRID = 'grid grid-cols-2 lg:grid-cols-3 gap-2.5 md:gap-3';
+/** การ์ดที่เห็นได้ทันทีโดยไม่ต้องเลื่อน: สองแถวแรกบนมือถือ (2 คอลัมน์) · แถวแรกบนจอใหญ่ (3 คอลัมน์) */
+const ABOVE_FOLD_CARDS = 4;
 
 export function CatalogResults({
   products,
@@ -152,7 +154,7 @@ export function CatalogResults({
         ) : (
           <>
             <div className={GRID}>
-              {products.map((product) => (
+              {products.map((product, i) => (
                 <div
                   key={product.id}
                   data-product-card={product.id}
@@ -163,6 +165,7 @@ export function CatalogResults({
                     priceMode={priceMode}
                     freeDownOnly={freeDownOnly}
                     down={down}
+                    priority={i < ABOVE_FOLD_CARDS}
                   />
                 </div>
               ))}

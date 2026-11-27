@@ -39,44 +39,51 @@ export default function AddressForm({ onSubmit, initial }: Props) {
       <div className="grid sm:grid-cols-2 gap-4">
         <div className="space-y-1">
           <Label htmlFor="recipientName">ชื่อผู้รับ</Label>
-          <Input id="recipientName" {...register('recipientName')} />
+          <Input id="recipientName" autoComplete="name" {...register('recipientName')} />
           {errors.recipientName && (
             <span className="text-xs text-destructive">{errors.recipientName.message}</span>
           )}
         </div>
         <div className="space-y-1">
           <Label htmlFor="phone">เบอร์โทร</Label>
-          <Input id="phone" {...register('phone')} placeholder="0812345678" />
+          <Input
+            id="phone"
+            type="tel"
+            inputMode="tel"
+            autoComplete="tel"
+            {...register('phone')}
+            placeholder="0812345678"
+          />
           {errors.phone && <span className="text-xs text-destructive">{errors.phone.message}</span>}
         </div>
       </div>
       <div className="space-y-1">
         <Label htmlFor="line1">ที่อยู่ (บ้านเลขที่ ซอย ถนน)</Label>
-        <Input id="line1" {...register('line1')} />
+        <Input id="line1" autoComplete="address-line1" {...register('line1')} />
         {errors.line1 && <span className="text-xs text-destructive">{errors.line1.message}</span>}
       </div>
       <div className="space-y-1">
         <Label htmlFor="line2">ที่อยู่เพิ่มเติม (ถ้ามี)</Label>
-        <Input id="line2" {...register('line2')} />
+        <Input id="line2" autoComplete="address-line2" {...register('line2')} />
       </div>
       <div className="grid sm:grid-cols-3 gap-4">
         <div className="space-y-1">
           <Label htmlFor="subDistrict">ตำบล/แขวง</Label>
-          <Input id="subDistrict" {...register('subDistrict')} />
+          <Input id="subDistrict" autoComplete="address-level3" {...register('subDistrict')} />
           {errors.subDistrict && (
             <span className="text-xs text-destructive">{errors.subDistrict.message}</span>
           )}
         </div>
         <div className="space-y-1">
           <Label htmlFor="district">อำเภอ/เขต</Label>
-          <Input id="district" {...register('district')} />
+          <Input id="district" autoComplete="address-level2" {...register('district')} />
           {errors.district && (
             <span className="text-xs text-destructive">{errors.district.message}</span>
           )}
         </div>
         <div className="space-y-1">
           <Label htmlFor="province">จังหวัด</Label>
-          <Input id="province" {...register('province')} />
+          <Input id="province" autoComplete="address-level1" {...register('province')} />
           {errors.province && (
             <span className="text-xs text-destructive">{errors.province.message}</span>
           )}
@@ -84,7 +91,12 @@ export default function AddressForm({ onSubmit, initial }: Props) {
       </div>
       <div className="max-w-[180px] space-y-1">
         <Label htmlFor="postalCode">รหัสไปรษณีย์</Label>
-        <Input id="postalCode" {...register('postalCode')} />
+        <Input
+          id="postalCode"
+          inputMode="numeric"
+          autoComplete="postal-code"
+          {...register('postalCode')}
+        />
         {errors.postalCode && (
           <span className="text-xs text-destructive">{errors.postalCode.message}</span>
         )}

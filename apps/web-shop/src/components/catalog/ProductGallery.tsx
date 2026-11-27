@@ -71,6 +71,7 @@ export function ProductGallery({
                 key={images[active]}
                 src={images[active]}
                 alt={`${alt} รูปที่ ${active + 1}`}
+                priority
               />
               <Expand
                 className="absolute right-3 top-3 size-5 text-foreground"

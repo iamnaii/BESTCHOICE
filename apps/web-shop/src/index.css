@@ -22,6 +22,8 @@
   h6 {
     font-family: var(--font-head);
     line-height: 1.5;
+    /* หัวข้อไทยยาว ๆ ไม่เหลือคำเดียวโดดบรรทัดสุดท้าย — อยู่ใน base จึงใช้ utility ทับรายจุดได้ */
+    text-wrap: balance;
   }
   button,
   input,

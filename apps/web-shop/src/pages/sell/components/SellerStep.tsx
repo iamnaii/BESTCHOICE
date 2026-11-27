@@ -57,6 +57,8 @@ export default function SellerStep({
         <Label htmlFor={`sell-${key}`}>{label}</Label>
         <Input
           id={`sell-${key}`}
+          name={key}
+          spellCheck={key === 'imei' ? false : undefined}
           value={value[key]}
           disabled={submitting}
           type={type}

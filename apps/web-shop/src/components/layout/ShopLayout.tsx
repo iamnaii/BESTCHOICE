@@ -6,7 +6,7 @@ import PromoBar from './PromoBar';
 
 export default function ShopLayout({ children, mobileFloatingContact = true }: { children: ReactNode; mobileFloatingContact?: boolean }) {
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col pb-[var(--cookie-banner-offset,0px)]">
       {/* ข้ามเมนูหัวเว็บ — ซ่อนจนกด Tab ถึง (คนใช้แป้นพิมพ์/โปรแกรมอ่านหน้าจอไม่ต้องไล่ผ่านเมนูทุกหน้า) */}
       <a
         href="#main"

@@ -1,6 +1,7 @@
 import { Link } from 'react-router';
 import { FacebookLogo, MessageCircle, TiktokLogo, MapPin, Phone } from '@/lib/icons';
 import { shopInfo } from '@/lib/copy';
+import { useConsentUi } from '@/components/consent/useConsentUi';
 
 const SERVICE_LINKS = [
   { to: '/products', label: 'สินค้าทั้งหมด' },
@@ -14,6 +15,7 @@ const POLICY_LINKS = [
   { to: '/shipping', label: 'การจัดส่ง' },
   { to: '/returns', label: 'การเปลี่ยนเครื่อง/ประกัน' },
   { to: '/about', label: 'เกี่ยวกับเรา' },
+  { to: '/privacy', label: 'นโยบายความเป็นส่วนตัว' },
   // ลิงก์ landing เจาะคำค้น — ให้ crawler เดินถึงจากทุกหน้า
   { to: '/ผ่อนไอโฟนลพบุรี', label: 'ผ่อน iPhone ลพบุรี' },
   { to: '/iphone-มือสอง-ลพบุรี', label: 'iPhone มือสอง ลพบุรี' },
@@ -37,6 +39,7 @@ export default function ShopFooter({
 }: {
   clearFloatingContact?: boolean;
 }) {
+  const openSettings = useConsentUi((s) => s.openSettings);
   return (
     <footer className="mt-12 bg-ink text-white/85">
       <div className="container mx-auto max-w-7xl px-4 md:px-6 pt-12 pb-8">
@@ -144,7 +147,14 @@ export default function ShopFooter({
         <div
           className={`${clearFloatingContact ? 'mt-18 md:mt-10' : 'mt-10'} border-t border-white/15 pt-6 text-center text-xs text-white/75 leading-snug`}
         >
-          © 2026 BESTCHOICE Phone Shop — ลพบุรี
+          © 2026 BESTCHOICE Phone Shop — ลพบุรี{' · '}
+          <button
+            type="button"
+            onClick={openSettings}
+            className="inline-flex min-h-6 items-center px-1 underline hover:text-white"
+          >
+            ตั้งค่าคุกกี้
+          </button>
         </div>
       </div>
     </footer>

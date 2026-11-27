@@ -144,7 +144,17 @@ export default function ProductDetailPage() {
 
   useEffect(() => {
     if (data && id) {
-      track('ViewContent', { content_type: 'product', content_ids: [id] });
+      const productName = [data.brand, data.model, data.storage].filter(Boolean).join(' ');
+      const price =
+        typeof data.cashPrice === 'number' && Number.isFinite(data.cashPrice) && data.cashPrice > 0
+          ? data.cashPrice
+          : undefined;
+      track({
+        name: 'view_product',
+        productId: id,
+        ...(productName ? { productName } : {}),
+        ...(price !== undefined ? { price } : {}),
+      });
     }
   }, [data, id, track]);
 

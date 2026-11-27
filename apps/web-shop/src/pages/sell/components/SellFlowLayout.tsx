@@ -26,7 +26,7 @@ export default function SellFlowLayout({
     if (window.scrollY > 0) window.scrollTo?.({ top: 0, behavior: 'instant' });
   }, [title, progressText]);
   return (
-    <div className="sell-flow min-h-dvh bg-sell-canvas text-foreground leading-snug py-0 min-[700px]:py-8">
+    <div className="sell-flow min-h-dvh bg-sell-canvas text-foreground leading-snug py-0 pb-[var(--cookie-banner-offset,0px)] min-[700px]:py-8 min-[700px]:pb-[calc(2rem+var(--cookie-banner-offset,0px))]">
       <div
         className={`mx-auto flex min-h-dvh w-full flex-col bg-card min-[700px]:min-h-[min(560px,calc(100dvh-64px))] ${wide ? 'min-[700px]:max-w-[1100px]' : 'min-[700px]:max-w-[640px]'} min-[700px]:overflow-hidden min-[700px]:rounded-3xl min-[700px]:shadow-xl min-[700px]:border min-[700px]:border-border`}
       >

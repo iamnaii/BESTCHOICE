@@ -29,7 +29,7 @@ export default function FloatingLineButton({ showOnMobile = true }: { showOnMobi
       rel="noopener noreferrer"
       aria-label="ทักแชทหาร้าน"
       data-scroll-hidden={hidden ? 'true' : undefined}
-      className={`${showOnMobile ? 'inline-flex' : 'hidden md:inline-flex'} fixed left-4 lg:left-auto lg:right-6 bottom-20 md:bottom-6 z-40 items-center gap-2 rounded-full bg-cta text-cta-foreground shadow-[0_6px_18px_rgba(242,92,26,0.35)] hover:bg-orange-600 hover:scale-105 transition-[translate,scale,opacity] duration-200 motion-reduce:transition-none motion-reduce:hover:scale-100 size-14 md:size-auto md:px-5 md:py-3.5 justify-center leading-snug ${hiddenClasses}`}
+      className={`${showOnMobile ? 'inline-flex' : 'hidden md:inline-flex'} fixed left-4 lg:left-auto lg:right-6 bottom-[calc(5rem+var(--cookie-banner-offset,0px))] md:bottom-[calc(1.5rem+var(--cookie-banner-offset,0px))] z-40 items-center gap-2 rounded-full bg-cta text-cta-foreground shadow-[0_6px_18px_rgba(242,92,26,0.35)] hover:bg-orange-600 hover:scale-105 transition-[translate,scale,opacity] duration-200 motion-reduce:transition-none motion-reduce:hover:scale-100 size-14 md:size-auto md:px-5 md:py-3.5 justify-center leading-snug ${hiddenClasses}`}
     >
       <MessageCircle className="size-6 md:size-5 shrink-0" />
       <span className="hidden md:inline font-head text-[1.1875rem] font-bold">ทักแชท</span>

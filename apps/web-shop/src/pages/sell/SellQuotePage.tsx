@@ -287,7 +287,7 @@ export default function SellQuotePage() {
     onSuccess: (result) => {
       if (!active.current) return;
       void client.invalidateQueries({ queryKey: ['buyback', result.id] });
-      track('Lead', { type: 'buyback', model, storage, grade: quote?.grade, flow });
+      track({ name: 'sell_lead', flow, model, storage, grade: quote?.grade ?? undefined });
       route(`/sell/${result.id}`);
     },
     onError: (error) => {

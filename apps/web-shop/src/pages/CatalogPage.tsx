@@ -24,7 +24,6 @@ import {
 } from '@/components';
 import { api } from '@/lib/api';
 import { copy } from '@/lib/copy';
-import { useTrackEvent } from '@/hooks/useTrackEvent';
 import { usePageMeta } from '@/hooks/usePageMeta';
 import { cn } from '@/lib/utils';
 import { deviceOriginLabel, parseDeviceOrigin } from '@/lib/device-origin';
@@ -84,16 +83,11 @@ export default function CatalogPage() {
   const [sortOpen, setSortOpen] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
   const sortBtnRef = useRef<HTMLButtonElement>(null);
-  const track = useTrackEvent();
 
   const { data: models } = useQuery<ModelOption[]>({
     queryKey: ['shop', 'models'],
     queryFn: () => api.get('/api/shop/models').then((r) => r.data),
   });
-
-  useEffect(() => {
-    track('ViewContent', { content_type: 'catalog' });
-  }, [track]);
 
   // The header search submits to /products?search=… — also while already on
   // this page, so keep listening to URL changes after the initial state.

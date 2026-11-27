@@ -35,6 +35,14 @@ describe('FloatingLineButton — ซ่อนตอนเลื่อนลง�
     expect(button()).toHaveAttribute('data-scroll-hidden', 'true');
   });
 
+  it('บวก --cookie-banner-offset เข้ากับตำแหน่งล่าง', () => {
+    render(<FloatingLineButton />);
+    expect(button().className).toContain('bottom-[calc(5rem+var(--cookie-banner-offset,0px))]');
+    expect(button().className).toContain(
+      'md:bottom-[calc(1.5rem+var(--cookie-banner-offset,0px))]',
+    );
+  });
+
   it('ช่วงบนสุดของหน้าโผล่เสมอ', () => {
     render(<FloatingLineButton />);
     scrollTo(400);

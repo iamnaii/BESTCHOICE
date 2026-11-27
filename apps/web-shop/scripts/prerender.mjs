@@ -19,6 +19,9 @@
  *   (default = prod, ล้ม = 503 ให้หน้าโชว์ empty state), endpoint ตั้งค่า analytics
  *   ถูกตอบ 404 เสมอ (กัน GA4/Pixel ยิง hit จาก CI + กัน script tag ติดเข้า snapshot),
  *   ที่เหลือ (fonts/CDN) abort ทิ้ง — deploy ต้องไม่ค้างเพราะ CDN ภายนอกแขวน
+ * - ตั้ง window.__BC_PRERENDER__ = true ด้วย addInitScript — UI คุกกี้ไม่ render ตอน prerender
+ * - tripwire: captureRoute ตรวจ html ของทุก snapshot หา TRACKER_MARKERS (สคริปต์ tracker,
+ *   data-consent-ui ของแบนเนอร์คุกกี้) — เจอ = build แดง กันความยินยอมรั่วเข้า static HTML
  */
 import { spawn } from 'node:child_process';
 import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -38,7 +41,21 @@ const PORT = 4180;
 const BASE = `http://localhost:${PORT}`;
 const API_BASE = process.env.PRERENDER_API_BASE ?? 'https://www.bestchoicephone.com';
 
-// 13 หน้าใน sitemap.xml — เพิ่ม/ลด route ที่นี่ต้องอัป sitemap คู่กันเสมอ
+// ร่องรอยที่ห้ามหลุดเข้า snapshot (captureRoute จะ throw ถ้าเจอ):
+// googletagmanager/google-analytics = GA4, connect.facebook/facebook.com/tr = Meta Pixel,
+// analytics.tiktok = TikTok Pixel, line-scdn = LINE Tag, data-consent-ui = แบนเนอร์/
+// dialog คุกกี้ (ต้องไม่ถูก render ตอน prerender)
+const TRACKER_MARKERS = [
+  'googletagmanager.com',
+  'google-analytics.com',
+  'connect.facebook.net',
+  'facebook.com/tr',
+  'analytics.tiktok.com',
+  'line-scdn.net',
+  'data-consent-ui',
+];
+
+// 14 หน้าใน sitemap.xml — เพิ่ม/ลด route ที่นี่ต้องอัป sitemap คู่กันเสมอ
 // apiDependent = เนื้อหาหลักมาจาก API: ถ้า API ล่มระหว่าง deploy ให้ผ่านพร้อมคำเตือน
 // (หน้า static ล้วนห้ามมี error state เด็ดขาด — เจอ = build แดง)
 const ROUTES = [
@@ -52,6 +69,7 @@ const ROUTES = [
   { path: '/contact', apiDependent: false },
   { path: '/shipping', apiDependent: false },
   { path: '/returns', apiDependent: false },
+  { path: '/privacy', apiDependent: false },
   // Landing เจาะคำค้นท้องถิ่น — path ภาษาไทย: browser จะ encode เป็น %XX ตอนขอ
   // (canonical ที่ usePageMeta stamp ก็เป็นแบบ encode) แต่ชื่อโฟลเดอร์ใน dist เป็น
   // ตัวอักษรไทยตรง ๆ — Firebase decode path ก่อน match ไฟล์ให้เอง
@@ -111,6 +129,11 @@ async function captureRoute(context, { path: route, apiDependent, product = fals
     if (canonical !== `https://www.bestchoicephone.com${encodeURI(route)}`) {
       throw new Error(`${route}: canonical ไม่ตรง ("${canonical}")`);
     }
+    // Tripwire — snapshot ต้องไม่มี tracker/แบนเนอร์คุกกี้ (ใช้ร่วมกับ block endpoint ด้านบน)
+    const marker = TRACKER_MARKERS.find((m) => html.includes(m));
+    if (marker) {
+      throw new Error(`${route}: snapshot มีร่องรอย tracker หรือแบนเนอร์คุกกี้ ("${marker}")`);
+    }
     if (html.includes('เกิดข้อผิดพลาด')) {
       if (!apiDependent) throw new Error(`${route}: หน้า static มี error state ใน snapshot`);
       console.warn(`⚠ ${route}: มี error state ใน snapshot (API ล่มระหว่าง prerender?)`);
@@ -139,6 +162,10 @@ try {
   try {
     // Save final visible content, never paused below-fold GSAP reveal styles.
     const context = await browser.newContext({ reducedMotion: 'reduce' });
+    // UI คุกกี้อ่านธงนี้แล้วไม่ render อะไรเลย (tripwire ใน captureRoute พิสูจน์ซ้ำ)
+    await context.addInitScript(() => {
+      window.__BC_PRERENDER__ = true;
+    });
     await context.route('**/*', async (routeHandle) => {
       const req = routeHandle.request();
       const url = new URL(req.url());
@@ -223,7 +250,7 @@ try {
     await writeFile(outFile, `<!-- prerendered ${new Date().toISOString()} -->\n${html}`);
     console.log(`✓ ${route} → ${path.relative(WEB_SHOP_DIR, outFile)} (${title})`);
   }
-  // sitemap.xml = 13 หน้าเดิมจาก public + เครื่องที่ snapshot สำเร็จ (ส่วน B6)
+  // sitemap.xml = 14 หน้าเดิมจาก public + เครื่องที่ snapshot สำเร็จ (ส่วน B6)
   const productIdsDone = snapshots.filter((s) => s.productId).map((s) => s.productId);
   const sitemapPath = path.join(DIST, 'sitemap.xml');
   const today = new Date().toISOString().slice(0, 10);

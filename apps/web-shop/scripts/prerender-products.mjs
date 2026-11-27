@@ -9,7 +9,7 @@
  *   เครื่องที่ขายออกหลัง deploy ยังมีไฟล์ค้างจนรอบถัดไป แต่แอปเรนเดอร์ใหม่จาก API สดทุกครั้ง
  *   (main.tsx ใช้ createRoot ไม่ใช่ hydrate) จึงเห็นสถานะจริงเสมอ
  * - หน้าสินค้าเป็น best effort: ดึงรายการ/เก็บหน้าไม่สำเร็จ = เตือนแล้วข้าม ห้ามทำ deploy แดง
- *   (หน้า marketing 13 หน้ายังมีด่านเดิมครบ)
+ *   (หน้า marketing 14 หน้ายังมีด่านเดิมครบ)
  * - sitemap.xml ใน dist = ไฟล์ public เดิม + URL ของเครื่องที่ snapshot สำเร็จเท่านั้น
  */
 
@@ -54,7 +54,7 @@ export const TINY_PNG = Buffer.from(
   'base64',
 );
 
-/** แทรก <url> ของเครื่องก่อน </urlset> — static 13 หน้าคงเดิมทุกตัวอักษร */
+/** แทรก <url> ของเครื่องก่อน </urlset> — static 14 หน้าคงเดิมทุกตัวอักษร */
 export function sitemapWithProducts(staticXml, ids, isoDate) {
   if (ids.length === 0) return staticXml;
   const eol = staticXml.includes('\r\n') ? '\r\n' : '\n';

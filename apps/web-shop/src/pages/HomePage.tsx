@@ -15,6 +15,7 @@ import {
 } from '@/lib/icons';
 import ShopLayout from '@/components/layout/ShopLayout';
 import PromotionsStrip from '@/components/shop/PromotionsStrip';
+import ClickToLoadMap from '@/components/shop/ClickToLoadMap';
 import {
   Container,
   Section,
@@ -349,13 +350,9 @@ export default function HomePage() {
               </CardBody>
             </div>
             {/* แผนที่จริงแบบฝัง — จุดเดียวกับปุ่มนำทาง (query เดียวกับ mapsUrl) */}
-            <iframe
+            <ClickToLoadMap
               src="https://maps.google.com/maps?q=BESTCHOICE%20phone%20shop%20%E0%B8%A5%E0%B8%9E%E0%B8%9A%E0%B8%B8%E0%B8%A3%E0%B8%B5&z=16&output=embed"
               title="แผนที่ร้าน BESTCHOICE ลพบุรี"
-              className="block h-64 w-full border-0 md:h-80"
-              loading="lazy"
-              referrerPolicy="no-referrer-when-downgrade"
-              allowFullScreen
             />
           </Card>
         </Container>

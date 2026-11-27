@@ -8,7 +8,7 @@ export function StickyBottomBar({
   return (
     <div
       className={cn(
-        'md:hidden fixed inset-x-0 bottom-0 z-30',
+        'md:hidden fixed inset-x-0 bottom-[var(--cookie-banner-offset,0px)] z-30',
         'bg-background/95 backdrop-blur border-t border-zinc-200',
         'px-4 py-3 pb-[max(12px,env(safe-area-inset-bottom))]',
         className,

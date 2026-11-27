@@ -59,9 +59,11 @@ const ORIGINS: Array<{ v: DeviceOrigin | undefined; label: string }> = [
   { v: 'IMPORTED', label: 'เครื่องนอก' },
 ];
 
+/** "มือ" กับเลขติดกันเสมอ (เว้นวรรคแบบไม่ตัดบรรทัด) — แถบแคบ (จอ 1024) ตัดเป็น "iPhone / มือ 1" ไม่ทิ้งเลขโดดบรรทัด */
+const NBSP = String.fromCharCode(0xa0);
 const DEVICE_TYPES = [
-  { v: 'NEW' as const, label: 'iPhone มือ 1', Icon: Sparkles },
-  { v: 'USED' as const, label: 'iPhone มือ 2', Icon: Smartphone },
+  { v: 'NEW' as const, label: `iPhone มือ${NBSP}1`, Icon: Sparkles },
+  { v: 'USED' as const, label: `iPhone มือ${NBSP}2`, Icon: Smartphone },
 ];
 
 function bandId(f: CatalogFilters): string {
@@ -103,7 +105,16 @@ export function FilterSidebar({ filters, onChange, models, plan, onClearAll, bar
   }
 
   const body = (
-    <div className={cn('font-head space-y-5', bare ? 'pt-1' : 'px-4 pb-5 pt-4')}>
+    <div
+      className={cn(
+        'font-head space-y-5',
+        // แถบข้างติดจอและสูงไม่เกินจอ (CatalogPage) — เนื้อหาเลื่อนในกล่อง หัว "ตัวกรองสินค้า" ค้างอยู่ ·
+        // ขอบบน/ล่าง 0.75rem จางลง บอกว่ายังเลื่อนต่อได้ (ระยะ pt-4/pb-4 กว้างกว่า จึงไม่จางทับปุ่มตอนสุดทาง)
+        bare
+          ? 'pt-1'
+          : 'min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-4 scrollbar-thin mask-[linear-gradient(to_bottom,transparent,black_0.75rem,black_calc(100%-0.75rem),transparent)]',
+      )}
+    >
       {/* "ดาวน์เท่าไหร่ ผ่อนเดือนละเท่าไหร่" is the first question in a Thai
           phone shop, so it sits above the filters. */}
       {plan && <PlanBlock plan={plan} bare={bare} />}
@@ -120,7 +131,7 @@ export function FilterSidebar({ filters, onChange, models, plan, onClearAll, bar
                 aria-pressed={on}
                 onClick={() => pickType(v)}
                 className={cn(
-                  'flex flex-col items-center justify-center gap-2 rounded-2xl px-2 py-4 text-sm leading-snug transition-colors',
+                  'flex flex-col items-center justify-center gap-1.5 rounded-2xl px-1.5 py-3 text-center text-sm leading-snug text-balance transition-colors',
                   on
                     ? 'bg-accent text-accent-foreground ring-2 ring-inset ring-primary/45'
                     : 'bg-muted text-muted-foreground hover:bg-zinc-200',
@@ -134,24 +145,6 @@ export function FilterSidebar({ filters, onChange, models, plan, onClearAll, bar
               </button>
             );
           })}
-        </div>
-      </div>
-
-      <div role="group" aria-labelledby={`${idPrefix}-origin-label`}>
-        <span id={`${idPrefix}-origin-label`} className={labelCls}>
-          เครื่องไทย / เครื่องนอก
-        </span>
-        <div className="flex flex-wrap gap-1.5">
-          {ORIGINS.map((o) => (
-            <Pill
-              key={o.label}
-              active={filters.deviceOrigin === o.v}
-              onClick={() => onChange({ ...filters, deviceOrigin: o.v })}
-              className="px-3.5"
-            >
-              {o.label}
-            </Pill>
-          ))}
         </div>
       </div>
 
@@ -174,17 +167,38 @@ export function FilterSidebar({ filters, onChange, models, plan, onClearAll, bar
         </NativeSelect>
       </div>
 
+      {/* อยู่ใต้ "รุ่น" (คำสั่งเจ้าของ 2026-11-27) — เลือกรุ่นก่อน แล้วค่อยเลือกไทย/นอก */}
+      <div role="group" aria-labelledby={`${idPrefix}-origin-label`}>
+        <span id={`${idPrefix}-origin-label`} className={labelCls}>
+          เครื่องไทย / เครื่องนอก
+        </span>
+        {/* แถบข้าง (lg+) แคบเกินวางสามปุ่มแถวเดียว — "ทั้งหมด" เต็มแถว แล้วไทย/นอก คู่กันใต้ลงไป */}
+        <div className="flex flex-wrap gap-1.5 lg:grid lg:grid-cols-2">
+          {ORIGINS.map((o) => (
+            <Pill
+              key={o.label}
+              active={filters.deviceOrigin === o.v}
+              onClick={() => onChange({ ...filters, deviceOrigin: o.v })}
+              className={cn('px-3.5 lg:w-full lg:px-2', o.v === undefined && 'lg:col-span-2')}
+            >
+              {o.label}
+            </Pill>
+          ))}
+        </div>
+      </div>
+
       <div role="group" aria-labelledby={`${idPrefix}-price-label`}>
         <span id={`${idPrefix}-price-label`} className={labelCls}>
           ช่วงราคา
         </span>
-        <div className="flex flex-wrap gap-1.5">
+        {/* แถบข้าง (lg+) — ช่วงละแถว กว้างเท่ากัน แทนปุ่มยาวไม่เท่ากันที่ตกบรรทัดเป็นขั้นบันได */}
+        <div className="flex flex-wrap gap-1.5 lg:grid lg:grid-cols-1">
           {PRICE_BANDS.map((b) => (
             <Pill
               key={b.id || 'all'}
               active={bandId(filters) === b.id}
               onClick={() => onChange({ ...filters, minPrice: b.min, maxPrice: b.max })}
-              className="num px-3.5"
+              className="num px-3.5 lg:w-full"
             >
               {b.label}
             </Pill>
@@ -218,14 +232,16 @@ export function FilterSidebar({ filters, onChange, models, plan, onClearAll, bar
   if (bare) return <div>{body}</div>;
 
   return (
-    <aside className="rounded-[40px] border border-border bg-card shadow-lg">
-      <div className="flex items-center gap-2.5 px-4 pt-4">
+    // min-h-0: ให้กล่องหดตามความสูงจอของคอลัมน์ได้ (ค่าตั้งต้นของ flex ไม่ยอมหดต่ำกว่าเนื้อหา) ·
+    // pb-3: เนื้อหาที่เลื่อนอยู่ไม่ถูกมุมโค้ง 40px ตัด
+    <aside className="flex min-h-0 flex-col overflow-hidden rounded-[40px] border border-border bg-card pb-3 shadow-lg">
+      <div className="flex shrink-0 items-center gap-2.5 px-4 pt-4">
         <span className="size-7 rounded-xl bg-ink grid place-items-center shrink-0">
           <SlidersHorizontal className="size-4 text-ink-foreground" aria-hidden />
         </span>
         <h2 className="text-base font-semibold text-foreground leading-snug">ตัวกรองสินค้า</h2>
       </div>
-      <hr className="mt-3.5 mx-4 border-0 border-t border-border" />
+      <hr className="mt-3.5 mx-4 shrink-0 border-0 border-t border-border" />
       {body}
     </aside>
   );

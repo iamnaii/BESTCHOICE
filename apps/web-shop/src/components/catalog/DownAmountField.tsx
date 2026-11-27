@@ -54,22 +54,28 @@ export function DownAmountField({
   return (
     <div
       className={cn(
-        'flex items-center gap-2',
-        pill
-          ? 'min-h-11 min-w-40 flex-1 rounded-full bg-muted pl-4 pr-3.5 ring-1 ring-inset ring-border/70 focus-within:ring-2 focus-within:ring-ring/50'
-          : 'justify-between',
+        pill &&
+          'flex min-h-11 min-w-40 flex-1 items-center gap-2 rounded-full bg-muted pl-4 pr-3.5 ring-1 ring-inset ring-border/70 focus-within:ring-2 focus-within:ring-ring/50',
       )}
     >
+      {/* panel: ชื่อช่องอยู่บนกล่องเหมือน "จำนวนงวด" ข้างล่าง — กล่องกว้างเต็มแถบ ตัวเลขไม่ล้นแม้แถบแคบ */}
       <label
         htmlFor={id}
         className={cn(
           'text-sm leading-snug whitespace-nowrap',
-          pill ? 'font-head text-accent-foreground' : 'text-foreground',
+          pill ? 'font-head text-accent-foreground' : 'mb-2 block text-foreground',
         )}
       >
         {copy.catalog.downLabel}
       </label>
-      <div className={cn('flex items-center gap-1.5', pill && 'min-w-0 flex-1')}>
+      <div
+        className={cn(
+          'flex min-w-0 items-center gap-1.5',
+          pill
+            ? 'flex-1'
+            : 'h-11 rounded-xl bg-card px-3 focus-within:ring-2 focus-within:ring-ring/50',
+        )}
+      >
         <input
           id={id}
           type="text"
@@ -86,16 +92,11 @@ export function DownAmountField({
               e.currentTarget.blur();
             }
           }}
-          className={cn(
-            'num h-11 text-right text-base font-bold leading-snug disabled:opacity-50 focus:outline-none',
-            pill
-              ? 'min-w-0 flex-1 bg-transparent text-primary'
-              : 'w-28 rounded-lg bg-card px-2 text-primary focus:ring-2 focus:ring-ring/50',
-          )}
+          className="num h-11 min-w-0 flex-1 bg-transparent text-right text-base font-bold leading-snug text-primary disabled:opacity-50 focus:outline-none"
         />
         <span
           className={cn(
-            'text-sm leading-snug',
+            'shrink-0 text-sm leading-snug',
             pill ? 'font-head text-accent-foreground' : 'font-bold text-foreground',
           )}
         >

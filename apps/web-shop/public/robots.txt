@@ -5,6 +5,10 @@
 # มันอยู่ใต้ /api/ จึงโดน `Disallow: /api/` บล็อกไปด้วย ทำให้ crawler ที่เคารพ
 # robots.txt (facebookexternalhit ฯลฯ) ดึงการ์ดของเราไม่ได้ ⇒ ต้อง Allow ก่อนทุกบล็อก
 #
+# ⚠️ รูปสินค้าอยู่ที่ /api/shop/products/:id/photos/:angle — ใต้ /api/ เช่นกัน ถ้าไม่ Allow
+# crawler ทุกตัวดึงรูปสินค้าไม่ได้ (ไม่ขึ้นค้นรูป / ไม่มีรูปในผลค้นหา) ⇒ Allow ไว้ทุกกลุ่ม
+# (เปิดเฉพาะ path รูป — JSON ของสินค้าที่ /api/shop/products ยังถูกบล็อกตามเดิม)
+#
 # ⚠️ RFC 9309: บอทที่ match กลุ่มระบุชื่อจะอ่าน "เฉพาะกลุ่มตัวเอง" ไม่รวมกับกลุ่ม * —
 # ทุกกลุ่มระบุชื่อจึงต้องมี Disallow ชุด user-flow (/apply /checkout /orders /account)
 # ครบเหมือนกลุ่ม * เสมอ ไม่งั้นบอทนั้นเห็นหน้าที่เราไม่อยากให้ index
@@ -12,6 +16,7 @@
 User-agent: *
 Allow: /
 Allow: /api/shop/share/
+Allow: /api/shop/products/*/photos/
 Disallow: /api/
 Disallow: /apply
 Disallow: /checkout
@@ -23,6 +28,7 @@ User-agent: GPTBot
 Allow: /
 Crawl-delay: 10
 Allow: /api/shop/share/
+Allow: /api/shop/products/*/photos/
 Disallow: /api/
 Disallow: /apply
 Disallow: /checkout
@@ -34,6 +40,7 @@ Disallow: /account
 User-agent: OAI-SearchBot
 Allow: /
 Allow: /api/shop/share/
+Allow: /api/shop/products/*/photos/
 Disallow: /api/
 Disallow: /apply
 Disallow: /checkout
@@ -44,6 +51,7 @@ User-agent: ClaudeBot
 Allow: /
 Crawl-delay: 10
 Allow: /api/shop/share/
+Allow: /api/shop/products/*/photos/
 Disallow: /api/
 Disallow: /apply
 Disallow: /checkout
@@ -54,6 +62,7 @@ User-agent: Anthropic-AI
 Allow: /
 Crawl-delay: 10
 Allow: /api/shop/share/
+Allow: /api/shop/products/*/photos/
 Disallow: /api/
 Disallow: /apply
 Disallow: /checkout
@@ -63,6 +72,7 @@ Disallow: /account
 User-agent: PerplexityBot
 Allow: /
 Allow: /api/shop/share/
+Allow: /api/shop/products/*/photos/
 Disallow: /api/
 Disallow: /apply
 Disallow: /checkout
@@ -72,6 +82,7 @@ Disallow: /account
 User-agent: Google-Extended
 Allow: /
 Allow: /api/shop/share/
+Allow: /api/shop/products/*/photos/
 Disallow: /api/
 Disallow: /apply
 Disallow: /checkout
@@ -83,6 +94,7 @@ Disallow: /account
 User-agent: CCBot
 Allow: /
 Allow: /api/shop/share/
+Allow: /api/shop/products/*/photos/
 Disallow: /api/
 Disallow: /apply
 Disallow: /checkout

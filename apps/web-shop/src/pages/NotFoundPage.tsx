@@ -3,8 +3,11 @@ import { Compass } from '@/lib/icons';
 import ShopLayout from '@/components/layout/ShopLayout';
 import { Button, Container } from '@/components';
 import { copy } from '@/lib/copy';
+import { usePageMeta } from '@/hooks/usePageMeta';
 
 export default function NotFoundPage() {
+  // Hosting ตอบ 200 ให้ทุก path (rewrite ** → spa-shell.html) — noindex กัน soft 404
+  usePageMeta(copy.notFound.pageTitle, undefined, { noindex: true });
   return (
     <ShopLayout>
       <Container>

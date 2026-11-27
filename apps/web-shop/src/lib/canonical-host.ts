@@ -16,7 +16,7 @@
 /** โดเมนเก่าที่ต้องเด้งออก — ระบุตรง ๆ ไม่ใช้ pattern เพื่อไม่ให้โดน preview channel */
 const LEGACY_HOSTS = ['bestchoicephone-shop.web.app', 'bestchoicephone-shop.firebaseapp.com'];
 
-const CANONICAL_ORIGIN = 'https://www.bestchoicephone.com';
+export const CANONICAL_ORIGIN = 'https://www.bestchoicephone.com';
 
 /**
  * 🔴 สวิตช์นิรภัย — ต้องเปิดเองเมื่อ www เสิร์ฟหน้าร้านได้จริงแล้วเท่านั้น

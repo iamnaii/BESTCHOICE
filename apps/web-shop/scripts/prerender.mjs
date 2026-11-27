@@ -105,6 +105,15 @@ async function captureRoute(context, { path: route, apiDependent, product = fals
     if (product && !/ \| BESTCHOICE ลพบุรี$/.test(title)) {
       throw new Error(`${route}: ยังไม่ได้ชื่อรุ่น ("${title}")`);
     }
+    // หน้าสินค้าต้องมี JSON-LD Product ใน HTML ดิบ (crawler ที่ไม่รัน JS อ่านจากตรงนี้) —
+    // ไม่มี = หน้ายังไม่ใช่หน้าสินค้าจริง (เช่นหน้า "ไม่พบสินค้า" ซึ่งมี title ของตัวเองแล้ว)
+    if (product && !html.includes('"@type":"Product"')) {
+      throw new Error(`${route}: ไม่มี JSON-LD Product ใน snapshot`);
+    }
+    // หน้า noindex (ไม่พบหน้า/ไม่พบสินค้า) ห้ามถูกแช่เป็นไฟล์และห้ามเข้า sitemap
+    if (await page.evaluate(() => document.querySelector('meta[name="robots"]') !== null)) {
+      throw new Error(`${route}: snapshot ติด meta robots (หน้า noindex)`);
+    }
     if (rootLength < 200) throw new Error(`${route}: #root แทบว่าง (${rootLength} chars)`);
     // canonical จาก usePageMeta = window.location.pathname ซึ่ง percent-encode
     // อักษรไทยแล้ว — เทียบกับ route ที่ encode ให้ตรงกัน

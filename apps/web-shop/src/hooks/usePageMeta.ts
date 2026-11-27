@@ -17,9 +17,33 @@ function setContent(el: HTMLMetaElement | null, value: string): void {
  * - cleanup คืนค่าเป็น "ค่า default ของเว็บ" เสมอ ไม่ใช่ค่าที่จำไว้ตอน mount —
  *   บนหน้า prerender ค่าตอน mount คือ meta ของหน้านั้นเอง จำแล้วคืน = meta ค้าง
  *   หน้าเก่าเมื่อผู้ใช้เดินต่อไปหน้าที่ไม่เรียก hook (เช่น /account)
+ * - `noindex` สำหรับหน้าที่ "ไม่มีอยู่จริง" (path มั่ว / สินค้าที่ API ตอบ 404): Firebase rewrite
+ *   `**` → spa-shell.html ตอบ 200 เสมอ จึงบอก crawler ด้วย <meta name="robots"> แทนสถานะ 404
+ *   — cleanup คืนสภาพเดิมเสมอ ไม่งั้นหน้าถัดไปใน SPA ติด noindex ไปด้วย: แท็กที่ hook สร้างเอง
+ *   ถูกลบ ส่วนแท็กที่มีอยู่ก่อน (ถ้าวันหน้าใส่ไว้ใน HTML) ได้ค่าเดิมคืน ไม่ถูกลบ
  */
-export function usePageMeta(title?: string, description?: string) {
+export function usePageMeta(title?: string, description?: string, options?: { noindex?: boolean }) {
+  const noindex = options?.noindex === true;
   useEffect(() => {
+    let restoreRobots: (() => void) | null = null;
+    if (noindex) {
+      const existing = document.querySelector<HTMLMetaElement>('meta[name="robots"]');
+      if (existing) {
+        const previous = existing.getAttribute('content');
+        existing.setAttribute('content', 'noindex');
+        restoreRobots = () => {
+          if (previous == null) existing.removeAttribute('content');
+          else existing.setAttribute('content', previous);
+        };
+      } else {
+        const created = document.createElement('meta');
+        created.setAttribute('name', 'robots');
+        created.setAttribute('content', 'noindex');
+        document.head.appendChild(created);
+        restoreRobots = () => created.remove();
+      }
+    }
+
     const fullTitle = title ? `${title} | BESTCHOICE ลพบุรี` : BASE_TITLE;
     document.title = fullTitle;
     const desc = description ?? BASE_DESCRIPTION;
@@ -47,9 +71,10 @@ export function usePageMeta(title?: string, description?: string) {
       document.title = BASE_TITLE;
       setContent(meta, BASE_DESCRIPTION);
       document.querySelector('link[rel="canonical"]')?.remove();
+      restoreRobots?.();
       setContent(ogTitle, BASE_TITLE);
       setContent(ogDesc, BASE_DESCRIPTION);
       setContent(ogUrl, CANONICAL_BASE);
     };
-  }, [title, description]);
+  }, [title, description, noindex]);
 }

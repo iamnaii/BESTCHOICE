@@ -1,19 +1,5 @@
-import { useState } from 'react';
-import { MessageCircle, Phone, MapPin, Clock, Send } from '@/lib/icons';
-import {
-  CategoryHero,
-  Container,
-  Stack,
-  Card,
-  CardBody,
-  CardHeader,
-  CardTitle,
-  Button,
-  Input,
-  Label,
-  StickyBottomBar,
-  StickyBottomBarSpacer,
-} from '@/components';
+import { MessageCircle, Phone, MapPin, Clock } from '@/lib/icons';
+import { CategoryHero, Container, Stack, Card, CardBody, Button } from '@/components';
 import ShopLayout from '@/components/layout/ShopLayout';
 import { copy, shopInfo } from '@/lib/copy';
 import { usePageMeta } from '@/hooks/usePageMeta';
@@ -24,15 +10,8 @@ export default function ContactPage() {
     'ติดต่อ BESTCHOICE ร้านมือถือลพบุรี ทักไลน์หรือโทรสอบถามซื้อ-ผ่อน iPhone มือ 1 และมือสอง',
   );
 
-  const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [message, setMessage] = useState('');
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    // Submit wiring deferred — Cluster D/form cluster owns integration
-  }
-
+  // ไม่มีฟอร์มฝากข้อความ (เจ้าของ 2026-11-27) — ฟอร์มเดิมไม่เคยส่งไปไหน ลูกค้ากดแล้วข้อความหาย ·
+  // ช่องทางติดต่อมีแค่ LINE / โทร ที่การ์ดด้านล่าง + ปุ่มลอย "ทักแชท"
   return (
     <ShopLayout>
       <CategoryHero
@@ -50,7 +29,7 @@ export default function ContactPage() {
                     <MessageCircle className="size-6" aria-hidden="true" />
                   </span>
                   <div className="space-y-1">
-                    <h3 className="text-lg font-semibold leading-snug">{copy.contact.lineTitle}</h3>
+                    <h2 className="text-lg font-semibold leading-snug">{copy.contact.lineTitle}</h2>
                     <p className="text-base font-medium text-primary leading-snug">
                       {copy.contact.lineHandle}
                     </p>
@@ -79,9 +58,9 @@ export default function ContactPage() {
                     <Phone className="size-6" aria-hidden="true" />
                   </span>
                   <div className="space-y-1">
-                    <h3 className="text-lg font-semibold leading-snug">
+                    <h2 className="text-lg font-semibold leading-snug">
                       {copy.contact.phoneTitle}
-                    </h3>
+                    </h2>
                     <p className="text-base font-medium leading-snug">{copy.contact.phoneNumber}</p>
                     <p className="text-sm text-muted-foreground leading-snug">
                       {copy.contact.phoneDescription}
@@ -98,80 +77,10 @@ export default function ContactPage() {
             </Card>
           </div>
 
-          <Card variant="elevated">
-            <CardHeader>
-              <CardTitle>{copy.contact.formTitle}</CardTitle>
-              <p className="text-sm text-muted-foreground leading-snug mt-1">
-                {copy.contact.formDescription}
-              </p>
-            </CardHeader>
-            <CardBody>
-              <form onSubmit={handleSubmit} id="contact-form">
-                <Stack gap={4}>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="contact-name" required>
-                      {copy.contact.formNameLabel}
-                    </Label>
-                    <Input
-                      id="contact-name"
-                      variant="lg"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      placeholder={copy.contact.formNamePlaceholder}
-                      required
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label htmlFor="contact-phone" required>
-                      {copy.contact.formPhoneLabel}
-                    </Label>
-                    <Input
-                      id="contact-phone"
-                      variant="lg"
-                      type="tel"
-                      inputMode="tel"
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      placeholder={copy.contact.formPhonePlaceholder}
-                      required
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label htmlFor="contact-message" required>
-                      {copy.contact.formMessageLabel}
-                    </Label>
-                    <textarea
-                      id="contact-message"
-                      rows={4}
-                      value={message}
-                      onChange={(e) => setMessage(e.target.value)}
-                      placeholder={copy.contact.formMessagePlaceholder}
-                      className="flex w-full bg-background border border-input shadow-sm rounded-md px-4 py-2.5 text-base md:text-sm leading-snug text-foreground placeholder:text-muted-foreground/80 focus-visible:ring-ring/30 focus-visible:border-ring focus-visible:outline-hidden focus-visible:ring-[3px]"
-                      required
-                    />
-                  </div>
-
-                  <Button
-                    type="submit"
-                    variant="primary"
-                    size="lg"
-                    fullWidth
-                    className="hidden md:inline-flex"
-                  >
-                    <Send className="size-4" aria-hidden="true" />
-                    {copy.contact.formSubmitCta}
-                  </Button>
-                </Stack>
-              </form>
-            </CardBody>
-          </Card>
-
           <Card variant="outlined">
             <CardBody>
               <Stack gap={3} className="leading-snug">
-                <h3 className="text-lg font-semibold leading-snug">{copy.contact.addressTitle}</h3>
+                <h2 className="text-lg font-semibold leading-snug">{copy.contact.addressTitle}</h2>
                 <div className="flex items-start gap-3">
                   <MapPin className="size-5 text-emerald-600 shrink-0 mt-0.5" aria-hidden="true" />
                   <p className="text-sm text-muted-foreground leading-snug">
@@ -186,16 +95,7 @@ export default function ContactPage() {
             </CardBody>
           </Card>
         </Stack>
-
-        <StickyBottomBarSpacer />
       </Container>
-
-      <StickyBottomBar>
-        <Button type="submit" form="contact-form" variant="primary" size="lg" fullWidth>
-          <Send className="size-4" aria-hidden="true" />
-          {copy.contact.formSubmitCta}
-        </Button>
-      </StickyBottomBar>
     </ShopLayout>
   );
 }

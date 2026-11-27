@@ -3,15 +3,21 @@ import { ImageOff } from '@/lib/icons';
 import { gsap, useGSAP } from '@/components/motion/gsap';
 import { cn } from '@/lib/utils';
 
-/** Callers key by src so an old device's photo never stands in for a new one. */
+/**
+ * Callers key by src so an old device's photo never stands in for a new one.
+ * `priority`: the main product photo on the detail page — the first thing the buyer
+ * sees, so the browser fetches it ahead of thumbnails and below-fold images.
+ */
 export function GalleryImage({
   src,
   alt,
   className,
+  priority = false,
 }: {
   src: string;
   alt: string;
   className?: string;
+  priority?: boolean;
 }) {
   const image = useRef<HTMLImageElement>(null);
   const [loaded, setLoaded] = useState(false);
@@ -53,6 +59,7 @@ export function GalleryImage({
         ref={image}
         src={src}
         alt={alt}
+        fetchPriority={priority ? 'high' : 'auto'}
         draggable={false}
         onLoad={() => setLoaded(true)}
         onError={() => setFailed(true)}

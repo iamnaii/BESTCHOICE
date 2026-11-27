@@ -64,6 +64,11 @@ interface Props {
    * price at all; 'cash' = full price only, no installment rate at all.
    */
   priceMode?: 'combined' | 'cash' | 'installment';
+  /**
+   * การ์ดแถวแรกที่ลูกค้าเห็นทันทีโดยไม่ต้องเลื่อน (หน้ารายการสินค้า 4 ใบแรก) —
+   * โหลดรูปทันทีและบอกเบราว์เซอร์ว่าสำคัญ · การ์ดอื่นรอจนเลื่อนใกล้ถึง (`loading="lazy"`)
+   */
+  priority?: boolean;
 }
 
 /**
@@ -104,6 +109,7 @@ export function ProductCard({
   priceMode = 'combined',
   freeDownOnly = false,
   down = null,
+  priority = false,
 }: Props) {
   const hasQuote = p.monthlyPaymentFrom != null && p.monthlyPaymentFrom > 0;
   // เงินดาวน์ที่พิมพ์ไว้ + งวดที่การ์ดโชว์เรท 1 ตามไปหน้ารายละเอียด (คำตัดสิน ข1) ·
@@ -222,7 +228,8 @@ export function ProductCard({
                 src={current}
                 alt={`${p.brand} ${p.model}`}
                 className="size-full object-contain"
-                loading="lazy"
+                loading={priority ? 'eager' : 'lazy'}
+                fetchPriority={priority ? 'high' : 'auto'}
                 draggable={false}
               />
             ) : (

@@ -126,6 +126,11 @@ export async function installSellApiFixtures(page: Page): Promise<SellFixtureLog
       await route.fulfill({ status: 401, json: { message: 'ไม่มีผู้เข้าสู่ระบบ' } });
       return;
     }
+    // แถบโปรของหน้าร้าน (หน้าแรก /sell และหน้าสถานะหลังส่งข้อมูล) ถามยอดดาวน์ต่ำสุด — ตอบว่าไม่มีสินค้า
+    if (pathname === '/api/shop/products' && request.method() === 'GET') {
+      await route.fulfill({ json: { data: [], total: 0, page: 1, limit: 1 } });
+      return;
+    }
     log.unmatched.push(pathname);
     await route.fulfill({ status: 501, json: { message: 'Unmatched isolated test endpoint' } });
   });

@@ -15,7 +15,7 @@ export function sellerErrors(value: SellerDetails): Partial<Record<keyof SellerD
   return {
     ...(!value.name.trim() ? { name: 'กรุณากรอกชื่อ-นามสกุล' } : {}),
     ...(!/^0\d{9}$/.test(normalizeSellerPhone(value.phone))
-      ? { phone: 'กรอกเบอร์โทร 10 หลัก เริ่มด้วย 0 โดยใช้ตัวเลขเท่านั้น' }
+      ? { phone: 'กรอกเบอร์โทร 10 หลัก เริ่มด้วย 0' }
       : {}),
   };
 }
@@ -87,8 +87,8 @@ export default function SellerStep({
         </summary>
         <div className="space-y-4 pt-2">
           {field('visitDate', 'วันที่สะดวกเข้าร้าน', 'date')}
-          {field('imei', 'เลขประจำเครื่อง (ถ้ามี)')}
-          {field('notes', 'หมายเหตุ (ถ้ามี)')}
+          {field('imei', 'เลขประจำเครื่อง (IMEI)')}
+          {field('notes', 'หมายเหตุ')}
         </div>
       </details>
       <p className="text-sm">
@@ -97,10 +97,10 @@ export default function SellerStep({
         {copy.contact.hours}
       </p>
       {flow === 'EXCHANGE' && <p className="text-sm">{copy.sell.exchangeCreditNote}</p>}
-      <p className="text-sm">ราคายืนยันจริงตอนตรวจเครื่องที่ร้าน คุณปฏิเสธได้ ไม่มีค่าใช้จ่าย</p>
+      <p className="text-sm">{copy.sell.priceCondition}</p>
       {invalid && (
         <p className="text-sm" id="seller-hint">
-          {errors.name ? 'กรอกชื่อ-นามสกุลก่อนส่งข้อมูล' : 'กรอกเบอร์โทรให้ครบ 10 หลัก เริ่มด้วย 0'}
+          {errors.name ? 'กรอกชื่อ-นามสกุลก่อนส่งข้อมูล' : 'กรอกเบอร์โทรให้ครบก่อนส่งข้อมูล'}
         </p>
       )}
       {submitError && (

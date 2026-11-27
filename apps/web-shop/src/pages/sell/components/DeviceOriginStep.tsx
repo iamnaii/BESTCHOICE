@@ -76,10 +76,10 @@ export default function DeviceOriginStep({
             </summary>
             <ul className="space-y-2 pb-3">
               <li>
-                iPhone 13 ทุกรุ่นย่อย: <strong>TH/A</strong>
+                iPhone 13 ทุกรุ่น: <strong>TH/A</strong>
               </li>
               <li>
-                iPhone 14, 15, 16, 17 ทุกรุ่นย่อย: <strong>ZP/A</strong>
+                iPhone 14, 15, 16, 17 ทุกรุ่น: <strong>ZP/A</strong>
               </li>
               <li>
                 iPhone Air: <strong>ZP/A</strong>
@@ -87,7 +87,7 @@ export default function DeviceOriginStep({
             </ul>
           </details>
           <p className="text-sm">
-            ZP/A ใช้ร่วมกันหลายประเทศ รหัสตรงอย่างเดียวจึงยังยืนยันว่าเป็นเครื่องศูนย์ไทยไม่ได้
+            ZP/A ใช้ร่วมกันหลายประเทศ รหัสตรงอย่างเดียวจึงยังยืนยันว่าเป็นโมเดลไทยไม่ได้
             หากไม่ทราบที่มาหรือดูไม่เป็น ให้ร้านช่วยเช็กก่อน
           </p>
           <a
@@ -110,7 +110,7 @@ export default function DeviceOriginStep({
           >
             <span>
               <span className="block font-semibold">เครื่องโมเดลไทย</span>
-              <span className="mt-1 block text-sm">ยืนยันว่าเป็นเครื่องศูนย์ไทย รหัสขึ้นต้น M</span>
+              <span className="mt-1 block text-sm">ยืนยันว่าเป็นโมเดลไทย รหัสขึ้นต้น M</span>
             </span>
           </ChoiceButton>
         )}
@@ -123,9 +123,7 @@ export default function DeviceOriginStep({
           >
             <span>
               <span className="block font-semibold">เครื่องโมเดลนอก</span>
-              <span className="mt-1 block text-sm">
-                เครื่องสำหรับจำหน่ายต่างประเทศ · ร้านไม่รับซื้อหรือเทิร์น
-              </span>
+              <span className="mt-1 block text-sm">เครื่องที่ขายในต่างประเทศ · ร้านไม่รับ</span>
             </span>
           </ChoiceButton>
         )}
@@ -141,7 +139,7 @@ export default function DeviceOriginStep({
           </p>
           <p className="text-sm">
             {rejected
-              ? 'จึงยังประเมินราคาขายหรือเทิร์นเครื่องนี้ต่อไม่ได้ หากเลือกผิด ให้กลับมาเลือกคำตอบด้านบน'
+              ? 'จึงประเมินราคาต่อไม่ได้ · ถ้าเลือกผิด แตะคำตอบด้านบน'
               : 'ส่งรหัสในแถวหมายเลขรุ่นให้ร้านทาง LINE ได้เลย เมื่อยืนยันว่าเป็นโมเดลไทยแล้ว ค่อยกลับมาเลือกเครื่องโมเดลไทย'}
           </p>
           <a
@@ -154,9 +152,6 @@ export default function DeviceOriginStep({
           >
             ให้ร้านช่วยเช็กทาง LINE
           </a>
-          <p className="text-xs text-muted-foreground">
-            เปิดแชทพร้อมข้อความให้แก้ไข แล้วคุณกดส่งเองใน LINE
-          </p>
         </div>
       )}
     </div>

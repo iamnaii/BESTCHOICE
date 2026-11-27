@@ -226,7 +226,7 @@ export default function SellQuotePage() {
     onSuccess: (value, request) => {
       if (!active.current || request.revision !== revision.current) return;
       if (!usableQuote(value)) {
-        setQuoteError('ยังไม่สามารถประเมินราคาเครื่องนี้ได้ กรุณาสอบถามร้าน');
+        setQuoteError('ยังประเมินราคาเครื่องนี้ไม่ได้ กรุณาสอบถามร้าน');
         return;
       }
       quoteClock.current = {
@@ -417,32 +417,32 @@ export default function SellQuotePage() {
         : step.kind === 'question'
           ? question?.key === 'device-origin'
             ? 'เครื่องนี้เป็นโมเดลไทยไหม?'
-            : (question?.title ?? 'โหลดแบบประเมิน')
+            : (question?.title ?? 'เช็กสภาพเครื่อง')
           : step.kind === 'eligibility'
             ? 'ยืนยันสถานะเครื่อง'
             : step.kind === 'review'
-              ? 'ทบทวนคำตอบ'
+              ? 'ตรวจคำตอบ'
               : step.kind === 'result'
                 ? 'สรุปราคาเครื่องของคุณ'
                 : 'ข้อมูลติดต่อ';
   const progressText = ['device', 'storage'].includes(step.kind)
-    ? '1 · เลือกเครื่อง'
+    ? '1/4 · เลือกเครื่อง'
     : step.kind === 'question'
-      ? `2 · เช็กสภาพ · ข้อ ${questionIndex + 1} จาก ${questions.length}`
+      ? `2/4 · เช็กสภาพ · ข้อ ${questionIndex + 1} จาก ${questions.length}`
       : ['review', 'eligibility'].includes(step.kind)
-        ? '2 · เช็กสภาพ'
+        ? '2/4 · เช็กสภาพ'
         : step.kind === 'result'
-          ? '3 · ราคาประเมิน'
-          : '4 · ข้อมูลติดต่อ';
+          ? '3/4 · ราคาประเมิน'
+          : '4/4 · ข้อมูลติดต่อ';
   if (catalog.isLoading || (!initialized && !catalog.isError))
     return (
-      <SellFlowLayout title="โหลดรายชื่อรุ่น" progressText="1 · เลือกเครื่อง">
+      <SellFlowLayout title="โหลดรายชื่อรุ่น" progressText="1/4 · เลือกเครื่อง">
         <LoadingState />
       </SellFlowLayout>
     );
   if (catalog.isError)
     return (
-      <SellFlowLayout title="โหลดรายชื่อรุ่น" progressText="1 · เลือกเครื่อง">
+      <SellFlowLayout title="โหลดรายชื่อรุ่น" progressText="1/4 · เลือกเครื่อง">
         <ErrorState title={copy.sell.quoteError} onRetry={() => void catalog.refetch()} />
       </SellFlowLayout>
     );
@@ -529,9 +529,9 @@ export default function SellQuotePage() {
         (questionsQ.isLoading ? (
           <LoadingState />
         ) : questionsQ.isError ? (
-          <ErrorState title="โหลดแบบประเมินไม่สำเร็จ" onRetry={() => void questionsQ.refetch()} />
+          <ErrorState title="โหลดคำถามไม่สำเร็จ" onRetry={() => void questionsQ.refetch()} />
         ) : !question ? (
-          <p>ยังไม่มีแบบประเมินสำหรับรุ่นและความจุนี้ กรุณาสอบถามร้าน</p>
+          <p>รุ่นและความจุนี้ยังประเมินออนไลน์ไม่ได้ กรุณาสอบถามร้าน</p>
         ) : question.key === 'device-origin' ? (
           <DeviceOriginStep
             question={question}
@@ -585,7 +585,7 @@ export default function SellQuotePage() {
                 'เครื่องไม่ติดล็อก iCloud หรือระบบผ่อนชำระ สามารถรีเซ็ตและใช้งานได้ปกติ'}
             </span>
           </label>
-          {!eligibility && <p className="text-sm">ยืนยันสถานะเครื่องก่อนดูราคา</p>}
+          {!eligibility && <p className="text-sm">ติ๊กยืนยันก่อนดูราคา</p>}
           <Button
             fullWidth
             size="lg"
@@ -628,7 +628,7 @@ export default function SellQuotePage() {
               </Button>
             </div>
           ))}
-          {!complete && <p>ตอบแบบประเมินให้ครบก่อนดูราคา</p>}
+          {!complete && <p>ตอบให้ครบทุกข้อก่อนดูราคา</p>}
           <Button fullWidth size="lg" disabled={!complete} onClick={showResult}>
             ดูราคาประเมิน
           </Button>
@@ -648,7 +648,7 @@ export default function SellQuotePage() {
                     .filter((c) => answers[q.key]?.includes(c.id))
                     .map((c) =>
                       q.key === 'device-origin' && isThaiOriginLabel(c.label)
-                        ? 'เครื่องศูนย์ไทย · รหัส M'
+                        ? 'โมเดลไทย · รหัส M'
                         : c.label,
                     )
                     .join(' · ')
@@ -682,7 +682,7 @@ export default function SellQuotePage() {
               target="_blank"
               rel="noreferrer"
             >
-              สอบถามร้านทางไลน์
+              สอบถามร้านทาง LINE
             </a>
           </div>
         ) : (

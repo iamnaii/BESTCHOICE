@@ -3,10 +3,10 @@
   align-items: flex-start;
   gap: 12px;
   padding: 18px;
-  background: var(--color-promo);
-  color: var(--color-promo-foreground);
-  border: 1px solid var(--color-promo-foreground);
-  border-left-width: 4px;
+  background: var(--color-card);
+  color: var(--color-sell-header-foreground);
+  border: 1.5px solid var(--color-sell-header-foreground);
+  border-left-width: 6px;
   border-radius: 14px;
 }
 .sell-summary .summary-card {

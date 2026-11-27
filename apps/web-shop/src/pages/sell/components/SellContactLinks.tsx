@@ -41,7 +41,7 @@ function prepareMessage({
       lines.push(`ประเมินเมื่อ ${quoteDate(assessedAt)} · เวลาไทย`);
       lines.push(`อ้างอิงถึง ${quoteDate(expiresAt)} · เวลาไทย`);
       if (expired) lines.push('ผลนี้พ้นช่วงอ้างอิงแล้ว ต้องประเมินใหม่');
-      lines.push('ช่วงอ้างอิง 24 ชั่วโมงไม่ใช่การล็อคราคา');
+      lines.push('ช่วงอ้างอิง 24 ชั่วโมงไม่ใช่การล็อกราคา');
     }
     lines.push('รับทราบว่าราคายืนยันหลังตรวจเครื่องที่ร้าน');
   }
@@ -93,7 +93,7 @@ export default function SellContactLinks({
             rel="noopener noreferrer"
           >
             <MapPin className="size-4 shrink-0" aria-hidden="true" />
-            Google Maps
+            แผนที่ร้าน
           </a>
         )}
       </div>

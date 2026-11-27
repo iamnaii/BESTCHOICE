@@ -22,6 +22,10 @@
  * - ตั้ง window.__BC_PRERENDER__ = true ด้วย addInitScript — UI คุกกี้ไม่ render ตอน prerender
  * - tripwire: captureRoute ตรวจ html ของทุก snapshot หา TRACKER_MARKERS (สคริปต์ tracker,
  *   data-consent-ui ของแบนเนอร์คุกกี้) — เจอ = build แดง กันความยินยอมรั่วเข้า static HTML
+ * - โหมดเข้ม PRERENDER_STRICT=1 (รอบ build ตั้งเวลา .github/workflows/shop-refresh.yml เท่านั้น):
+ *   ข้อมูลจาก API ต้องมาครบ ไม่งั้น build แดง — ดึงรายการสินค้าไม่ได้ · คำขอ /api ของหน้าใดล้ม (ต่อไม่ติด/5xx/429)
+ *   หรือหน้ามีกล่อง error (ทั้งสองข้อลองเก็บหน้านั้นใหม่หนึ่งครั้งก่อน) · เก็บหน้าสินค้าที่ยังขายอยู่ได้ไม่ครบ. รอบตั้งเวลาไม่มีโค้ดเปลี่ยน ล้ม = เว็บคงของเดิม ซึ่งปลอดภัยกว่า
+ *   deploy หน้าร้านที่สินค้าหายไปครึ่งร้าน. ค่าเริ่มต้นปิด ⇒ deploy หลัก (deploy-gcp.yml) best effort เหมือนเดิม
  */
 import { spawn } from 'node:child_process';
 import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -30,9 +34,11 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
 import {
   TINY_PNG,
+  createSpacer,
   isProductPhotoRequest,
   listInStockProductIds,
   sitemapWithProducts,
+  unexpectedlyMissingProducts,
 } from './prerender-products.mjs';
 
 const WEB_SHOP_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -40,6 +46,28 @@ const DIST = path.join(WEB_SHOP_DIR, 'dist');
 const PORT = 4180;
 const BASE = `http://localhost:${PORT}`;
 const API_BASE = process.env.PRERENDER_API_BASE ?? 'https://www.bestchoicephone.com';
+// ดูกติกาโหมดเข้มในคอมเมนต์หัวไฟล์ — shop-refresh.yml เช็คว่ามีคำ PRERENDER_STRICT ในไฟล์นี้ก่อน build
+const STRICT = process.env.PRERENDER_STRICT === '1';
+
+// /api/shop/installment-preview ติด @Throttle 60 คำขอ/นาที/IP (apps/api shop-catalog.controller.ts) และหน้าสินค้า
+// หน้าหนึ่งเรียก 3–4 ครั้ง (ยอดผ่อนเริ่มบนหัวหน้า + เรท 1 / เรท 2 ในตัวคำนวณ) ⇒ ยิงตามจังหวะหน้าโดน 429 ราวครึ่งร้าน
+// (ทดสอบกับ API จริง 28 พ.ย. 2569: เก็บหน้าสินค้าได้ 32 จาก 52 — ตัวที่พังทั้งหมดเป็น 429 ของ endpoint นี้).
+// เว้นระยะ 1.25 วิ ⇒ หน้าต่าง 60 วิใด ๆ ไม่เกิน 49 คำขอ · หน้าสินค้า 50 หน้าใช้ราว 4 นาที (เพดานของ API ไม่ใช่ของเรา)
+const INSTALLMENT_PREVIEW_PATH = '/api/shop/installment-preview';
+const spaceInstallmentPreview = createSpacer(1250);
+
+// คำขอ /api ที่ API ตอบไม่ได้ นับต่อหน้า (Page → จำนวน) — โหมดเข้มใช้ใน captureRoute
+const apiFailures = new WeakMap();
+/** API ตอบไม่ได้ = ต่อไม่ติด / หมดเวลา / 5xx / 429 · 4xx อื่นเป็นคำตอบจริง (เช่น 404 เครื่องถูกขายแล้ว) */
+const isApiFailureStatus = (status) => status >= 500 || status === 429;
+function recordApiFailure(req) {
+  try {
+    const page = req.frame().page();
+    apiFailures.set(page, (apiFailures.get(page) ?? 0) + 1);
+  } catch {
+    // คำขอที่ไม่ได้มาจากหน้า (เช่น service worker) — ไม่มีหน้าให้ผูก
+  }
+}
 
 // ร่องรอยที่ห้ามหลุดเข้า snapshot (captureRoute จะ throw ถ้าเจอ):
 // googletagmanager/google-analytics = GA4, connect.facebook/facebook.com/tr = Meta Pixel,
@@ -143,8 +171,18 @@ async function captureRoute(context, { path: route, apiDependent, product = fals
     if (marker) {
       throw new Error(`${route}: snapshot มีร่องรอย tracker หรือแบนเนอร์คุกกี้ ("${marker}")`);
     }
+    // โหมดเข้ม: API ตอบไม่ได้ระหว่างเก็บหน้านี้ ⇒ ห้ามเก็บ. ดูกล่อง error อย่างเดียวไม่พอ — React Query ลองใหม่
+    // แบบเว้นช่วง networkidle จึงมาถึงตอนหน้ายังโหลดค้าง (skeleton) ก่อนกล่อง error ขึ้น (ทดสอบจริง 28 พ.ย. 2569:
+    // API ล่มทั้งเส้น หน้าแรก/หน้ารวม/โปรโมชันผ่านด่านเดิมทุกข้อ)
+    // throw ⇒ captureWithRetry ลองใหม่หนึ่งครั้ง · ยังพัง = หน้า marketing ทำ build แดง /
+    // หน้าสินค้ากลายเป็นเครื่องที่เก็บไม่ได้ (ตัดสินด้วย unexpectedlyMissingProducts ท้ายรอบ)
+    const failedApiCalls = apiFailures.get(page) ?? 0;
+    if (STRICT && failedApiCalls > 0) {
+      throw new Error(`${route}: API ตอบไม่ได้ ${failedApiCalls} คำขอระหว่างเก็บหน้า`);
+    }
     if (html.includes('เกิดข้อผิดพลาด')) {
       if (!apiDependent) throw new Error(`${route}: หน้า static มี error state ใน snapshot`);
+      if (STRICT) throw new Error(`${route}: มี error state ใน snapshot (API ล่มระหว่าง prerender?)`);
       console.warn(`⚠ ${route}: มี error state ใน snapshot (API ล่มระหว่าง prerender?)`);
     }
     return { route, html, title };
@@ -187,21 +225,32 @@ try {
         }
         if (req.method() !== 'GET') return routeHandle.fulfill({ status: 503, body: '{}' });
         // forward /api/* GET ไป prod เพื่อให้ snapshot มีข้อมูลจริง
+        let upstream;
         try {
-          const upstream = await fetch(`${API_BASE}${url.pathname}${url.search}`, {
+          if (url.pathname === INSTALLMENT_PREVIEW_PATH) await spaceInstallmentPreview();
+          const res = await fetch(`${API_BASE}${url.pathname}${url.search}`, {
             headers: { accept: 'application/json' },
             signal: AbortSignal.timeout(10_000),
           });
-          return routeHandle.fulfill({
-            status: upstream.status,
-            headers: {
-              'content-type': upstream.headers.get('content-type') ?? 'application/json',
-            },
-            body: Buffer.from(await upstream.arrayBuffer()),
-          });
+          upstream = {
+            status: res.status,
+            contentType: res.headers.get('content-type') ?? 'application/json',
+            body: Buffer.from(await res.arrayBuffer()),
+          };
         } catch {
-          return routeHandle.fulfill({ status: 503, body: '{}' });
+          recordApiFailure(req);
+          return routeHandle.fulfill({ status: 503, body: '{}' }).catch(() => {});
         }
+        if (isApiFailureStatus(upstream.status)) recordApiFailure(req);
+        // ส่งคำตอบไม่ได้ = หน้าปิดไปแล้ว หรือหน้ายกเลิกคำขอระหว่างรอคิว (React Query ยกเลิกคำขอเก่าเมื่อเปลี่ยนงวด) —
+        // ไม่มีใครรอคำตอบแล้ว จึงไม่ใช่ API ล้ม และห้ามโยนออกไปเป็น unhandled rejection ที่ล้มทั้งโปรเซส
+        return routeHandle
+          .fulfill({
+            status: upstream.status,
+            headers: { 'content-type': upstream.contentType },
+            body: upstream.body,
+          })
+          .catch(() => {});
       }
       // รูปสินค้าเป็น URL เต็มบนโดเมนจริง — ตอบ PNG 1×1 แทนดาวน์โหลดจริง ไม่งั้น <img> ล้ม
       // แล้ว snapshot มีข้อความ "โหลดรูปนี้ไม่สำเร็จ" (src ใน HTML ยังเป็น URL จริง)
@@ -223,6 +272,7 @@ try {
     try {
       productIds = await listInStockProductIds(API_BASE);
     } catch (err) {
+      if (STRICT) throw new Error(`โหมดเข้ม: ดึงรายการสินค้าไม่สำเร็จ — ${err.message}`);
       console.warn(`⚠ ดึงรายการสินค้าไม่สำเร็จ — ข้าม snapshot หน้าสินค้า: ${err.message}`);
     }
     const PRODUCT_CONCURRENCY = 4;
@@ -244,6 +294,25 @@ try {
       const summary = `หน้าสินค้า: เก็บได้ ${captured} จาก ${productIds.length} หน้า`;
       if (captured === 0) console.warn(`⚠ ${summary} — sitemap รอบนี้ไม่มีหน้าสินค้าเลย`);
       else console.log(`${captured < productIds.length ? '⚠' : '✓'} ${summary}`);
+    }
+    if (STRICT) {
+      const capturedIds = snapshots.filter((s) => s.productId).map((s) => s.productId);
+      // เก็บไม่ครบเท่านั้นถึงต้องถามรายการรอบสอง — แยกเครื่องที่ขายออกระหว่าง build ออกจากหน้าที่พังจริง
+      let stillListed;
+      if (capturedIds.length < productIds.length) {
+        try {
+          stillListed = await listInStockProductIds(API_BASE);
+        } catch (err) {
+          stillListed = null;
+          console.warn(`⚠ ดึงรายการสินค้ารอบสองไม่สำเร็จ: ${err.message}`);
+        }
+      }
+      const missing = unexpectedlyMissingProducts(productIds, capturedIds, stillListed);
+      if (missing.length > 0) {
+        throw new Error(
+          `โหมดเข้ม: เก็บหน้าสินค้าไม่ได้ ${missing.length} เครื่องที่ยังขายอยู่ (${missing.join(', ')})`,
+        );
+      }
     }
   } finally {
     await browser.close();

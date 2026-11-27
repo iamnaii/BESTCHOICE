@@ -8,9 +8,18 @@ interface Props {
   cta?: { label: string; to: string };
   align?: 'left' | 'center';
   className?: string;
+  /** `h1` เมื่อเป็นหัวข้อบนสุดของหน้า (หน้าละหนึ่งตัว) — หน้าตาเหมือนกันทุกระดับ */
+  as?: 'h1' | 'h2';
 }
 
-export function SectionHeader({ title, description, cta, align = 'left', className }: Props) {
+export function SectionHeader({
+  title,
+  description,
+  cta,
+  align = 'left',
+  className,
+  as: Heading = 'h2',
+}: Props) {
   return (
     <div
       className={cn(
@@ -20,7 +29,7 @@ export function SectionHeader({ title, description, cta, align = 'left', classNa
       )}
     >
       <div className="space-y-1">
-        <h2 className="text-2xl md:text-3xl font-bold leading-snug">{title}</h2>
+        <Heading className="text-2xl md:text-3xl font-bold leading-snug">{title}</Heading>
         {description && (
           <p className="text-base text-muted-foreground leading-relaxed">{description}</p>
         )}

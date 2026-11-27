@@ -105,6 +105,7 @@ export default function PromotionsPage() {
       <Section padding="md">
         <Container>
           <SectionHeader
+            as="h1"
             title="โปรโมชัน"
             description="ดีลและส่วนลดที่ใช้ได้ตอนนี้ — เงื่อนไขเป็นไปตามที่ร้านกำหนด"
           />

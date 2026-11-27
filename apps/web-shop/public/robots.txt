@@ -8,6 +8,7 @@
 # ⚠️ รูปสินค้าอยู่ที่ /api/shop/products/:id/photos/:angle — ใต้ /api/ เช่นกัน ถ้าไม่ Allow
 # crawler ทุกตัวดึงรูปสินค้าไม่ได้ (ไม่ขึ้นค้นรูป / ไม่มีรูปในผลค้นหา) ⇒ Allow ไว้ทุกกลุ่ม
 # (เปิดเฉพาะ path รูป — JSON ของสินค้าที่ /api/shop/products ยังถูกบล็อกตามเดิม)
+# ยกเว้นกลุ่ม CCBot — ดูหมายเหตุที่กลุ่มนั้น
 #
 # ⚠️ RFC 9309: บอทที่ match กลุ่มระบุชื่อจะอ่าน "เฉพาะกลุ่มตัวเอง" ไม่รวมกับกลุ่ม * —
 # ทุกกลุ่มระบุชื่อจึงต้องมี Disallow ชุด user-flow (/apply /checkout /orders /account)
@@ -47,18 +48,8 @@ Disallow: /checkout
 Disallow: /orders
 Disallow: /account
 
+# ClaudeBot = ชื่อที่ Anthropic ใช้จริง (เลิกใช้ชื่อ Anthropic-AI แล้ว — ลบกลุ่มนั้น 27 พ.ย. 2569)
 User-agent: ClaudeBot
-Allow: /
-Crawl-delay: 10
-Allow: /api/shop/share/
-Allow: /api/shop/products/*/photos/
-Disallow: /api/
-Disallow: /apply
-Disallow: /checkout
-Disallow: /orders
-Disallow: /account
-
-User-agent: Anthropic-AI
 Allow: /
 Crawl-delay: 10
 Allow: /api/shop/share/
@@ -90,11 +81,11 @@ Disallow: /orders
 Disallow: /account
 
 # CCBot (Common Crawl) ป้อน training corpus ให้ LLM หลายค่าย — เราอยากให้ AI รู้จักร้าน
-# จึงเปิดรับ (เดิมเคยบล็อก ซึ่งสวนทางกับเป้า AI-search visibility)
+# จึงเปิดหน้าเว็บทุกหน้า (เดิมเคยบล็อก ซึ่งสวนทางกับเป้า AI-search visibility)
+# แต่ไม่เปิดรูปสินค้าและการ์ดแชร์ใต้ /api/ — API หน้าร้าน (ShopBotDefenseGuard) ตอบ 403 ให้
+# CCBot อยู่แล้ว ⇒ เขียนให้ตรงกับที่ API ทำจริง (เจ้าของเลือก "เปิดหน้าเว็บ ปิดรูป" 27 พ.ย. 2569)
 User-agent: CCBot
 Allow: /
-Allow: /api/shop/share/
-Allow: /api/shop/products/*/photos/
 Disallow: /api/
 Disallow: /apply
 Disallow: /checkout

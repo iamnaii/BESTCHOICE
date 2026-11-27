@@ -62,10 +62,13 @@
     />
     <title>BESTCHOICE — ร้านขายไอโฟนผ่อนได้ลพบุรี</title>
 
+    <!-- ข้อมูลร้านต้องตรงกับ shopInfo ใน src/lib/copy.ts — src/test/store-json-ld.test.ts ตรวจให้
+         geo (พิกัด) ยังไม่ใส่: รอพิกัดหมุดร้านจากเจ้าของ (ผลตรวจ SEO 27 พ.ย. 2569 ข้อ 11) -->
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
         "@type": "MobilePhoneStore",
+        "@id": "https://www.bestchoicephone.com/#store",
         "name": "BESTCHOICE Phone Shop",
         "legalName": "บริษัท เบสท์ช้อยส์โฟน จำกัด",
         "description": "ร้านขายไอโฟนมือ 1 และมือสองคุณภาพ ผ่อนได้บัตรประชาชนใบเดียว",
@@ -81,7 +84,24 @@
           "postalCode": "15000",
           "addressCountry": "TH"
         },
+        "hasMap": "https://www.google.com/maps/search/?api=1&query=BESTCHOICE+phone+shop+%E0%B8%A5%E0%B8%9E%E0%B8%9A%E0%B8%B8%E0%B8%A3%E0%B8%B5&query_place_id=ChIJvw20uboBHjERsefpWFx4SPs",
         "openingHours": "Mo-Su 10:00-19:00",
+        "openingHoursSpecification": [
+          {
+            "@type": "OpeningHoursSpecification",
+            "dayOfWeek": [
+              "Monday",
+              "Tuesday",
+              "Wednesday",
+              "Thursday",
+              "Friday",
+              "Saturday",
+              "Sunday"
+            ],
+            "opens": "10:00",
+            "closes": "19:00"
+          }
+        ],
         "priceRange": "฿฿",
         "sameAs": [
           "https://www.facebook.com/bestchoicelopburi",

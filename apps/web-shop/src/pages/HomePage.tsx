@@ -142,6 +142,14 @@ export default function HomePage() {
 
       <Section padding="sm">
         <Container>
+          {/* ย่อหน้าแนะนำร้าน (ผลตรวจ SEO ข้อ 12) — อยู่ใน HTML ที่ prerender ให้ Google/AI อ่าน
+              ข้อความรวม = copy.home.shopSummary ทุกตัวอักษร (เทสต์ตรวจ) · เวลาเปิดและเบอร์โทรห้ามตัดกลางบรรทัด */}
+          <p className="reading-block mb-6 max-w-3xl text-muted-foreground md:mb-8">
+            {copy.home.shopSummaryLead} หน้าร้านอยู่ {shopInfo.address}{' '}
+            <span className="whitespace-nowrap">{shopInfo.hours}</span> ทักไลน์{' '}
+            {shopInfo.lineHandle} หรือโทร{' '}
+            <span className="whitespace-nowrap">{shopInfo.phoneDisplay}</span>
+          </p>
           <TrustStrip />
         </Container>
       </Section>

@@ -29,9 +29,28 @@ const show = (product: ProductGroup) =>
       </Routes>
     </MemoryRouter>,
   );
-const photo = () => screen.getByRole('img', { name: 'Apple iPhone 13' });
+const photo = () => screen.getByRole('img', { name: 'Apple iPhone 13 128GB' });
 
 afterEach(() => vi.unstubAllGlobals());
+
+// ผลตรวจ SEO 27 พ.ย. 2569 ข้อ 8: alt บอกความจุ (และสีของเครื่องมือสอง) ให้ Google Images แยกรุ่นได้
+// — สูตรเดียวกับชื่อบนหน้าสินค้า (displayName) จึงไม่ใส่คำว่า "สี" เพิ่มเอง
+it('alt ของรูปมือสอง = ยี่ห้อ รุ่น ความจุ สี', () => {
+  show({ ...unit, color: 'สีฟ้า' });
+  expect(screen.getByRole('img', { name: 'Apple iPhone 13 128GB สีฟ้า' })).toBeInTheDocument();
+});
+
+it('alt ของการ์ดเครื่องใหม่ (หลายเครื่องรวมกัน) ไม่ใส่สี เพราะในกองมีหลายสี', () => {
+  show({
+    ...unit,
+    id: 'g1',
+    kind: 'GROUP',
+    condition: 'NEW',
+    conditionGrade: undefined,
+    color: 'สีดำ',
+  });
+  expect(screen.getByRole('img', { name: 'Apple iPhone 13 128GB' })).toBeInTheDocument();
+});
 
 it('รูปแสดงครบไม่ถูกตัด: object-contain ในกรอบจัตุรัส (รูปจัตุรัสเต็มกรอบเท่า cover)', () => {
   show(unit);

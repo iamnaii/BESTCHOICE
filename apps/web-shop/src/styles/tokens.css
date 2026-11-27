@@ -18,7 +18,8 @@
  * The ONE warm attention color is #F25C1A, reserved for the chat CTA (orange
  * is navy's complement, so it still isolates); #FFC933 carries price/promo
  * badges. Neutrals keep a slight navy bias so they read as chosen.
- * The sell/trade-in flow keeps its own approved green set (.sell-flow below).
+ * The sell/trade-in flow shares this set; .sell-flow below only picks which
+ * shared tokens its surfaces use (since 2026-11-27).
  */
 
 @theme {

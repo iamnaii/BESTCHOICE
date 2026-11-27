@@ -34,10 +34,28 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180" />
     <link rel="manifest" href="/site.webmanifest" />
     <meta name="theme-color" content="#FFFFFF" />
-    <!-- Preload the regular Thai body face; remaining weights load on demand. -->
+    <!-- Preload the regular Thai body face + the bold faces (Thai and Latin) of the
+         headline. Without the bold pair the headline first lays out in the fallback
+         font and shrinks when Noto bold arrives, so everything under it jumps up
+         (home hero: 45px, CLS 0.117 on 3G — owner 2026-11-27). 12 KB each. Other
+         weights load on demand. -->
     <link
       rel="preload"
       href="/fonts/noto-sans-thai/noto-sans-thai-thai-400-normal.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="/fonts/noto-sans-thai/noto-sans-thai-thai-700-normal.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="/fonts/noto-sans-thai/noto-sans-thai-latin-700-normal.woff2"
       as="font"
       type="font/woff2"
       crossorigin

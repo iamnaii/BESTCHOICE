@@ -62,11 +62,18 @@ describe('storefront fonts', () => {
     expect(existsSync(resolve(app, 'public/fonts/noto-sans-thai-looped'))).toBe(false);
     expect(existsSync(resolve(app, 'public/fonts/prompt'))).toBe(false);
   });
-  test('index.html preloads only the Thai 400 face', () => {
+  // Thai 400 = body · Thai 700 + Latin 700 = the hero headline, so it does not reflow
+  // (and push the buttons below it) when the bold face arrives (owner 2026-11-27).
+  test('index.html preloads the Thai 400 face and the bold headline faces only', () => {
     const fontPreloads = [...indexHtml.matchAll(/<link\b[^>]*>/g)]
       .map((m) => m[0])
       .filter((tag) => /rel="preload"/.test(tag) && /as="font"/.test(tag))
       .map((tag) => tag.match(/href="([^"]+)"/)![1]);
-    expect(fontPreloads).toEqual(['/fonts/noto-sans-thai/noto-sans-thai-thai-400-normal.woff2']);
+    expect(fontPreloads).toEqual([
+      '/fonts/noto-sans-thai/noto-sans-thai-thai-400-normal.woff2',
+      '/fonts/noto-sans-thai/noto-sans-thai-thai-700-normal.woff2',
+      '/fonts/noto-sans-thai/noto-sans-thai-latin-700-normal.woff2',
+    ]);
+    for (const href of fontPreloads) expect(existsSync(resolve(app, 'public' + href))).toBe(true);
   });
 });

@@ -133,34 +133,36 @@ export default function SellStatusPage() {
           </div>
 
           {isInstantQuote && estimated !== null && (
-            <Card variant="elevated" className="bg-emerald-50 border-emerald-200">
+            // กล่องราคาหน้าตาเดียวกับกล่องราคาในหน้าสรุปการประเมิน (quote-summary.css): พื้นเขียวอ่อน
+            // กรอบเขียวแบรนด์ · ตัวเลขเขียวเข้ม 4.68:1 บนพื้นนี้ · ตัวหนังสือเล็กใช้สีตัวอักษรหลัก
+            <Card variant="elevated" className="bg-sell-price border-sell-price-border">
               <CardBody className="space-y-2 leading-snug">
-                <div className="text-sm font-medium text-emerald-800 leading-snug">
+                <div className="text-sm font-semibold text-foreground leading-snug">
                   {isExchange ? 'มูลค่าเครดิตเทิร์นโดยประมาณ' : copy.sell.quotedTitle}
                 </div>
-                <div className="text-4xl font-bold text-emerald-600 leading-snug num">
+                <div className="text-4xl font-bold text-brand-green-dark leading-snug num">
                   ฿{formatNumber(estimated)}
                 </div>
                 {data.quoteBreakdown && (
-                  <div className="space-y-0.5 text-xs text-emerald-800 leading-snug">
-                    <div className="flex justify-between">
+                  <div className="space-y-0.5 text-xs text-foreground leading-snug">
+                    <div className="flex justify-between gap-3">
                       <span>ราคาสูงสุด</span>
-                      <span>฿{formatNumber(Number(data.quoteBreakdown.maxPrice))}</span>
+                      <span className="num">฿{formatNumber(Number(data.quoteBreakdown.maxPrice))}</span>
                     </div>
                     {data.quoteBreakdown.lines
                       .filter((l) => l.applied !== false && Number(l.amount) > 0)
                       .map((l, i) => (
-                        <div key={i} className="flex justify-between">
+                        <div key={i} className="flex justify-between gap-3">
                           <span>{l.label}</span>
-                          <span>−฿{formatNumber(Number(l.amount))}</span>
+                          <span className="num shrink-0">−฿{formatNumber(Number(l.amount))}</span>
                         </div>
                       ))}
                     {isExchange &&
                       data.quoteBreakdown.cashPrice &&
                       data.quoteBreakdown.exchangePrice && (
-                        <div className="flex justify-between font-medium">
+                        <div className="flex justify-between gap-3 font-medium">
                           <span>โบนัสเทิร์น</span>
-                          <span>
+                          <span className="num shrink-0">
                             +฿
                             {formatNumber(
                               Number(data.quoteBreakdown.exchangePrice) -
@@ -171,15 +173,15 @@ export default function SellStatusPage() {
                       )}
                   </div>
                 )}
-                <p className="text-xs text-emerald-800 leading-snug">{copy.sell.priceCondition}</p>
+                <p className="text-xs text-foreground leading-snug">{copy.sell.priceCondition}</p>
                 {isExchange && (
-                  <p className="text-xs text-emerald-800 leading-snug">
+                  <p className="text-xs text-foreground leading-snug">
                     {copy.sell.exchangeCreditNote}
                   </p>
                 )}
                 {offered !== null && offered !== estimated && (
-                  <p className="text-xs font-semibold text-emerald-900 leading-snug">
-                    ราคายืนยันหน้าร้าน: ฿{formatNumber(offered)}
+                  <p className="text-xs font-semibold text-brand-green-dark leading-snug">
+                    ราคายืนยันหน้าร้าน: <span className="num">฿{formatNumber(offered)}</span>
                   </p>
                 )}
               </CardBody>
@@ -187,17 +189,17 @@ export default function SellStatusPage() {
           )}
 
           {!isInstantQuote && offered !== null && (
-            <Card variant="elevated" className="bg-emerald-50 border-emerald-200">
+            <Card variant="elevated" className="bg-sell-price border-sell-price-border">
               <CardBody className="space-y-1 leading-snug">
-                <div className="text-sm font-medium text-emerald-800 leading-snug">
+                <div className="text-sm font-semibold text-foreground leading-snug">
                   ราคาที่ทีมงานเสนอ
                 </div>
-                <div className="text-4xl font-bold text-emerald-600 leading-snug num">
+                <div className="text-4xl font-bold text-brand-green-dark leading-snug num">
                   ฿{formatNumber(offered)}
                 </div>
                 {agreed !== null && (
-                  <div className="text-sm text-emerald-800 leading-snug">
-                    ราคาที่ตกลง: ฿{formatNumber(agreed)}
+                  <div className="text-sm text-foreground leading-snug">
+                    ราคาที่ตกลง: <span className="num">฿{formatNumber(agreed)}</span>
                   </div>
                 )}
               </CardBody>

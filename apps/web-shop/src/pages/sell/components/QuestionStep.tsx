@@ -46,7 +46,7 @@ export default function QuestionStep({
           <section aria-label="วิธีเช็กประกัน" className="space-y-3 pb-4 pt-2">
             {question.helpText && <p className="text-sm break-words">{question.helpText}</p>}
             {warrantyGap && (
-              <p className="text-sm">ถ้าเหลือประกันพอดี 4 เดือน ให้สอบถามร้านก่อนเลือก</p>
+              <p className="text-sm">ถ้าเหลือพอดี 4 เดือน ให้เลือกน้อยกว่า 4 เดือน</p>
             )}
             {!multi && <p className="text-sm">แตะคำตอบแล้วไปต่อได้เลย · ย้อนกลับมาแก้ได้</p>}
           </section>
@@ -111,7 +111,7 @@ export default function QuestionStep({
                       <span className="mt-1 block text-sm">{choice.helpText}</span>
                     )}
                     {/sensor|เซนเซอร์/i.test(choice.label) && (
-                      <span className="mt-1 block text-sm">ไม่แน่ใจให้สอบถามร้านก่อนเลือก</span>
+                      <span className="mt-1 block text-sm">แนบหูตอนโทรแล้วจอไม่ดับ</span>
                     )}
                   </span>
                 </span>

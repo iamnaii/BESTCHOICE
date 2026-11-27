@@ -92,7 +92,7 @@ for (const width of [320, 1280])
     await toggle.press('Enter');
     await expect(help).toBeVisible();
     await expect(help).toContainText('checkcoverage.apple.com');
-    await expect(help).toContainText('ถ้าเหลือประกันพอดี 4 เดือน');
+    await expect(help).toContainText('ถ้าเหลือพอดี 4 เดือน ให้เลือกน้อยกว่า 4 เดือน');
     await expect(help).toContainText('แตะคำตอบแล้วไปต่อได้เลย');
     await noOverflow(page);
     await page.screenshot({
@@ -215,7 +215,7 @@ for (const width of [320, 1280])
     await assess(page);
     await page.getByRole('button', { name: 'เทิร์นซื้อเครื่อง', exact: true }).click();
     const contact = page.getByRole('region', { name: 'ติดต่อร้านเรื่องขายหรือเทิร์น' });
-    for (const name of ['ทัก LINE', 'แอด LINE', 'Google Maps']) {
+    for (const name of ['ทัก LINE', 'แอด LINE', 'แผนที่ร้าน']) {
       const popupPromise = page.waitForEvent('popup');
       await contact.getByRole('link', { name, exact: true }).click();
       const popup = await popupPromise;
@@ -442,7 +442,7 @@ test('keyboard selection, review, and browser forward cannot restore stale resul
   });
   await choice.focus();
   await page.keyboard.press('Space');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('ทบทวนคำตอบ');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('ตรวจคำตอบ');
   await page.getByRole('button', { name: 'ดูราคาประเมิน', exact: true }).click();
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('สรุปราคาเครื่องของคุณ');
   expect(log.quotePayloads).toHaveLength(2);
@@ -469,6 +469,11 @@ test('entry and legacy link preserve attribution; enlarged text does not hide th
   await page.goto('/buyback/quote?model=iPhone%2017%20Pro&storage=256GB&utm_source=old');
   await expect(page).toHaveURL(/\/sell\/quote\?/);
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('เครื่องนี้เป็นโมเดลไทยไหม?');
+  // ปิดแถบคุกกี้ก่อนขยายตัวอักษร — ที่ตัวอักษร 2 เท่า แถบนี้สูงจนบังตัวเลือก (เป็นของหน้าร้านทั้งเว็บ ไม่ใช่ของขั้นตอนนี้)
+  await page
+    .getByRole('region', { name: 'การใช้คุกกี้' })
+    .getByRole('button', { name: 'ปฏิเสธ', exact: true })
+    .click();
   await page.addStyleTag({ content: 'html { font-size: 32px !important; }' });
   await noOverflow(page);
   await assess(page);
@@ -526,7 +531,7 @@ test('review discards unconfirmed symptoms and preserves review intent through F
   });
   await symptom.check();
   await page.getByRole('button', { name: 'ย้อนกลับ', exact: true }).click();
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('ทบทวนคำตอบ');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('ตรวจคำตอบ');
   await expect(page.getByText('ใช้งานได้ปกติทุกอย่าง', { exact: true })).toBeVisible();
   await page.goForward();
   await expect(page.getByRole('heading', { level: 1 })).toHaveText(
@@ -534,7 +539,7 @@ test('review discards unconfirmed symptoms and preserves review intent through F
   );
   await expect(symptom).toHaveCount(0);
   await page.getByRole('button', { name: 'ใช้งานได้ปกติทุกอย่าง', exact: true }).click();
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('ทบทวนคำตอบ');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('ตรวจคำตอบ');
   await page.getByRole('button', { name: 'ดูราคาประเมิน', exact: true }).click();
   await expect(page.getByText('27,500 บาท', { exact: true })).toBeVisible();
   expect(log.quotePayloads.at(-1)?.answers).toEqual(

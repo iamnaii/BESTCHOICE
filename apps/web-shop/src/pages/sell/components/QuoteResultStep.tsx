@@ -5,6 +5,7 @@ import { quoteDate } from '../quote-window';
 import { modelLabel, storageLabel } from '../device-options';
 import ChoiceButton from './ChoiceButton';
 import { formatNumber } from '@/lib/format';
+import { copy } from '@/lib/copy';
 import './quote-summary.css';
 
 export default function QuoteResultStep({
@@ -84,7 +85,7 @@ export default function QuoteResultStep({
           <div className="flex flex-wrap items-center gap-2">
             <p
               role="status"
-              className={`summary-status ${expired ? 'bg-promo text-promo-foreground' : 'bg-secondary text-secondary-foreground'}`}
+              className={`summary-status ${expired ? 'border border-sell-header-foreground bg-card text-sell-header-foreground' : 'bg-secondary text-secondary-foreground'}`}
             >
               {expired ? 'พ้นช่วงอ้างอิงแล้ว' : 'ราคาประเมินเบื้องต้น'}
             </p>
@@ -111,9 +112,7 @@ export default function QuoteResultStep({
               {money(amount)} บาท
             </p>
             <p className="text-sm">
-              {exchange
-                ? 'เครดิตเทิร์นใช้เป็นส่วนลดซื้อเครื่องในร้าน ไม่จ่ายเป็นเงินสด'
-                : 'รับเงินที่ร้านหลังตรวจเครื่องและตกลงราคา'}
+              {exchange ? copy.sell.exchangeCreditNote : 'รับเงินที่ร้านหลังตรวจเครื่องและตกลงราคา'}
             </p>
             <div className="mt-5 border-l-[3px] border-primary pl-3">
               <p className="font-bold">ยังไม่ใช่ราคายืนยันรับซื้อ</p>
@@ -149,9 +148,9 @@ export default function QuoteResultStep({
                 </dd>
               </div>
             </dl>
-            <p className="mt-2 text-xs text-muted-foreground">เวลาไทย (UTC+7)</p>
+            <p className="mt-2 text-xs text-muted-foreground">เวลาไทย</p>
             <div
-              className={`mt-4 rounded-xl p-3 text-sm ${expired ? 'bg-promo text-promo-foreground' : 'bg-sell-footer text-foreground'}`}
+              className={`mt-4 rounded-xl p-3 text-sm ${expired ? 'border border-sell-header-foreground bg-card text-sell-header-foreground' : 'bg-sell-footer text-foreground'}`}
             >
               <p className="font-semibold">
                 {expired ? 'กรุณาประเมินใหม่ก่อนนัดหมาย' : 'ช่วงอ้างอิง 24 ชั่วโมง'}
@@ -159,7 +158,7 @@ export default function QuoteResultStep({
               <p className="mt-1">
                 {expired
                   ? 'ราคาที่แสดงเป็นผลประเมินเดิม ไม่ใช่ราคาปัจจุบัน'
-                  : 'เมื่อพ้นเวลานี้ กรุณาประเมินใหม่ ช่วงอ้างอิงนี้ไม่ใช่การล็อคราคา'}
+                  : 'พ้นเวลานี้ต้องประเมินใหม่ · ไม่ใช่การล็อกราคา'}
               </p>
             </div>
           </section>

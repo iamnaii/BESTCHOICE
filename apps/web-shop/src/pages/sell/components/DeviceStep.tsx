@@ -46,19 +46,13 @@ export default function DeviceStep({
             </ChoiceButton>
           ))}
         </div>
-        {storages.length === 0 && (
-          <p>ยังไม่มีความจุที่เปิดรับซื้อสำหรับรุ่นนี้ กรุณาเลือกรุ่นอื่นหรือสอบถามร้าน</p>
-        )}
+        {storages.length === 0 && <p>รุ่นนี้ยังไม่เปิดรับซื้อ เลือกรุ่นอื่นหรือสอบถามร้าน</p>}
       </div>
     );
   const group = groups.find((item) => item.id === seriesId);
   return (
     <div className="space-y-5">
-      <p>
-        เลือกกลุ่ม iPhone แล้วเลือกรุ่นย่อยของคุณ
-        <br />
-        <span className="text-sm">ไม่ต้องสมัครสมาชิก ไม่ต้องถ่ายรูปเครื่อง</span>
-      </p>
+      <p className="text-sm">ไม่ต้องสมัครสมาชิก ไม่ต้องถ่ายรูปเครื่อง</p>
       <p className="rounded-lg bg-secondary px-3 py-2 text-sm font-semibold text-secondary-foreground">
         รับซื้อและเทิร์นเฉพาะเครื่องโมเดลไทย
       </p>
@@ -83,7 +77,7 @@ export default function DeviceStep({
       </section>
       {group && (
         <section aria-label="รุ่น">
-          <h2 className="mb-3 font-semibold">2. เลือกรุ่นย่อยของ {group.label}</h2>
+          <h2 className="mb-3 font-semibold">2. เลือกรุ่นของ {group.label}</h2>
           <div className="grid gap-2 min-[700px]:grid-cols-2">
             {group.models.map((item) => (
               <ChoiceButton

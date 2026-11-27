@@ -33,6 +33,29 @@ it('filters models in the same screen then preserves the API model value', () =>
   expect(screen.queryByRole('button', { name: 'iPhone 17 Pro' })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'กลุ่ม iPhone 17' }));
   expect(screen.queryByRole('button', { name: 'iPhone Air' })).not.toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: '2. เลือกรุ่นของ iPhone 17' })).toBeInTheDocument();
+  expect(screen.queryByText(/รุ่นย่อย/)).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'iPhone 17 Pro' }));
   expect(screen.getByRole('status')).toHaveTextContent('iPhone 17 Pro');
+  fireEvent.click(screen.getByRole('button', { name: 'กลุ่ม iPhone Air' }));
+  expect(screen.getByRole('heading', { name: '2. เลือกรุ่นของ iPhone Air' })).toBeInTheDocument();
+});
+it('tells the customer what to do when a model has no storage open for buying', () => {
+  render(
+    <DeviceStep
+      stage="storage"
+      groups={groupModels([{ model: 'iPhone 17 Pro', storages: [] }])}
+      seriesId=""
+      model="iPhone 17 Pro"
+      storage=""
+      storages={[]}
+      disabled={false}
+      onSeries={() => {}}
+      onModel={() => {}}
+      onStorage={() => {}}
+    />,
+  );
+  expect(
+    screen.getByText('รุ่นนี้ยังไม่เปิดรับซื้อ เลือกรุ่นอื่นหรือสอบถามร้าน'),
+  ).toBeInTheDocument();
 });

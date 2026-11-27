@@ -79,7 +79,7 @@ it('continues the submitted request in LINE and links to the shop map', async ()
   expect(message).toContain('local-re');
   expect(message).toContain('iPhone 17 Pro 256GB');
   expect(message).toContain('เครดิตเทิร์นโดยประมาณ 30,250 บาท');
-  expect(contact.getByRole('link', { name: 'Google Maps' }).getAttribute('href')).toContain(
+  expect(contact.getByRole('link', { name: 'แผนที่ร้าน' }).getAttribute('href')).toContain(
     'query_place_id=ChIJvw20uboBHjERsefpWFx4SPs',
   );
 });

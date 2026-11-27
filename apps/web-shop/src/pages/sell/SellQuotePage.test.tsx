@@ -6,7 +6,14 @@ import { MemoryRouter, Route, Routes, useNavigate, useLocation } from 'react-rou
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BuybackQuestionsResponse, BuybackQuoteResult } from '@/types/buyback';
 import SellQuotePage from './SellQuotePage';
-import { shopInfo } from '@/lib/copy';
+import DeviceOriginStep from './components/DeviceOriginStep';
+import QuestionStep from './components/QuestionStep';
+import QuoteResultStep from './components/QuoteResultStep';
+import { copy, shopInfo } from '@/lib/copy';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+const summaryCss = readFileSync(resolve(__dirname, 'components/quote-summary.css'), 'utf8');
 
 const mocks = vi.hoisted(() => ({
   get: vi.fn(),
@@ -197,7 +204,7 @@ describe('sell contact links', () => {
       'href',
       shopInfo.lineUrl,
     );
-    expect(contact().getByRole('link', { name: 'Google Maps' })).toHaveAttribute(
+    expect(contact().getByRole('link', { name: 'แผนที่ร้าน' })).toHaveAttribute(
       'href',
       shopInfo.mapsUrl,
     );
@@ -372,10 +379,10 @@ describe('guided sell assessment', () => {
     await click('กลุ่ม iPhone 12');
     await click('iPhone 12');
     await click('64 GB');
-    await screen.findByText('โหลดแบบประเมินไม่สำเร็จ');
+    await screen.findByText('โหลดคำถามไม่สำเร็จ');
     mocks.get.mockResolvedValue({ data: { ...config, questions: [] } });
     await click('โหลดใหม่');
-    await screen.findByText('ยังไม่มีแบบประเมินสำหรับรุ่นและความจุนี้ กรุณาสอบถามร้าน');
+    await screen.findByText('รุ่นและความจุนี้ยังประเมินออนไลน์ไม่ได้ กรุณาสอบถามร้าน');
     await click('เปลี่ยนเครื่อง');
     expect(await screen.findByRole('button', { name: 'กลุ่ม iPhone 12' })).toBeEnabled();
     expect(mocks.post).not.toHaveBeenCalled();
@@ -490,7 +497,7 @@ describe('price review and contact', () => {
     await click('ตรวจหรือแก้คำตอบ');
     await click('แก้ ตัวเครื่อง');
     await click('มีรอย');
-    await screen.findByRole('heading', { name: 'ทบทวนคำตอบ' });
+    await screen.findByRole('heading', { name: 'ตรวจคำตอบ' });
     expect(screen.getByText('มีรอย')).toBeInTheDocument();
     expect(mocks.post).toHaveBeenCalledTimes(1);
     await click('ดูราคาประเมิน');
@@ -507,9 +514,8 @@ describe('price review and contact', () => {
       fireEvent.blur(input);
       expect(input).toHaveAttribute('aria-invalid', 'true');
       expect(screen.getByRole('button', { name: 'ส่งข้อมูลขายสด' })).toBeDisabled();
-      expect(
-        screen.getByText('กรอกเบอร์โทร 10 หลัก เริ่มด้วย 0 โดยใช้ตัวเลขเท่านั้น'),
-      ).toBeInTheDocument();
+      expect(screen.getByText('กรอกเบอร์โทร 10 หลัก เริ่มด้วย 0')).toBeInTheDocument();
+      expect(screen.getByText('กรอกเบอร์โทรให้ครบก่อนส่งข้อมูล')).toBeInTheDocument();
     },
   );
   it('normalizes phone spaces/hyphens, submits the chosen credit flow and preserves data after an error', async () => {
@@ -560,7 +566,7 @@ describe('request and history boundaries', () => {
       screen.queryByRole('checkbox', { name: 'กล้องผิดปกติ', checked: true }),
     ).not.toBeInTheDocument();
     await click('ใช้งานได้ปกติทุกอย่าง');
-    await screen.findByRole('heading', { name: 'ทบทวนคำตอบ' });
+    await screen.findByRole('heading', { name: 'ตรวจคำตอบ' });
     await click('ดูราคาประเมิน');
     await screen.findByText('4,321.65 บาท');
     expect(mocks.post).toHaveBeenLastCalledWith(
@@ -672,5 +678,283 @@ describe('catalog availability changes', () => {
     await screen.findByRole('heading', { name: 'เครื่องมีความจุเท่าไร?', level: 1 });
     expect(screen.queryByRole('button', { name: '64 GB' })).not.toBeInTheDocument();
     expect(mocks.post).not.toHaveBeenCalled();
+  });
+});
+
+// ข้อความและสีที่เจ้าของเคาะเมื่อ 28/11/2569 (รายงานรอบที่ 1 ของขั้นตอนเช็กราคา)
+describe('copy approved on 2026-11-28', () => {
+  const question = (over: Partial<BuybackQuestionsResponse['questions'][number]>) => ({
+    id: 'q',
+    key: 'q',
+    title: 'คำถาม',
+    selectType: 'SINGLE' as const,
+    helpText: null,
+    choices: [],
+    ...over,
+  });
+  const choice = (id: string, label: string) => ({
+    id,
+    label,
+    deductType: 'PERCENT' as const,
+    deductValue: '0',
+  });
+  const noop = () => {};
+
+  it('counts the four steps in the progress label, following the real question count', async () => {
+    mount();
+    expect(await screen.findByText('1/4 · เลือกเครื่อง')).toBeInTheDocument();
+    await device();
+    expect(screen.getByText('2/4 · เช็กสภาพ · ข้อ 1 จาก 2')).toBeInTheDocument();
+    await answers();
+    await screen.findByRole('heading', { name: 'ยืนยันสถานะเครื่อง', level: 1 });
+    expect(screen.getByText('2/4 · เช็กสภาพ')).toBeInTheDocument();
+    expect(screen.getByText('ติ๊กยืนยันก่อนดูราคา')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('checkbox', { name: eligibility }));
+    await click('ดูราคาประเมิน');
+    expect(await screen.findByText('3/4 · ราคาประเมิน')).toBeInTheDocument();
+    await click('นัดตรวจเครื่องที่ร้าน');
+    expect(await screen.findByText('4/4 · ข้อมูลติดต่อ')).toBeInTheDocument();
+  });
+
+  it('names the two device levels as group and model, with one instruction per level', async () => {
+    mount();
+    await screen.findByRole('heading', { name: 'คุณใช้ iPhone รุ่นไหน?' });
+    expect(screen.queryByText(/เลือกรุ่นย่อย/)).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '1. เลือกกลุ่ม iPhone' })).toBeInTheDocument();
+    expect(screen.getByText('ไม่ต้องสมัครสมาชิก ไม่ต้องถ่ายรูปเครื่อง')).toBeInTheDocument();
+    await click('กลุ่ม iPhone 12');
+    expect(screen.getByRole('heading', { name: '2. เลือกรุ่นของ iPhone 12' })).toBeInTheDocument();
+  });
+
+  it('labels a Thai-model answer as โมเดลไทย in the price summary', async () => {
+    mocks.get.mockImplementation((url: string) =>
+      Promise.resolve({
+        data: url.endsWith('/catalog')
+          ? catalog
+          : {
+              ...config,
+              eligibilityRequired: false,
+              questions: [
+                question({
+                  id: 'origin',
+                  key: 'device-origin',
+                  title: 'เครื่องศูนย์',
+                  choices: [
+                    choice('th', 'เครื่องศูนย์ไทย (TH)'),
+                    choice('im', 'เครื่องนอก (โมเดลอื่น)'),
+                  ],
+                }),
+                config.questions[1],
+              ],
+            },
+      }),
+    );
+    mount();
+    await click('กลุ่ม iPhone 12');
+    await click('iPhone 12');
+    await click('64 GB');
+    await screen.findByRole('heading', { name: 'เครื่องนี้เป็นโมเดลไทยไหม?', level: 1 });
+    await click('เครื่องโมเดลไทย');
+    await click('ใช้งานได้ปกติทุกอย่าง');
+    await screen.findByRole('heading', { name: 'สรุปราคาเครื่องของคุณ', level: 1 });
+    // หัวข้อจอราคาขึ้นก่อนผลประเมินมาถึง — รอแถวสรุปเอง
+    expect(await screen.findByText('โมเดลไทย · รหัส M')).toBeInTheDocument();
+    expect(screen.queryByText(/เครื่องศูนย์ไทย/)).not.toBeInTheDocument();
+  });
+
+  it('names the check step while the questions are still loading', async () => {
+    const pending = deferred<{ data: BuybackQuestionsResponse }>();
+    mocks.get.mockImplementation((url: string) =>
+      url.endsWith('/catalog') ? Promise.resolve({ data: catalog }) : pending.promise,
+    );
+    mount();
+    await click('กลุ่ม iPhone 12');
+    await click('iPhone 12');
+    await click('64 GB');
+    expect(
+      await screen.findByRole('heading', { name: 'เช็กสภาพเครื่อง', level: 1 }),
+    ).toBeInTheDocument();
+    await act(async () => {
+      pending.resolve({ data: config });
+    });
+    await screen.findByRole('heading', { name: 'ตัวเครื่อง', level: 1 });
+  });
+
+  it('offers the shop LINE when a price cannot be given', async () => {
+    mocks.post.mockResolvedValue({ data: { ...result, available: false } });
+    mount();
+    await device();
+    await answers();
+    fireEvent.click(await screen.findByRole('checkbox', { name: eligibility }));
+    await click('ดูราคาประเมิน');
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      /^ยังประเมินราคาเครื่องนี้ไม่ได้ กรุณาสอบถามร้าน$/,
+    );
+    expect(screen.getByRole('link', { name: 'สอบถามร้านทาง LINE' })).toHaveAttribute(
+      'href',
+      shopInfo.lineUrl,
+    );
+  });
+
+  it('keeps the shared price sentences word for word', () => {
+    expect(copy.sell.exchangeCreditNote).toBe(
+      'เครดิตเทิร์นใช้เป็นส่วนลดซื้อเครื่องในร้าน ไม่จ่ายเป็นเงินสด',
+    );
+    expect(copy.sell.priceCondition).toBe(
+      'ราคายืนยันจริงตอนตรวจเครื่องที่ร้าน คุณปฏิเสธได้ ไม่มีค่าใช้จ่าย',
+    );
+  });
+
+  it('keeps the intake conditions verbatim and shortens only the reference-window line', async () => {
+    await ready();
+    const intake = screen.getByRole('complementary', { name: 'เงื่อนไขรับซื้อและเทิร์น' });
+    expect(intake.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+      'เงื่อนไขรับซื้อ / เทิร์น' +
+        'ต้องตรวจเครื่องจริงก่อนยืนยันราคา' +
+        'เครื่องต้อง ล้างข้อมูลได้ และเจ้าของเครื่องต้อง ออกจาก iCloud ได้' +
+        'หากล้างเครื่องหรือออกจาก iCloud ไม่ได้ ร้านยังรับซื้อหรือเทิร์นไม่ได้',
+    );
+    expect(screen.getByText('เวลาไทย')).toBeInTheDocument();
+    expect(screen.getByText('ช่วงอ้างอิง 24 ชั่วโมง')).toBeInTheDocument();
+    expect(screen.getByText('พ้นเวลานี้ต้องประเมินใหม่ · ไม่ใช่การล็อกราคา')).toBeInTheDocument();
+    await click('เทิร์นซื้อเครื่อง');
+    expect(screen.getByText(copy.sell.exchangeCreditNote)).toBeInTheDocument();
+    expect(screen.getByText(/โบนัสเทิร์น \+/)).toHaveClass('bg-promo');
+    const line = decodeURIComponent(
+      new URL(screen.getByRole('link', { name: 'ทัก LINE' }).getAttribute('href')!).search.slice(1),
+    );
+    expect(line).toContain('ช่วงอ้างอิง 24 ชั่วโมงไม่ใช่การล็อกราคา');
+  });
+
+  it('reserves yellow for the trade-in bonus badge, including after the reference window ends', () => {
+    render(
+      <QuoteResultStep
+        quote={result}
+        model="iPhone 12"
+        storage="64GB"
+        conditions={[]}
+        expired
+        flow="EXCHANGE"
+        onFlowChange={noop}
+        onContinue={noop}
+        onReview={noop}
+        onReassess={noop}
+        onChangeDevice={noop}
+      />,
+    );
+    const status = screen.getByText('พ้นช่วงอ้างอิงแล้ว');
+    const notice = screen.getByText('กรุณาประเมินใหม่ก่อนนัดหมาย').parentElement!;
+    expect(status).not.toHaveClass('bg-promo');
+    expect(notice).not.toHaveClass('bg-promo');
+    expect(status).toHaveClass('border-sell-header-foreground');
+    expect(notice).toHaveClass('border-sell-header-foreground');
+    expect(screen.getByText('ราคาที่แสดงเป็นผลประเมินเดิม ไม่ใช่ราคาปัจจุบัน')).toBeInTheDocument();
+    expect(screen.getByText(/โบนัสเทิร์น \+/)).toHaveClass('bg-promo');
+    const intakeRule = /\.sell-summary \.summary-intake\s*\{([^}]*)\}/.exec(summaryCss)?.[1] ?? '';
+    expect(intakeRule).toContain('border');
+    expect(intakeRule).not.toContain('promo');
+    expect(intakeRule).toContain('var(--color-sell-header-foreground)');
+  });
+
+  it('calls the Thai model by one name and stops imported devices in one short line', () => {
+    const origin = question({
+      key: 'device-origin',
+      title: 'เครื่องศูนย์',
+      choices: [choice('th', 'เครื่องศูนย์ไทย (TH)'), choice('im', 'เครื่องนอก (โมเดลอื่น)')],
+    });
+    const { container } = render(
+      <DeviceOriginStep
+        question={origin}
+        answer={['im']}
+        disabled={false}
+        onSelect={noop}
+        model="iPhone 17 Pro"
+        storage="256GB"
+      />,
+    );
+    expect(screen.getByText('ยืนยันว่าเป็นโมเดลไทย รหัสขึ้นต้น M')).toBeInTheDocument();
+    expect(screen.getByText('เครื่องที่ขายในต่างประเทศ · ร้านไม่รับ')).toBeInTheDocument();
+    expect(screen.getByText('ขออภัย ร้านไม่รับเครื่องโมเดลนอก')).toBeInTheDocument();
+    expect(
+      screen.getByText('จึงประเมินราคาต่อไม่ได้ · ถ้าเลือกผิด แตะคำตอบด้านบน'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/เปิดแชทพร้อมข้อความ/)).not.toBeInTheDocument();
+    expect(container).not.toHaveTextContent('เครื่องศูนย์ไทย');
+    expect(container).not.toHaveTextContent('รุ่นย่อย');
+    expect(container).toHaveTextContent('iPhone 13 ทุกรุ่น: TH/A');
+    expect(container).toHaveTextContent('iPhone 14, 15, 16, 17 ทุกรุ่น: ZP/A');
+    expect(container).toHaveTextContent(
+      'ZP/A ใช้ร่วมกันหลายประเทศ รหัสตรงอย่างเดียวจึงยังยืนยันว่าเป็นโมเดลไทยไม่ได้',
+    );
+    expect(container).toHaveTextContent('รับเครื่องโมเดลไทย · รหัสขึ้นต้น M เท่านั้น');
+  });
+
+  it('tells a customer with exactly four months of warranty which answer to pick', () => {
+    render(
+      <QuestionStep
+        question={question({
+          key: 'warranty',
+          title: 'ประกัน Apple',
+          choices: [
+            choice('more', 'ประกันเหลือมากกว่า 4 เดือน'),
+            choice('less', 'ประกันเหลือน้อยกว่า 4 เดือน'),
+            choice('none', 'หมดประกัน'),
+          ],
+        })}
+        answer={undefined}
+        showIssues={false}
+        disabled={false}
+        onSingle={noop}
+        onNone={noop}
+        onToggleIssue={noop}
+        onShowIssues={noop}
+        onConfirmIssues={noop}
+      />,
+    );
+    expect(screen.getByText('ถ้าเหลือพอดี 4 เดือน ให้เลือกน้อยกว่า 4 เดือน')).toBeInTheDocument();
+    expect(screen.queryByText(/ให้สอบถามร้านก่อนเลือก/)).not.toBeInTheDocument();
+  });
+
+  it('explains the Sensor issue under the label the back office still uses', () => {
+    render(
+      <QuestionStep
+        question={question({
+          key: 'functional-issues',
+          title: 'ปัญหาการใช้งาน',
+          selectType: 'MULTI',
+          choices: [choice('sensor', 'Sensor'), choice('wifi', 'WiFi / Bluetooth / GPS')],
+        })}
+        answer={[]}
+        showIssues
+        disabled={false}
+        onSingle={noop}
+        onNone={noop}
+        onToggleIssue={noop}
+        onShowIssues={noop}
+        onConfirmIssues={noop}
+      />,
+    );
+    expect(screen.getByRole('checkbox', { name: /Sensor/ })).toHaveTextContent(
+      'แนบหูตอนโทรแล้วจอไม่ดับ',
+    );
+    expect(screen.getByRole('checkbox', { name: /WiFi/ })).not.toHaveTextContent('แนบหู');
+  });
+
+  it('labels the optional contact fields plainly and reuses the shared price-condition line', async () => {
+    await ready();
+    await click('นัดตรวจเครื่องที่ร้าน');
+    await screen.findByLabelText('ชื่อ-นามสกุล');
+    expect(screen.getByLabelText('เลขประจำเครื่อง (IMEI)')).toBeInTheDocument();
+    expect(screen.getByLabelText('หมายเหตุ')).toBeInTheDocument();
+    expect(screen.getByText(copy.sell.priceCondition)).toBeInTheDocument();
+    expect(screen.getByText('กรอกชื่อ-นามสกุลก่อนส่งข้อมูล')).toBeInTheDocument();
+  });
+
+  it('reports a failed submission with the same word the button uses', async () => {
+    await ready();
+    await seller();
+    mocks.post.mockRejectedValueOnce(new Error('offline'));
+    await click('ส่งข้อมูลขายสด');
+    expect(await screen.findByRole('alert')).toHaveTextContent('ส่งข้อมูลไม่สำเร็จ กรุณาลองใหม่');
   });
 });

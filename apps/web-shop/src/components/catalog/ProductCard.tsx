@@ -178,6 +178,12 @@ export function ProductCard({
     .filter(Boolean)
     .join(' · ');
 
+  // alt ของรูป = สูตรเดียวกับชื่อบนหน้าสินค้า (ยี่ห้อ รุ่น ความจุ สี) · สีเฉพาะเครื่องมือสองรายเครื่อง
+  // (การ์ดเครื่องใหม่รวมหลายเครื่องในกองเดียว ไม่มีสีเดียวให้บอก — กติกาเดียวกับ specValue)
+  const photoAlt = [p.brand, p.model, p.storage, isUnit ? p.color : undefined]
+    .filter(Boolean)
+    .join(' ');
+
   // New stock gets a plain chip; only a graded second-hand device earns the
   // letter, so the letter always means "this is the grade". Below sm the
   // two-column grid leaves ~160px of card, so the word GRADE drops and the
@@ -245,7 +251,7 @@ export function ProductCard({
             {current ? (
               <img
                 src={current}
-                alt={`${p.brand} ${p.model}`}
+                alt={photoAlt}
                 className="size-full object-contain"
                 loading={priority ? 'eager' : 'lazy'}
                 fetchPriority={priority ? 'high' : 'auto'}

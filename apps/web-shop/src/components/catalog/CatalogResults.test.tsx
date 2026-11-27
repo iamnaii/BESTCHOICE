@@ -80,7 +80,10 @@ it('preserves existing cards, focus and photo selection when more results arrive
   const next = screen.getByRole('button', { name: 'รูปถัดไป' });
   fireEvent.click(next);
   next.focus();
-  expect(screen.getByRole('img', { name: 'Apple iPhone 13' })).toHaveAttribute('src', '/back.jpg');
+  expect(screen.getByRole('img', { name: 'Apple iPhone 13 128GB' })).toHaveAttribute(
+    'src',
+    '/back.jpg',
+  );
   const first = screen.getByRole('article');
   rerender(
     <MemoryRouter>
@@ -92,7 +95,7 @@ it('preserves existing cards, focus and photo selection when more results arrive
   );
   expect(screen.getAllByRole('article')[0]).toBe(first);
   expect(next).toHaveFocus();
-  expect(screen.getAllByRole('img', { name: 'Apple iPhone 13' })[0]).toHaveAttribute(
+  expect(screen.getAllByRole('img', { name: 'Apple iPhone 13 128GB' })[0]).toHaveAttribute(
     'src',
     '/back.jpg',
   );

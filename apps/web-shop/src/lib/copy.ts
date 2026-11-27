@@ -43,6 +43,10 @@ export const shopInfo = {
  * ห้ามแต่งรีวิวขึ้นมาเอง · ว่าง = ไม่แสดงกล่องรีวิวเลย (ไม่มีข้อความตัวอย่างหลุดขึ้นเว็บ)
  * ตัวอย่างรูปแบบ: { name: 'คุณเอ (ลพบุรี)', text: 'ข้อความจากรีวิว Google', source: 'Google' }
  */
+/** ประโยคแรกของย่อหน้าแนะนำร้านบนหน้าแรก (copy.home.shopSummary) */
+const SHOP_SUMMARY_LEAD =
+  'BESTCHOICE ร้านขาย iPhone มือ 1 และมือสองในลพบุรี ผ่อนได้ด้วยบัตรประชาชนใบเดียว';
+
 export const customerReviews: readonly { name: string; text: string; source: 'Google' | 'Facebook' }[] = [];
 
 /** LINE OA deep-link พร้อมข้อความ prefill — ใช้ handle จาก shopInfo เสมอ */
@@ -113,6 +117,15 @@ export const copy = {
     heroTitleNoDownSuffix: 'ไม่ต้องมีผู้ค้ำ',
     // "มือสองรับประกันร้าน 60 วัน" ไม่อยู่ตรงนี้แล้ว — ซ้ำกับป้ายใต้ปุ่ม (เจ้าของ 2026-11-27)
     heroDescription: 'ร้านมือถือลพบุรี ของแท้ 100% ผ่อนได้ทุกอาชีพ รับเครื่องวันนี้',
+    /**
+     * ย่อหน้าตอบตรง ๆ ใต้ส่วนหัว: ร้านคืออะไร อยู่ไหน เปิดกี่โมง ติดต่อทางไหน — ให้ Google/AI
+     * ตอบคำถามเรื่องร้านได้ (ผลตรวจ SEO ข้อ 12 · เจ้าของเลือกแบบเต็ม 27 พ.ย. 2569)
+     * ข้อเท็จจริงมาจาก shopInfo ทั้งหมด ⇒ แก้ที่อยู่/เวลา/ช่องทางที่เดียว ย่อหน้านี้ตามเอง
+     */
+    shopSummaryLead: SHOP_SUMMARY_LEAD,
+    shopSummary:
+      `${SHOP_SUMMARY_LEAD} หน้าร้านอยู่ ${shopInfo.address} ${shopInfo.hours} ` +
+      `ทักไลน์ ${shopInfo.lineHandle} หรือโทร ${shopInfo.phoneDisplay}`,
     featuredTitle: 'รุ่นยอดนิยม',
     whyUsTitle: 'ทำไมเลือก BESTCHOICE',
     servicesTitle: 'บริการของเรา',

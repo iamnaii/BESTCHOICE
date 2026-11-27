@@ -217,6 +217,13 @@
     "category": "graphic"
   },
   {
+    "path": "apps/web-shop/src/hooks/usePageMeta.ts",
+    "kind": "image-or-css-icon",
+    "context": "DEFAULT_OG_IMAGE > `${CANONICAL_BASE}/media/og-default.jpg`",
+    "reason": "Default storefront share (Open Graph) banner restored after product pages; same file as og:image in index.html.",
+    "category": "brand"
+  },
+  {
     "path": "apps/web-shop/src/pages/CatalogPage.tsx",
     "kind": "unicode-symbol",
     "context": "SORTS > label > 'รุ่นใหม่ → เก่า'",

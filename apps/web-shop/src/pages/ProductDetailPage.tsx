@@ -18,7 +18,13 @@ import { usePageMeta } from '@/hooks/usePageMeta';
 import ShopLayout from '@/components/layout/ShopLayout';
 import { InstallmentCalculatorCard } from '@/components/InstallmentCalculatorCard';
 import type { ProductUnit } from '@/types/product';
-import { Breadcrumb } from '@/components/catalog/Breadcrumb';
+import { Breadcrumb, type Crumb } from '@/components/catalog/Breadcrumb';
+import {
+  buildBreadcrumbJsonLd,
+  buildProductJsonLd,
+  jsonLdForScript,
+  productPageUrl,
+} from '@/lib/product-json-ld';
 import { SpecTable } from '@/components/catalog/SpecTable';
 import { UnitPicker } from '@/components/catalog/UnitPicker';
 import { ProductGallery } from '@/components/catalog/ProductGallery';
@@ -58,6 +64,9 @@ interface ProductDetail {
   cashPrice: number | null;
   installmentPrice: number | null;
 }
+
+// หัวข้อของหน้า "ไม่พบสินค้า" — ใช้เป็น title ของแท็บด้วย (ข้อความเดียวกับที่ลูกค้าเห็นบนหน้า)
+const PRODUCT_GONE_TITLE = 'สินค้านี้ไม่พร้อมขายบนเว็บ';
 
 function conditionVariant(g: string): 'condition-a' | 'condition-b' | 'condition-c' {
   return g === 'A' ? 'condition-a' : g === 'B' ? 'condition-b' : 'condition-c';
@@ -155,12 +164,13 @@ export default function ProductDetailPage() {
     ? [data.brand, data.model, data.storage, data.color].filter(Boolean).join(' ')
     : undefined;
   const metaWarrantyDays = (selectedUnit ?? data)?.shopWarrantyDays ?? null;
-  usePageMeta(
-    metaTitle,
-    metaTitle
-      ? `${metaTitle} ผ่อนได้บัตรประชาชนใบเดียว${metaWarrantyDays != null && metaWarrantyDays > 0 ? ` รับประกันร้าน ${metaWarrantyDays} วัน` : ''}`
-      : undefined,
-  );
+  const metaDescription = metaTitle
+    ? `${metaTitle} ผ่อนได้บัตรประชาชนใบเดียว${metaWarrantyDays != null && metaWarrantyDays > 0 ? ` รับประกันร้าน ${metaWarrantyDays} วัน` : ''}`
+    : undefined;
+  // สินค้าที่ API ตอบ 404: Hosting ยังตอบ 200 (rewrite ** → spa-shell.html) ⇒ บอก crawler ด้วย
+  // noindex + title ของหน้านี้เอง ไม่ใช่ title ของหน้าแรก. error ชั่วคราว (429/5xx) ไม่ติด noindex
+  const isGone = isError && !data && notFound;
+  usePageMeta(isGone ? PRODUCT_GONE_TITLE : metaTitle, metaDescription, { noindex: isGone });
 
   // B0: head query ของ getProductDetail ผ่าน readiness แล้ว → controller ตอบ 404 ได้จริง
   // ถ้ายังรวม error เข้ากับ loading ลิงก์ที่ส่งลูกค้าจะเป็น Skeleton หมุนค้างตลอดกาล
@@ -176,9 +186,7 @@ export default function ProductDetailPage() {
           <div className="mx-auto max-w-md rounded-2xl border border-border bg-card p-8 text-center leading-snug">
             {notFound ? (
               <>
-                <h1 className="text-xl font-semibold text-foreground">
-                  สินค้านี้ไม่พร้อมขายบนเว็บ
-                </h1>
+                <h1 className="text-xl font-semibold text-foreground">{PRODUCT_GONE_TITLE}</h1>
                 <p className="mt-2 text-sm text-muted-foreground">
                   เครื่องนี้อาจขายไปแล้ว หรือข้อมูลยังไม่ครบสำหรับขายออนไลน์ — ทักแชทมาได้เลย
                   ทีมงานช่วยหาเครื่องรุ่นเดียวกันให้ครับ
@@ -281,6 +289,28 @@ export default function ProductDetailPage() {
   const linePrefill = lineProductPrefill(displayName, imeiLast4, shareUrl);
   const messengerUrl = messengerRefUrl(shareTargetId, shopConfig?.facebookPageHandle);
 
+  // แถบเส้นทางที่มองเห็นกับ BreadcrumbList ใน JSON-LD สร้างจากรายการเดียวกัน
+  const crumbs: Crumb[] = [
+    { label: 'หน้าแรก', to: '/' },
+    { label: 'สินค้าทั้งหมด', to: '/products' },
+    { label: data.model },
+  ];
+  // JSON-LD ต้องตรงกับที่แสดงบนหน้า: ชื่อ = หัวข้อ, ราคา = ราคาที่โชว์ (ไม่โชว์ราคา = ไม่มี offers)
+  const pageUrl = productPageUrl(id ?? data.id);
+  const productJsonLd = jsonLdForScript(
+    buildProductJsonLd({
+      name: displayName,
+      description: metaDescription,
+      brand: data.brand,
+      condition: data.condition,
+      images: gallery,
+      url: pageUrl,
+      price,
+      inStock: !isSoldOut,
+    }),
+  );
+  const breadcrumbJsonLd = jsonLdForScript(buildBreadcrumbJsonLd(crumbs, pageUrl));
+
   async function handleShare() {
     const shareData = {
       title: displayName,
@@ -307,14 +337,10 @@ export default function ProductDetailPage() {
   return (
     // มือถือมีปุ่มแชทในแถบล่างแล้ว — ปุ่มแชทลอยจะซ้ำและบังชื่อรุ่น (แบบเดียวกับหน้ารวมสินค้า)
     <ShopLayout mobileFloatingContact={false}>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: productJsonLd }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: breadcrumbJsonLd }} />
       <Container className="py-6 md:py-8">
-        <Breadcrumb
-          items={[
-            { label: 'หน้าแรก', to: '/' },
-            { label: 'สินค้าทั้งหมด', to: '/products' },
-            { label: data.model },
-          ]}
-        />
+        <Breadcrumb items={crumbs} />
         <div className="grid md:grid-cols-2 gap-8 leading-snug mt-3">
           <ProductGallery
             key={selectedUnit?.id ?? data.id}

@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
@@ -14,24 +15,29 @@ function CurrentUrl() {
 
 function renderAccount() {
   const logout = vi.fn();
+  // แถบโปรใน ShopLayout ถามยอดดาวน์ผ่าน React Query — เติมคำตอบไว้ก่อน ไม่ให้เทสนี้ยิงเครือข่าย
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  client.setQueryData(['shop', 'down-floor'], null);
   render(
-    <MemoryRouter initialEntries={['/account']}>
-      <AuthContext.Provider
-        value={{
-          customer: { id: 'fixture', name: 'ลูกค้าทดสอบ', phone: null, lineId: null, loyaltyBalance: 0 },
-          token: null,
-          setAuth: vi.fn(),
-          hydrating: false,
-          logout,
-        }}
-      >
-        <Routes>
-          <Route path="/how-it-works" element={<HowItWorksPage />} />
-          <Route path="*" element={<AccountPage />} />
-        </Routes>
-        <CurrentUrl />
-      </AuthContext.Provider>
-    </MemoryRouter>,
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={['/account']}>
+        <AuthContext.Provider
+          value={{
+            customer: { id: 'fixture', name: 'ลูกค้าทดสอบ', phone: null, lineId: null, loyaltyBalance: 0 },
+            token: null,
+            setAuth: vi.fn(),
+            hydrating: false,
+            logout,
+          }}
+        >
+          <Routes>
+            <Route path="/how-it-works" element={<HowItWorksPage />} />
+            <Route path="*" element={<AccountPage />} />
+          </Routes>
+          <CurrentUrl />
+        </AuthContext.Provider>
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
   return logout;
 }

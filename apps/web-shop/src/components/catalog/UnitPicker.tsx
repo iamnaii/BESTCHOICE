@@ -44,7 +44,7 @@ export function UnitPicker({
               className={cn(
                 'flex flex-col items-start px-3 py-2 rounded-xl border text-left transition-colors leading-snug',
                 active
-                  ? 'border-primary ring-2 ring-primary/20 bg-accent'
+                  ? 'border-brand-green ring-2 ring-brand-green/25 bg-mint-tint' // ที่เลือก = ขอบเขียว พื้นมิ้นต์ (ส่วน A5)
                   : 'border-border hover:border-foreground/40',
               )}
             >

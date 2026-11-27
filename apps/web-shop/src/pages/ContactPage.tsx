@@ -22,10 +22,10 @@ export default function ContactPage() {
       <Container>
         <Stack gap={6} className="py-8">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Card variant="outlined" className="bg-muted border-border">
+            <Card variant="outlined" className="bg-mint-tint border-border">
               <CardBody>
                 <Stack gap={4} className="leading-snug">
-                  <span className="inline-flex size-11 items-center justify-center rounded-full bg-accent text-emerald-700">
+                  <span className="inline-flex size-11 items-center justify-center rounded-full bg-mint-tint text-brand-green-dark">
                     <MessageCircle className="size-6" aria-hidden="true" />
                   </span>
                   <div className="space-y-1">
@@ -82,13 +82,13 @@ export default function ContactPage() {
               <Stack gap={3} className="leading-snug">
                 <h2 className="text-lg font-semibold leading-snug">{copy.contact.addressTitle}</h2>
                 <div className="flex items-start gap-3">
-                  <MapPin className="size-5 text-emerald-600 shrink-0 mt-0.5" aria-hidden="true" />
+                  <MapPin className="size-5 text-brand-green shrink-0 mt-0.5" aria-hidden="true" />
                   <p className="text-sm text-muted-foreground leading-snug">
                     {copy.contact.address}
                   </p>
                 </div>
                 <div className="flex items-start gap-3">
-                  <Clock className="size-5 text-emerald-600 shrink-0 mt-0.5" aria-hidden="true" />
+                  <Clock className="size-5 text-brand-green shrink-0 mt-0.5" aria-hidden="true" />
                   <p className="text-sm text-muted-foreground leading-snug">{copy.contact.hours}</p>
                 </div>
               </Stack>

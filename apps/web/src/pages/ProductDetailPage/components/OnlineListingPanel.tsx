@@ -230,8 +230,11 @@ export default function OnlineListingPanel({
   };
 
   const automaticPhotos = product.usesAutomaticPhotos || anglePhotos.length > 0;
-  const cover = anglePhotos.some(p => p.angle === product.onlineCoverAngle)
-    ? product.onlineCoverAngle : anglePhotos[0]?.angle;
+  // Same rule the shop uses (API `hydrateListingGalleries` / DEFAULT_LISTING_COVER): the cover
+  // staff picked → else the back (shows the colour) → else the first angle. Change both together.
+  const cover = [product.onlineCoverAngle, 'back' as const].find(
+    (angle) => !!angle && anglePhotos.some((p) => p.angle === angle),
+  ) ?? anglePhotos[0]?.angle;
 
   return (
     <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_420px]">

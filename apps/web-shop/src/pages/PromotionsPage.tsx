@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router';
 import { Gift, MessageCircle } from '@/lib/icons';
 import ShopLayout from '@/components/layout/ShopLayout';
@@ -10,7 +11,11 @@ import {
   Badge,
   Button,
   StatefulList,
+  ProductCard,
+  type ProductGroup,
 } from '@/components';
+import { api } from '@/lib/api';
+import { buildCatalogParams } from './catalog-params';
 import {
   usePromotions,
   promoBenefitLabel,
@@ -41,6 +46,50 @@ function conditionChips(p: ShopPromotion): string[] {
     chips.push('เฉพาะรุ่นที่ร่วมรายการ');
   }
   return chips;
+}
+
+/** เครื่องฟรีดาวน์ที่แสดงตอนไม่มีโปรโมชัน (ส่วน B4) — query เดียวกับหน้ารวมที่ติ๊กฟรีดาวน์ */
+const FREE_DOWN_PREVIEW = 8;
+
+interface FreeDownResponse {
+  data: ProductGroup[];
+  /** API รุ่นเก่าไม่ส่งช่องนี้และไม่รู้จักตัวกรองฟรีดาวน์ — ไม่มี = ไม่แสดงส่วนนี้ (กันโชว์เครื่องที่ต้องวางดาวน์) */
+  freeDownCount?: number;
+}
+
+function FreeDownPhones() {
+  const { data } = useQuery<FreeDownResponse>({
+    queryKey: ['shop', 'promotions', 'free-down'],
+    queryFn: () => {
+      const params = buildCatalogParams({
+        filters: {},
+        sort: 'popular',
+        downAmount: null,
+        months: null,
+        freeDown: true,
+        page: 1,
+      });
+      params.set('limit', String(FREE_DOWN_PREVIEW));
+      return api.get(`/api/shop/products?${params}`).then((r) => r.data);
+    },
+  });
+  if (!data || data.freeDownCount === undefined || data.data.length === 0) return null;
+  return (
+    <div className="mt-10 space-y-4">
+      <SectionHeader
+        title="เครื่องฟรีดาวน์ตอนนี้"
+        description="ไม่ต้องวางเงินดาวน์ ผ่อนได้บัตรประชาชนใบเดียว"
+      />
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+        {data.data.map((p) => (
+          <ProductCard key={p.id} product={p} priceMode="installment" freeDownOnly />
+        ))}
+      </div>
+      <Button asChild variant="primary" size="lg">
+        <Link to="/products?freeDown=1">ดูเครื่องฟรีดาวน์ทั้งหมด</Link>
+      </Button>
+    </div>
+  );
 }
 
 export default function PromotionsPage() {
@@ -75,7 +124,7 @@ export default function PromotionsPage() {
               <Card key={p.id} variant="outlined" className="h-full">
                 <CardBody className="space-y-3 leading-snug">
                   <div className="flex items-start gap-3">
-                    <span className="size-12 rounded-xl bg-accent text-emerald-600 flex items-center justify-center shrink-0">
+                    <span className="size-12 rounded-xl bg-mint-tint text-brand-green-dark flex items-center justify-center shrink-0">
                       {promoIcon(p)}
                     </span>
                     <div className="min-w-0 flex-1 space-y-1">
@@ -118,6 +167,7 @@ export default function PromotionsPage() {
               </Card>
             )}
           />
+          {!isLoading && !isError && (data?.length ?? 0) === 0 && <FreeDownPhones />}
         </Container>
       </Section>
     </ShopLayout>

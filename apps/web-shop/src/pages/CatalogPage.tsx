@@ -291,49 +291,50 @@ export default function CatalogPage() {
   const activeSortLabel = SORTS.find((s) => s.v === sort)?.label ?? '';
 
   return (
-    <ShopLayout mobileFloatingContact={false}>
-      <Container className="py-4 md:py-6">
-        {/* Hero plate — a white card on the tinted canvas, same family as the
-            product cards rather than a full-bleed band. */}
-        <section className="rounded-[28px] md:rounded-[40px] bg-card px-4 py-5 sm:px-6 sm:py-8 md:px-10 md:py-11 shadow-md border border-border">
+    // ปุ่มแชทลอยสีส้มขึ้นบนมือถือด้วย เหมือนหน้าอื่น (ส่วน B2 — เดิมหน้านี้ซ่อนบนมือถือ)
+    <ShopLayout>
+      <Container className="py-3 md:py-6">
+        {/* Hero plate — เตี้ยลง (ส่วน B2) ให้การ์ดแถวแรกพร้อมราคาขึ้นในจอแรกของมือถือ ·
+            พื้นไล่จาก mint-tint ไปขาว · บรรทัดที่สองเขียวเข้ม · ไอคอนมือถือโทนเขียว (ส่วน A3) */}
+        <section className="rounded-3xl md:rounded-[40px] bg-linear-to-br from-mint-tint to-white px-4 py-3 sm:px-6 sm:py-5 md:px-10 md:py-8 shadow-sm border border-border">
           <div className="flex items-center gap-6 md:gap-10">
             <div className="hidden sm:block shrink-0">
-              <svg width="112" height="112" viewBox="0 0 118 118" aria-hidden="true">
-                <rect x="30" y="10" width="58" height="98" rx="13" fill="var(--color-zinc-200)" />
-                <rect x="35" y="15" width="48" height="88" rx="9" fill="var(--color-zinc-100)" />
-                <rect x="41" y="21" width="21" height="21" rx="7" fill="var(--color-zinc-300)" />
-                <circle cx="47" cy="27" r="3.6" fill="var(--color-zinc-400)" />
-                <circle cx="56" cy="36" r="3.6" fill="var(--color-zinc-400)" />
+              <svg width="96" height="96" viewBox="0 0 118 118" aria-hidden="true">
+                <rect x="30" y="10" width="58" height="98" rx="13" fill="var(--color-brand-green)" />
+                <rect x="35" y="15" width="48" height="88" rx="9" fill="var(--color-mint-tint)" />
+                <rect x="41" y="21" width="21" height="21" rx="7" fill="var(--color-brand-mint)" />
+                <circle cx="47" cy="27" r="3.6" fill="var(--color-brand-green-dark)" />
+                <circle cx="56" cy="36" r="3.6" fill="var(--color-brand-green-dark)" />
                 <rect
                   x="49"
                   y="16.5"
                   width="10"
                   height="3.4"
                   rx="1.7"
-                  fill="var(--color-zinc-300)"
+                  fill="var(--color-brand-green-dark)"
                 />
                 <path
                   d="M41 84h36"
-                  stroke="var(--color-emerald-500)"
+                  stroke="var(--color-brand-green)"
                   strokeWidth="3"
                   strokeLinecap="round"
                 />
                 <path
                   d="M41 92h22"
-                  stroke="var(--color-zinc-300)"
+                  stroke="var(--color-brand-mint)"
                   strokeWidth="3"
                   strokeLinecap="round"
                 />
               </svg>
             </div>
             <div>
-              <h1 className="font-display text-2xl sm:text-3xl md:text-4xl font-bold text-foreground leading-snug">
+              <h1 className="font-display text-xl sm:text-3xl md:text-4xl font-bold text-primary leading-snug">
                 รวม iPhone มือ 1 และมือสอง
                 <br />
-                <span className="text-primary">คัดแล้ว ผ่อนได้บัตรเดียว</span>
+                <span className="text-brand-green-dark">คัดแล้ว ผ่อนได้บัตรเดียว</span>
               </h1>
-              <p className="mt-3 text-sm md:text-base text-muted-foreground leading-snug">
-                ตรวจ 30 จุด · รับประกันร้าน 60 วัน · ไม่ติด iCloud ทุกเครื่อง
+              <p className="mt-1 sm:mt-3 text-xs sm:text-sm md:text-base text-muted-foreground leading-snug">
+                ตรวจ 30 จุด · มือสองรับประกันร้าน 60 วัน · ไม่ติด iCloud ทุกเครื่อง
               </p>
             </div>
           </div>

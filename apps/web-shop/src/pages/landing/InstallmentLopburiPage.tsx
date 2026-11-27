@@ -11,6 +11,7 @@ import {
   Button,
 } from '@/components';
 import ShopLayout from '@/components/layout/ShopLayout';
+import { StorePhotos } from '@/components/shop/StorePhotos';
 import { shopInfo, lineOaMessageUrl } from '@/lib/copy';
 import { usePageMeta } from '@/hooks/usePageMeta';
 
@@ -22,22 +23,22 @@ import { usePageMeta } from '@/hooks/usePageMeta';
 
 const WHY_US = [
   {
-    icon: <UserCheck className="size-6 text-emerald-600" aria-hidden="true" />,
+    icon: <UserCheck className="size-6 text-brand-green" aria-hidden="true" />,
     title: 'บัตรประชาชนใบเดียว',
     description: 'ไม่ต้องใช้บัตรเครดิต ไม่ต้องมีผู้ค้ำ ไม่ต้องใช้สลิปเงินเดือน',
   },
   {
-    icon: <Clock3 className="size-6 text-emerald-600" aria-hidden="true" />,
+    icon: <Clock3 className="size-6 text-brand-green" aria-hidden="true" />,
     title: 'อนุมัติไว รับเครื่องได้เลย',
     description: 'ทักแชทหรือมาที่หน้าร้าน ทราบผลเร็ว ผ่านแล้วรับเครื่องได้ทันที',
   },
   {
-    icon: <Store className="size-6 text-emerald-600" aria-hidden="true" />,
+    icon: <Store className="size-6 text-brand-green" aria-hidden="true" />,
     title: 'หน้าร้านจริงในลพบุรี',
-    description: `มีหน้าร้านบนถนนนารายณ์มหาราช เปิดทุกวัน 10:00-19:00 น. ลูกค้ารีวิวบน Google กว่า 860 รายการ คะแนน 5.0`,
+    description: `มีหน้าร้านบนถนนนารายณ์มหาราช เปิดทุกวัน 10:00-19:00 น. ลูกค้ารีวิวบน Google กว่า ${shopInfo.googleReviewCount.replace("+", "")} รายการ คะแนน ${shopInfo.googleRating}`,
   },
   {
-    icon: <ShieldCheck className="size-6 text-emerald-600" aria-hidden="true" />,
+    icon: <ShieldCheck className="size-6 text-brand-green" aria-hidden="true" />,
     title: 'เงื่อนไขโปร่งใส',
     description: 'ค่างวดเท่ากันทุกเดือน ไม่มีค่าธรรมเนียมแอบแฝง อ่านเงื่อนไขได้ครบก่อนตัดสินใจ',
   },
@@ -46,7 +47,7 @@ const WHY_US = [
 const STEPS = [
   { no: 1, title: 'เลือกเครื่องที่ถูกใจ', description: 'ดูราคาและค่างวดจริงของทุกเครื่องได้ในหน้าสินค้า ทั้งมือ 1 และมือสอง' },
   { no: 2, title: 'ทักแชทหรือโทรหาร้าน', description: 'ทีมงานเช็คเครื่องและแจ้งดาวน์-ค่างวดให้ก่อนตัดสินใจ ไม่มีค่าใช้จ่าย' },
-  { no: 3, title: 'เลือกดาวน์และจำนวนงวด', description: 'ดาวน์ขั้นต่ำ 15% ของราคาเครื่อง ผ่อนได้สูงสุด 12 งวด' },
+  { no: 3, title: 'เลือกดาวน์และจำนวนงวด', description: 'บางเครื่องฟรีดาวน์ เครื่องอื่นดาวน์ตามที่หน้าเครื่องแสดง ผ่อนได้สูงสุด 15 งวด' },
   { no: 4, title: 'รับเครื่องกลับบ้าน', description: 'มาที่ร้าน เซ็นสัญญา ชำระดาวน์ รับเครื่องได้เลยในวันเดียว' },
 ];
 
@@ -69,7 +70,7 @@ const FAQS = [
   },
   {
     question: 'ผ่อนกี่งวด ดาวน์เท่าไร',
-    answer: 'เลือกผ่อนได้สูงสุด 12 งวด เงินดาวน์ขั้นต่ำ 15% ของราคาเครื่อง เริ่มต้นราว 900 บาทสำหรับรุ่นเริ่มต้น',
+    answer: 'เลือกผ่อนได้สูงสุด 15 งวด บางเครื่องไม่ต้องวางดาวน์ (ฟรีดาวน์) เครื่องอื่นดาวน์ตามที่หน้าเครื่องแสดง',
   },
 ];
 
@@ -86,7 +87,7 @@ const FAQ_JSON_LD = JSON.stringify({
 export default function InstallmentLopburiPage() {
   usePageMeta(
     'ผ่อน iPhone ลพบุรี บัตรประชาชนใบเดียว',
-    'ผ่อน iPhone ที่ลพบุรีด้วยบัตรประชาชนใบเดียว ไม่เช็กบูโร ไม่ต้องมีผู้ค้ำ ผ่อนสูงสุด 12 งวด ดาวน์เริ่ม 900 บาท มีหน้าร้านจริง รีวิว 5.0 บน Google',
+    `ผ่อน iPhone ที่ลพบุรีด้วยบัตรประชาชนใบเดียว ไม่เช็กบูโร ไม่ต้องมีผู้ค้ำ ผ่อนสูงสุด 15 งวด ดาวน์เริ่ม 0 บาท มีหน้าร้านจริง รีวิว ${shopInfo.googleRating} บน Google`,
   );
 
   return (
@@ -94,9 +95,10 @@ export default function InstallmentLopburiPage() {
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: FAQ_JSON_LD }} />
       <CategoryHero
         title="ผ่อน iPhone ลพบุรี"
-        description="ผ่อนไอโฟนด้วยบัตรประชาชนใบเดียว ไม่เช็กบูโร ไม่ต้องมีผู้ค้ำ — ร้านมือถือลพบุรีที่มีหน้าร้านจริง ผ่อนได้สูงสุด 12 งวด ทั้ง iPhone มือ 1 และมือสอง"
+        description="ผ่อนไอโฟนด้วยบัตรประชาชนใบเดียว ไม่เช็กบูโร ไม่ต้องมีผู้ค้ำ — ร้านมือถือลพบุรีที่มีหน้าร้านจริง ผ่อนได้สูงสุด 15 งวด ทั้ง iPhone มือ 1 และมือสอง"
         breadcrumbs={[{ label: 'หน้าแรก', to: '/' }, { label: 'ผ่อน iPhone ลพบุรี' }]}
       />
+      <StorePhotos />
       <Container>
         <Stack gap={6} className="py-8">
           <section>
@@ -123,7 +125,7 @@ export default function InstallmentLopburiPage() {
                 <Card key={s.no} variant="outlined">
                   <CardBody>
                     <div className="flex items-start gap-3 leading-snug">
-                      <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground text-sm font-semibold">
+                      <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-mint-tint text-brand-green-dark text-sm font-semibold">
                         {s.no}
                       </span>
                       <div>
@@ -143,7 +145,7 @@ export default function InstallmentLopburiPage() {
 
           <LandingFaq title="คำถามที่คนลพบุรีถามบ่อย" items={FAQS} />
 
-          <section className="rounded-2xl bg-muted p-6 md:p-8">
+          <section className="rounded-2xl bg-mint-tint p-6 md:p-8">
             <Stack gap={3} className="items-start leading-snug">
               <h2 className="text-xl font-bold leading-snug">พร้อมผ่อนแล้ว?</h2>
               <p className="text-sm text-muted-foreground leading-snug">

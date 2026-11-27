@@ -34,7 +34,9 @@ describe('PlanTiles', () => {
       expect(el.className).toContain('whitespace-nowrap');
     }
     expect(container.textContent).not.toContain('%');
-    expect(container.textContent).not.toContain('เรท');
+    // สองกล่องพร้อมกัน = มีชื่อกำกับ "เรท 1" / "เรท 2" (เจ้าของ 2026-11-27 ส่วน B2)
+    expect(screen.getByText('เรท 1')).toBeInTheDocument();
+    expect(screen.getByText('เรท 2')).toBeInTheDocument();
   });
 
   it('เรท 2 ดาวน์น้อยกว่าแต่ไม่ถึง 0: กล่องล่างเขียนดาวน์เป็นบาท ไม่ใช่ "ฟรีดาวน์"', () => {
@@ -52,6 +54,8 @@ describe('PlanTiles', () => {
       <PlanTiles rate1={rate1} rate2={{ down: 5900, monthly: 2500, months: 15 }} />,
     );
     expect(container.querySelectorAll('[data-plan]')).toHaveLength(1);
+    // กล่องเดียว = ไม่มีชื่อเรทกำกับ
+    expect(container.textContent).not.toContain('เรท');
   });
 
   it('freeDownOnly: ไม่มีกล่องเรท 1 เหลือกล่องฟรีดาวน์กล่องเดียว', () => {

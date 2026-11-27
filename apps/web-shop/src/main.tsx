@@ -5,6 +5,7 @@ import { BrowserRouter } from 'react-router';
 import App from './App';
 import { Toaster } from './components/ui/sonner';
 import { AuthProvider } from './contexts/AuthContext';
+import { seedDownFloorFromSnapshot } from './hooks/useDownFloor';
 import { initAnalytics } from './lib/analytics';
 import { redirectLegacyHost } from './lib/canonical-host';
 import './index.css';
@@ -13,6 +14,8 @@ function bootstrap() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { staleTime: 60_000, refetchOnWindowFocus: false } },
   });
+  // ต้องอ่านก่อน render — createRoot จะแทน HTML ที่ prerender ไว้ทั้งก้อน (ยอดดาวน์ในพาดหัว/แถบโปร)
+  seedDownFloorFromSnapshot(queryClient);
 
   initAnalytics();
 

@@ -21,10 +21,16 @@
  *   ที่เหลือ (fonts/CDN) abort ทิ้ง — deploy ต้องไม่ค้างเพราะ CDN ภายนอกแขวน
  */
 import { spawn } from 'node:child_process';
-import { copyFile, mkdir, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
+import {
+  TINY_PNG,
+  isProductPhotoRequest,
+  listInStockProductIds,
+  sitemapWithProducts,
+} from './prerender-products.mjs';
 
 const WEB_SHOP_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DIST = path.join(WEB_SHOP_DIR, 'dist');
@@ -77,7 +83,7 @@ async function waitForServer(timeoutMs = 30_000) {
   throw new Error(`vite preview did not start on :${PORT} within ${timeoutMs}ms`);
 }
 
-async function captureRoute(context, { path: route, apiDependent }) {
+async function captureRoute(context, { path: route, apiDependent, product = false }) {
   const page = await context.newPage();
   try {
     await page.goto(`${BASE}${route}`, { waitUntil: 'networkidle', timeout: 45_000 });
@@ -94,6 +100,11 @@ async function captureRoute(context, { path: route, apiDependent }) {
 
     // Sanity gates — snapshot เสียต้องทำให้ build แดง ไม่ใช่ deploy หน้าเปล่าเงียบ ๆ
     if (!title.includes('BESTCHOICE')) throw new Error(`${route}: title เพี้ยน ("${title}")`);
+    // หน้าสินค้า: title ต้องเป็นชื่อรุ่นแล้ว (usePageMeta ต่อท้าย " | BESTCHOICE ลพบุรี") —
+    // ยังเป็นชื่อหน้าแรก = ข้อมูลยังไม่มา/ไม่พบเครื่อง ห้ามเก็บ
+    if (product && !/ \| BESTCHOICE ลพบุรี$/.test(title)) {
+      throw new Error(`${route}: ยังไม่ได้ชื่อรุ่น ("${title}")`);
+    }
     if (rootLength < 200) throw new Error(`${route}: #root แทบว่าง (${rootLength} chars)`);
     // canonical จาก usePageMeta = window.location.pathname ซึ่ง percent-encode
     // อักษรไทยแล้ว — เทียบกับ route ที่ encode ให้ตรงกัน
@@ -156,6 +167,11 @@ try {
           return routeHandle.fulfill({ status: 503, body: '{}' });
         }
       }
+      // รูปสินค้าเป็น URL เต็มบนโดเมนจริง — ตอบ PNG 1×1 แทนดาวน์โหลดจริง ไม่งั้น <img> ล้ม
+      // แล้ว snapshot มีข้อความ "โหลดรูปนี้ไม่สำเร็จ" (src ใน HTML ยังเป็น URL จริง)
+      if (req.method() === 'GET' && isProductPhotoRequest(url, API_BASE)) {
+        return routeHandle.fulfill({ status: 200, contentType: 'image/png', body: TINY_PNG });
+      }
       // โฮสต์ภายนอก (fonts, CDN, tracker) — ตัดทิ้ง: DOM ไม่ต้องใช้ และห้ามให้
       // CDN ภายนอกแขวน networkidle จน deploy แดง
       return routeHandle.abort();
@@ -164,6 +180,34 @@ try {
     // เก็บให้ครบทุก route ก่อน แล้วค่อยเขียน — ดูกติกาในคอมเมนต์หัวไฟล์
     for (const routeDef of ROUTES) {
       snapshots.push(await captureWithRetry(context, routeDef));
+    }
+
+    // หน้าสินค้าที่ขายอยู่ (ส่วน B6) — best effort ทั้งชุด: ล้มเฉพาะตัวไหนก็ข้ามตัวนั้น
+    let productIds = [];
+    try {
+      productIds = await listInStockProductIds(API_BASE);
+    } catch (err) {
+      console.warn(`⚠ ดึงรายการสินค้าไม่สำเร็จ — ข้าม snapshot หน้าสินค้า: ${err.message}`);
+    }
+    const PRODUCT_CONCURRENCY = 4;
+    for (let i = 0; i < productIds.length; i += PRODUCT_CONCURRENCY) {
+      const batch = productIds.slice(i, i + PRODUCT_CONCURRENCY);
+      const results = await Promise.allSettled(
+        batch.map((id) =>
+          captureWithRetry(context, { path: `/products/${id}`, apiDependent: true, product: true }),
+        ),
+      );
+      results.forEach((r, j) => {
+        if (r.status === 'fulfilled') snapshots.push({ ...r.value, productId: batch[j] });
+        else console.warn(`⚠ ข้าม /products/${batch[j]}: ${r.reason?.message ?? r.reason}`);
+      });
+    }
+    // สรุปบรรทัดเดียว — ข้ามทีละเครื่องเงียบเกินไปถ้าล้มทั้งชุด (build ไม่ล้ม ตั้งใจ best effort)
+    if (productIds.length > 0) {
+      const captured = snapshots.filter((s) => s.productId).length;
+      const summary = `หน้าสินค้า: เก็บได้ ${captured} จาก ${productIds.length} หน้า`;
+      if (captured === 0) console.warn(`⚠ ${summary} — sitemap รอบนี้ไม่มีหน้าสินค้าเลย`);
+      else console.log(`${captured < productIds.length ? '⚠' : '✓'} ${summary}`);
     }
   } finally {
     await browser.close();
@@ -179,6 +223,15 @@ try {
     await writeFile(outFile, `<!-- prerendered ${new Date().toISOString()} -->\n${html}`);
     console.log(`✓ ${route} → ${path.relative(WEB_SHOP_DIR, outFile)} (${title})`);
   }
+  // sitemap.xml = 13 หน้าเดิมจาก public + เครื่องที่ snapshot สำเร็จ (ส่วน B6)
+  const productIdsDone = snapshots.filter((s) => s.productId).map((s) => s.productId);
+  const sitemapPath = path.join(DIST, 'sitemap.xml');
+  const today = new Date().toISOString().slice(0, 10);
+  await writeFile(
+    sitemapPath,
+    sitemapWithProducts(await readFile(sitemapPath, 'utf8'), productIdsDone, today),
+  );
+  console.log(`✓ sitemap.xml + ${productIdsDone.length} หน้าสินค้า`);
   console.log(`\nPrerendered ${snapshots.length} routes + spa-shell.html`);
 } catch (err) {
   console.error(err);

@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 import { shopInfo } from '@/lib/copy';
 import { deviceOriginLabel, type DeviceOrigin } from '@/lib/device-origin';
 import { DEFAULT_DETAIL_MONTHS, MAX_DETAIL_MONTHS } from '@/lib/installment-defaults';
-import { PlanTiles } from './PlanTiles';
+import { PlanTiles, showsRate2Tile } from './PlanTiles';
 import { useGallerySwipe } from './useGallerySwipe';
 import { formatNumber } from '@/lib/format';
 
@@ -72,29 +72,35 @@ interface Props {
 }
 
 /**
- * ป้ายเกรด = ข้อมูล ไม่ใช่คำเตือน (คำตัดสินเจ้าของ 2026-08-31)
- * ห้ามใช้เหลือง/ส้ม/แดง — ทุกใบดีไซน์เดียวกัน ต่างแค่ความเข้มในสีหลัก (กรมท่า ตั้งแต่ 2026-11-26)
- * (ยิ่งสภาพใหม่ยิ่งเข้ม) ส้มถูกสงวนให้ปุ่มแชทอย่างเดียวตาม style guide ข้อ 2
+ * ป้ายสถานะ (เจ้าของ 2026-11-27 ส่วน A3): มือ 1 = พื้นเขียวตัวขาว · มือ 2 = ขอบกรมท่าพื้นขาว.
+ * ใช้เขียวเข้ม #0B7F5A ไม่ใช่เขียวโลโก้ #1DA479 — ตัวขาวบนเขียวโลโก้ได้แค่ 3.2:1 (ต้อง 4.5:1).
+ * เกรดของมือสองเป็นวงกลมตัวอักษรกรมท่าในป้ายเดียวกัน (ไม่ใช้เหลือง/ส้ม/แดง — เกรด = ข้อมูล
+ * ไม่ใช่คำเตือน คำตัดสินเจ้าของ 2026-08-31)
  */
-const GRADE_STYLES: Record<string, string> = {
-  A: 'bg-primary text-white ring-transparent',
-  B: 'bg-white text-primary ring-border',
-  C: 'bg-white text-zinc-700 ring-border',
-};
-const GRADE_CHIP: Record<string, string> = {
-  A: 'bg-white text-primary',
-  B: 'bg-primary text-white',
-  C: 'bg-zinc-700 text-white',
-};
+const NEW_CHIP = 'bg-brand-green-dark text-white ring-transparent';
+const USED_CHIP = 'bg-white text-primary ring-primary';
+const GRADE_DISC = 'bg-primary text-white';
 
 /** ป้ายข้อมูลใต้ชื่อรุ่น — เกินสองใบแถวป้ายจะยาวกว่าราคา */
 const MAX_TAGS = 2;
+/** ป้ายข้อมูลทั่วไป (ไทย/นอก · ประกัน) — เทากลาง */
+const CHIP_BASE =
+  'inline-flex items-center gap-1 rounded-full px-1.5 sm:px-2 py-0.5 text-xs leading-snug max-w-full whitespace-nowrap';
+const INFO_CHIP = `${CHIP_BASE} bg-zinc-100 text-zinc-700`;
+
 /**
- * ป้ายข้อมูลเครื่อง (ไทย/นอก · แบต · เข้าใหม่) — เทากลาง (2026-11-26 "สีเขียวเยอะไปจนเลี่ยน"):
- * สีบนการ์ดเหลือแค่ตัวเลขราคากับปุ่ม (กรมท่า) เพราะรูปสินค้ามีมุมมิ้นต์ของแม่แบบอยู่แล้ว
+ * สีของป้ายจากข้อความ (ป้ายมาจาก API เป็นข้อความ — `catalog-item.util.ts`):
+ * แบต 90% ขึ้นไป = พื้น mint-tint ตัวเขียวเข้ม (4.7:1) · เข้าใหม่ = พื้นเขียวอ่อนมีเส้นเขียว ·
+ * ใกล้หมด = พื้นส้มอ่อนตัวส้มเข้ม (5.5:1) · อื่น ๆ เทา
  */
-const INFO_CHIP =
-  'inline-flex items-center gap-1 rounded-full bg-zinc-100 px-1.5 sm:px-2 py-0.5 text-xs text-zinc-700 leading-snug max-w-full whitespace-nowrap';
+function tagChipClass(label: string, warm?: boolean): string {
+  if (warm) return `${CHIP_BASE} bg-orange-100 text-orange-700`;
+  if (label === 'เข้าใหม่')
+    return `${CHIP_BASE} bg-mint-tint text-brand-green-dark ring-1 ring-inset ring-brand-green`;
+  const battery = /^แบต (\d+)%$/.exec(label);
+  if (battery && Number(battery[1]) >= 90) return `${CHIP_BASE} bg-mint-tint text-brand-green-dark`;
+  return INFO_CHIP;
+}
 
 /**
  * การ์ดยืม 3 แถวของกริดแม่ (รูป · ข้อมูล · แถบราคา) ด้วย subgrid ⇒ แถบราคาทุกใบในแถวเดียวกันเริ่มระดับเดียวกัน
@@ -142,6 +148,18 @@ export function ProductCard({
     setActive((shown + direction + photos.length) % photos.length);
   const swipe = useGallerySwipe(step, many);
 
+  const rate1Plan =
+    hasQuote && p.downAmount != null
+      ? { down: p.downAmount, monthly: p.monthlyPaymentFrom!, months: p.installmentMonths ?? null }
+      : null;
+  // สองราคาบนการ์ด = กล่องเรท 1 กับกล่องเรท 2 ขึ้นพร้อมกัน (กติกาเดียวกับ PlanTiles)
+  const twoRates =
+    priceMode === 'installment' &&
+    p.minPrice != null &&
+    !freeDownOnly &&
+    rate1Plan != null &&
+    showsRate2Tile(rate1Plan, p.rate2 ?? null);
+
   const isNew = p.condition === 'NEW';
   const isUnit = p.kind === 'UNIT';
   const rawGrade = p.conditionGrade ?? (!isNew ? p.conditionGrades?.[0] : undefined);
@@ -169,11 +187,8 @@ export function ProductCard({
       className={cn(
         'inline-flex items-center gap-1 rounded-full ring-1 ring-inset text-xs leading-snug whitespace-nowrap',
         isNew
-          ? 'bg-ink text-white ring-transparent px-1.5 py-0.5 sm:px-2'
-          : cn(
-              grade ? 'p-0.5 sm:pr-2' : 'px-1.5 py-0.5 sm:px-2',
-              GRADE_STYLES[grade ?? ''] ?? 'bg-zinc-700 text-white ring-transparent',
-            ),
+          ? cn(NEW_CHIP, 'px-1.5 py-0.5 sm:px-2')
+          : cn(grade ? 'p-0.5 sm:pr-2' : 'px-1.5 py-0.5 sm:px-2', USED_CHIP),
       )}
       aria-label={
         isNew ? 'เครื่องมือ 1 ของใหม่' : grade ? `สภาพเครื่องเกรด ${grade}` : 'เครื่องมือสอง'
@@ -183,7 +198,7 @@ export function ProductCard({
         <span
           className={cn(
             'size-4 rounded-full grid place-items-center font-brand text-[10px] font-bold leading-snug shrink-0',
-            GRADE_CHIP[grade] ?? 'bg-white text-zinc-700',
+            GRADE_DISC,
           )}
           aria-hidden
         >
@@ -207,14 +222,18 @@ export function ProductCard({
       className={cn(
         'group flex flex-col overflow-hidden rounded-2xl md:rounded-3xl border border-border bg-card',
         CARD_ROW_SUBGRID,
-        'shadow-sm transition-[transform,box-shadow] duration-200 ease-out',
-        'hover:-translate-y-0.5 hover:shadow-lg motion-reduce:transform-none motion-reduce:transition-none',
+        'shadow-sm transition-[transform,box-shadow,border-color] duration-200 ease-out',
+        // ชี้ / แตะ / โฟกัสด้วยคีย์บอร์ด: ขอบเขียวโลโก้ + เงาเข้มขึ้นเล็กน้อย (ส่วน A3)
+        'hover:-translate-y-0.5 hover:shadow-lg hover:border-brand-green',
+        'active:border-brand-green focus-within:border-brand-green',
+        'motion-reduce:transform-none motion-reduce:transition-none',
       )}
     >
       {/* รูปเต็มขอบการ์ด (เจ้าของ 2026-11-26) ไม่มีกรอบสีซ้อน · ใช้ object-contain ไม่ใช่ cover:
           รูปจัตุรัส (รูปจากแอปแม่แบบของร้าน) เต็มกรอบเท่ากันทุกอย่าง แต่ระบบไม่ได้บังคับให้รูปเป็นจัตุรัส
           (หน้าอัปโหลด/รับของย่อรูปโดยคงสัดส่วน) — รูปแนวตั้ง/แนวนอนจึงต้องแสดงครบ ห้ามตัดหัวท้ายเครื่อง
-          · บนรูปไม่มีป้ายของการ์ด เพราะรูปจริงมีป้ายมุมถ่าย ("ด้านหน้า") ฝังมาแล้ว */}
+          · รูปมือสองมีป้ายมุมถ่าย ("ด้านหน้า") ฝังมาในไฟล์ — การ์ดจึงไม่วางป้ายทับรูปมือสอง ·
+          มือ 1 ได้ป้าย "เครื่องใหม่" มุมซ้ายบน แยกจากมือสองได้ทันที (ส่วน B1) */}
       <div className="relative touch-pan-y select-none" {...swipe}>
         <Link to={to} className="block">
           <div
@@ -236,6 +255,12 @@ export function ProductCard({
               <div className="grid size-full place-items-center text-xs text-muted-foreground">
                 ไม่มีรูป
               </div>
+            )}
+
+            {isNew && (
+              <span className="absolute left-2 top-2 rounded-full bg-brand-green-dark px-2 py-0.5 font-head text-xs font-bold leading-snug text-white shadow-sm">
+                เครื่องใหม่
+              </span>
             )}
 
             {many && (
@@ -317,7 +342,7 @@ export function ProductCard({
           {conditionChip}
           <span className={INFO_CHIP}>{deviceOriginLabel(p.deviceOrigin)}</span>
           {tags.map((t) => (
-            <span key={t.label} className={INFO_CHIP}>
+            <span key={t.label} className={tagChipClass(t.label, t.warm)}>
               {t.warm && (
                 <span className="size-1.5 rounded-full shrink-0 bg-orange-500" aria-hidden />
               )}
@@ -339,19 +364,7 @@ export function ProductCard({
           {p.minPrice == null ? (
             <span className="text-sm font-medium text-muted-foreground">สอบถามราคา</span>
           ) : priceMode === 'installment' ? (
-            <PlanTiles
-              rate1={
-                hasQuote && p.downAmount != null
-                  ? {
-                      down: p.downAmount,
-                      monthly: p.monthlyPaymentFrom!,
-                      months: p.installmentMonths ?? null,
-                    }
-                  : null
-              }
-              rate2={p.rate2 ?? null}
-              freeDownOnly={freeDownOnly}
-            />
+            <PlanTiles rate1={rate1Plan} rate2={p.rate2 ?? null} freeDownOnly={freeDownOnly} />
           ) : priceMode === 'cash' ? (
             <>
               <div className="font-head text-xs font-medium text-muted-foreground leading-snug">
@@ -378,6 +391,17 @@ export function ProductCard({
           )}
         </Link>
 
+        {/* การ์ดที่โชว์สองราคามีชื่อกำกับ "เรท 1 / เรท 2" แล้ว — ลิงก์อธิบายอยู่นอก <Link> ของการ์ด
+            (ลิงก์ซ้อนลิงก์ไม่ได้) ไปหัวข้อเรทในหน้าวิธีผ่อน (ส่วน B2) */}
+        {twoRates && (
+          <Link
+            to="/how-it-works#rates"
+            className="mt-1.5 inline-block self-start font-head text-xs font-medium leading-snug text-brand-green-dark underline underline-offset-2 hover:no-underline"
+          >
+            เรทต่างกันอย่างไร
+          </Link>
+        )}
+
         <div className="mt-auto pt-3">
           {soldOut ? (
             <a
@@ -391,7 +415,7 @@ export function ProductCard({
           ) : (
             <Link
               to={to}
-              className="flex min-h-11 items-center justify-center px-2 py-2 text-center rounded-full bg-ink text-ink-foreground font-head text-sm font-semibold hover:bg-navy-900 transition-colors leading-snug"
+              className="flex min-h-11 items-center justify-center px-2 py-2 text-center rounded-full bg-brand-green-dark text-white font-head text-sm font-semibold hover:brightness-[0.92] active:brightness-[0.85] leading-snug"
             >
               {isUnit ? 'ดูเครื่องนี้' : 'เลือกเครื่อง'}
             </Link>

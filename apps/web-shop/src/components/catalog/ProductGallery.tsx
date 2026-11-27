@@ -130,7 +130,15 @@ export function ProductGallery({
               aria-pressed={active === i && !view360}
               className={`aspect-square min-h-11 overflow-hidden rounded-xl border bg-muted p-1 transition-colors focus-visible:outline-2 focus-visible:outline-primary ${active === i && !view360 ? 'border-primary ring-2 ring-primary/20' : 'border-border hover:border-primary'}`}
             >
-              <img src={src} alt="" loading="lazy" className="size-full object-contain" />
+              {/* รูปย่อโหลดทีหลังรูปหลักเสมอ (ส่วน B6) */}
+              <img
+                src={src}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                fetchPriority="low"
+                className="size-full object-contain"
+              />
             </button>
           ))}
         </div>

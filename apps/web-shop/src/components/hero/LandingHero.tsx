@@ -18,7 +18,7 @@ interface Props {
 
 export function LandingHero({ eyebrow, title, description, cta, steps }: Props) {
   return (
-    <section className="bg-gradient-to-b from-muted to-background">
+    <section className="bg-linear-to-b from-mint-tint to-white">
       <Container>
         <div className="py-10 md:py-16 space-y-10 leading-snug">
           <Reveal>
@@ -40,7 +40,7 @@ export function LandingHero({ eyebrow, title, description, cta, steps }: Props) 
               {steps.map((s, i) => (
                 <Reveal key={i}>
                   <div className="rounded-2xl bg-card border border-zinc-200 p-4 shadow-sm space-y-2">
-                    <div className="text-emerald-500">{s.icon}</div>
+                    <div className="text-brand-green">{s.icon}</div>
                     <div className="font-semibold">{s.title}</div>
                     <p className="text-sm text-muted-foreground">{s.description}</p>
                   </div>

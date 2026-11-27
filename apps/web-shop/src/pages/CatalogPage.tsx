@@ -340,13 +340,18 @@ export default function CatalogPage() {
           </div>
         </section>
 
-        <div id="catalog" className="grid lg:grid-cols-4 gap-4 md:gap-6 mt-4 md:mt-6">
-          {/* Sidebar — sticky on desktop, replaced by a dialog on mobile. Capped at the
-              viewport below the sticky header (top-20 + 1rem breathing room): a taller
-              column would hide the price filter until the end of the product list —
-              the filter box shrinks and scrolls inside instead. The waitlist card lives
-              at the end of the list on every screen size so the filters get the full height. */}
-          <div className="hidden lg:flex lg:flex-col lg:sticky lg:top-20 lg:self-start lg:max-h-[calc(100dvh-6rem)]">
+        <div
+          id="catalog"
+          className="grid lg:grid-cols-[18rem_minmax(0,1fr)] gap-4 md:gap-6 mt-4 md:mt-6"
+        >
+          {/* Sidebar — desktop only (mobile uses the dialog). One scroll for the whole page:
+              the filter box never scrolls inside itself (owner 2026-11-27 — two scrollbars side by
+              side were hard to use). Fixed 18rem so paired buttons fit at every desktop width.
+              It stays pinned under the header only when the screen is tall enough to show all of
+              it (~790px tall + top-20): pinned and taller than the screen would hide the price
+              buttons until the end of the list. Shorter screens let it scroll away with the page.
+              Raise the min-height below if the panel grows. */}
+          <div className="hidden lg:block lg:self-start [@media(min-height:57rem)]:lg:sticky lg:top-20">
             <FilterSidebar
               filters={filters}
               onChange={updateFilters}
@@ -356,7 +361,7 @@ export default function CatalogPage() {
             />
           </div>
 
-          <div className="lg:col-span-3 min-w-0">
+          <div className="min-w-0">
             {filters.deviceOrigin && (
               <button
                 type="button"

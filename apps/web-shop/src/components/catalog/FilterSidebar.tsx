@@ -46,9 +46,10 @@ export interface PlanControls {
 const PRICE_BANDS: Array<{ id: string; label: string; min?: number; max?: number }> = [
   { id: '', label: 'ทุกช่วงราคา' },
   { id: '0-10000', label: 'ไม่เกิน ฿10,000', max: 10000 },
-  { id: '10000-15000', label: '฿10,000 – ฿15,000', min: 10000, max: 15000 },
-  { id: '15000-20000', label: '฿15,000 – ฿20,000', min: 15000, max: 20000 },
-  { id: '20000-30000', label: '฿20,000 – ฿30,000', min: 20000, max: 30000 },
+  // "฿10,000–15,000" (ไม่มีเว้นวรรค ไม่มี ฿ ตัวที่สอง) — สองช่วงต่อแถวในแถบข้าง 18rem ได้ไม่ล้น
+  { id: '10000-15000', label: '฿10,000–15,000', min: 10000, max: 15000 },
+  { id: '15000-20000', label: '฿15,000–20,000', min: 15000, max: 20000 },
+  { id: '20000-30000', label: '฿20,000–30,000', min: 20000, max: 30000 },
   { id: '30000-', label: '฿30,000 ขึ้นไป', min: 30000 },
 ];
 
@@ -104,17 +105,21 @@ export function FilterSidebar({ filters, onChange, models, plan, onClearAll, bar
     onChange({ ...filters, condition: next });
   }
 
+  function clearAll() {
+    if (onClearAll) return onClearAll();
+    onChange({
+      search: filters.search,
+      condition: undefined,
+      model: undefined,
+      minPrice: undefined,
+      maxPrice: undefined,
+    });
+  }
+
+  // ทั้งแถบไม่มีแถบเลื่อนของตัวเอง — เลื่อนไปกับหน้า (เจ้าของ 2026-11-27 "ไม่สองส่วน สกอสองฝั่ง ใช้ยาก") ·
+  // ปุ่มคู่ (ประเภท / ไทย-นอก / ช่วงราคา) วางเรียงข้างกันบนจอกว้าง ให้ทั้งแถบสั้นพอติดจอได้
   const body = (
-    <div
-      className={cn(
-        'font-head space-y-5',
-        // แถบข้างติดจอและสูงไม่เกินจอ (CatalogPage) — เนื้อหาเลื่อนในกล่อง หัว "ตัวกรองสินค้า" ค้างอยู่ ·
-        // ขอบบน/ล่าง 0.75rem จางลง บอกว่ายังเลื่อนต่อได้ (ระยะ pt-4/pb-4 กว้างกว่า จึงไม่จางทับปุ่มตอนสุดทาง)
-        bare
-          ? 'pt-1'
-          : 'min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-4 scrollbar-thin mask-[linear-gradient(to_bottom,transparent,black_0.75rem,black_calc(100%-0.75rem),transparent)]',
-      )}
-    >
+    <div className={cn('font-head space-y-4', bare ? 'pt-1' : 'px-4 pb-4 pt-3.5')}>
       {/* "ดาวน์เท่าไหร่ ผ่อนเดือนละเท่าไหร่" is the first question in a Thai
           phone shop, so it sits above the filters. */}
       {plan && <PlanBlock plan={plan} bare={bare} />}
@@ -131,14 +136,14 @@ export function FilterSidebar({ filters, onChange, models, plan, onClearAll, bar
                 aria-pressed={on}
                 onClick={() => pickType(v)}
                 className={cn(
-                  'flex flex-col items-center justify-center gap-1.5 rounded-2xl px-1.5 py-3 text-center text-sm leading-snug text-balance transition-colors',
+                  'flex min-h-11 items-center justify-center gap-1.5 rounded-2xl px-1.5 py-1.5 text-center text-sm leading-snug text-balance transition-colors',
                   on
                     ? 'bg-accent text-accent-foreground ring-2 ring-inset ring-primary/45'
                     : 'bg-muted text-muted-foreground hover:bg-zinc-200',
                 )}
               >
                 <Icon
-                  className={cn('size-6', on ? 'text-primary' : 'text-zinc-400')}
+                  className={cn('size-5 shrink-0', on ? 'text-primary' : 'text-zinc-400')}
                   aria-hidden
                 />
                 {label}
@@ -172,14 +177,14 @@ export function FilterSidebar({ filters, onChange, models, plan, onClearAll, bar
         <span id={`${idPrefix}-origin-label`} className={labelCls}>
           เครื่องไทย / เครื่องนอก
         </span>
-        {/* แถบข้าง (lg+) แคบเกินวางสามปุ่มแถวเดียว — "ทั้งหมด" เต็มแถว แล้วไทย/นอก คู่กันใต้ลงไป */}
-        <div className="flex flex-wrap gap-1.5 lg:grid lg:grid-cols-2">
+        {/* แถบข้าง (lg+) — สามปุ่มแถวเดียว กว้างเท่ากัน */}
+        <div className="flex flex-wrap gap-1.5 lg:grid lg:grid-cols-3">
           {ORIGINS.map((o) => (
             <Pill
               key={o.label}
               active={filters.deviceOrigin === o.v}
               onClick={() => onChange({ ...filters, deviceOrigin: o.v })}
-              className={cn('px-3.5 lg:w-full lg:px-2', o.v === undefined && 'lg:col-span-2')}
+              className="px-3.5 lg:w-full lg:px-1"
             >
               {o.label}
             </Pill>
@@ -191,14 +196,14 @@ export function FilterSidebar({ filters, onChange, models, plan, onClearAll, bar
         <span id={`${idPrefix}-price-label`} className={labelCls}>
           ช่วงราคา
         </span>
-        {/* แถบข้าง (lg+) — ช่วงละแถว กว้างเท่ากัน แทนปุ่มยาวไม่เท่ากันที่ตกบรรทัดเป็นขั้นบันได */}
-        <div className="flex flex-wrap gap-1.5 lg:grid lg:grid-cols-1">
+        {/* แถบข้าง (lg+) — สองช่วงต่อแถว กว้างเท่ากัน (6 ช่วง = 3 แถว แทน 6 แถว) */}
+        <div className="flex flex-wrap gap-1.5 lg:grid lg:grid-cols-2">
           {PRICE_BANDS.map((b) => (
             <Pill
               key={b.id || 'all'}
               active={bandId(filters) === b.id}
               onClick={() => onChange({ ...filters, minPrice: b.min, maxPrice: b.max })}
-              className="num px-3.5 lg:w-full"
+              className="num px-3.5 lg:w-full lg:px-1"
             >
               {b.label}
             </Pill>
@@ -206,20 +211,11 @@ export function FilterSidebar({ filters, onChange, models, plan, onClearAll, bar
         </div>
       </div>
 
-      {active && (
+      {/* กล่องตัวกรองมือถือไม่มีหัวของแถบข้าง — ปุ่มล้างอยู่ท้ายรายการ */}
+      {bare && active && (
         <button
           type="button"
-          onClick={() =>
-            onClearAll
-              ? onClearAll()
-              : onChange({
-                  search: filters.search,
-                  condition: undefined,
-                  model: undefined,
-                  minPrice: undefined,
-                  maxPrice: undefined,
-                })
-          }
+          onClick={clearAll}
           className="inline-flex min-h-11 items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors leading-snug"
         >
           <X className="size-4" aria-hidden />
@@ -232,16 +228,28 @@ export function FilterSidebar({ filters, onChange, models, plan, onClearAll, bar
   if (bare) return <div>{body}</div>;
 
   return (
-    // min-h-0: ให้กล่องหดตามความสูงจอของคอลัมน์ได้ (ค่าตั้งต้นของ flex ไม่ยอมหดต่ำกว่าเนื้อหา) ·
-    // pb-3: เนื้อหาที่เลื่อนอยู่ไม่ถูกมุมโค้ง 40px ตัด
-    <aside className="flex min-h-0 flex-col overflow-hidden rounded-[40px] border border-border bg-card pb-3 shadow-lg">
-      <div className="flex shrink-0 items-center gap-2.5 px-4 pt-4">
+    <aside className="rounded-[40px] border border-border bg-card shadow-lg">
+      <div className="flex items-center gap-2.5 px-4 pt-4">
         <span className="size-7 rounded-xl bg-ink grid place-items-center shrink-0">
           <SlidersHorizontal className="size-4 text-ink-foreground" aria-hidden />
         </span>
-        <h2 className="text-base font-semibold text-foreground leading-snug">ตัวกรองสินค้า</h2>
+        <h2 className="min-w-0 flex-1 text-base font-semibold text-foreground leading-snug">
+          ตัวกรองสินค้า
+        </h2>
+        {/* ปุ่มล้างอยู่ที่หัวแถบ — เห็นตลอดไม่ว่าเลื่อนถึงไหน และไม่เพิ่มความสูงตอนมีตัวกรอง */}
+        {active && (
+          <button
+            type="button"
+            onClick={clearAll}
+            aria-label={copy.catalog.clearAll}
+            className="-mr-1 inline-flex min-h-11 shrink-0 items-center gap-1 rounded-full px-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors leading-snug focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+          >
+            <X className="size-4" aria-hidden />
+            ล้างตัวกรอง
+          </button>
+        )}
       </div>
-      <hr className="mt-3.5 mx-4 shrink-0 border-0 border-t border-border" />
+      <hr className="mt-3 mx-4 border-0 border-t border-border" />
       {body}
     </aside>
   );
@@ -252,7 +260,7 @@ function PlanBlock({ plan, bare }: { plan: PlanControls; bare?: boolean }) {
   const downId = bare ? 'mobile-filter-down' : 'filter-down';
   const monthsId = bare ? 'mobile-filter-months' : 'filter-months';
   return (
-    <div className="rounded-2xl bg-muted p-3.5">
+    <div className="rounded-2xl bg-muted p-3">
       <DownAmountField
         id={downId}
         hintId={`${downId}-hint`}
@@ -269,7 +277,7 @@ function PlanBlock({ plan, bare }: { plan: PlanControls; bare?: boolean }) {
       {(plan.freeDownCount > 0 || plan.freeDown) && (
         <label
           className={cn(
-            'mt-3 flex min-h-11 cursor-pointer items-center gap-2.5 rounded-xl px-3 text-sm leading-snug',
+            'mt-2.5 flex min-h-11 cursor-pointer items-center gap-2.5 rounded-xl px-3 text-sm leading-snug',
             plan.freeDown
               ? 'bg-sand-50 font-semibold text-sand-900 ring-1 ring-inset ring-promo/60'
               : 'bg-card text-foreground',
@@ -289,9 +297,9 @@ function PlanBlock({ plan, bare }: { plan: PlanControls; bare?: boolean }) {
       )}
 
       {plan.monthsOptions.length > 0 && (
-        <div className="mt-3">
+        <div className="mt-2.5">
           <label
-            className="block text-sm text-foreground mb-2 leading-snug"
+            className="block text-sm text-foreground mb-1.5 leading-snug"
             htmlFor={monthsId}
           >
             จำนวนงวด

@@ -61,14 +61,14 @@ describe('ตัวกรองโฉมใหม่', () => {
     expect(buttons.map((b) => b.textContent)).toEqual([
       'ทุกช่วงราคา',
       'ไม่เกิน ฿10,000',
-      '฿10,000 – ฿15,000',
-      '฿15,000 – ฿20,000',
-      '฿20,000 – ฿30,000',
+      '฿10,000–15,000',
+      '฿15,000–20,000',
+      '฿20,000–30,000',
       '฿30,000 ขึ้นไป',
     ]);
     expect(buttons.map(isPressed)).toEqual([false, false, false, false, false, true]);
     for (const b of buttons) expect(b.className).toContain('min-h-11');
-    fireEvent.click(within(price()).getByRole('button', { name: '฿10,000 – ฿15,000' }));
+    fireEvent.click(within(price()).getByRole('button', { name: '฿10,000–15,000' }));
     expect(onChange.mock.calls[0][0]).toMatchObject({ minPrice: 10000, maxPrice: 15000 });
     fireEvent.click(within(price()).getByRole('button', { name: 'ทุกช่วงราคา' }));
     expect(onChange.mock.calls[1][0].minPrice).toBeUndefined();
@@ -108,6 +108,28 @@ describe('ตัวกรองโฉมใหม่', () => {
   });
 });
 
+describe('แถบข้างพอดีหน้า — เลื่อนเดียวทั้งหน้า (เจ้าของ 2026-11-27)', () => {
+  it('ไม่มีกล่องเลื่อนของตัวเอง (ไม่มี overflow-y-auto / max-h)', () => {
+    const { container } = show({}, { plan: plan({ monthsOptions: [10, 12], freeDownCount: 3 }) });
+    const all = [container, ...Array.from(container.querySelectorAll('*'))] as Element[];
+    expect(all.filter((el) => /overflow-(y-)?(auto|scroll)|max-h-/.test(el.className.toString()))).toEqual([]);
+  });
+
+  it('ปุ่มล้างตัวกรองอยู่หัวแถบ (ข้างชื่อ "ตัวกรองสินค้า") ไม่ใช่ท้ายรายการ', () => {
+    show({ minPrice: 30000 }, { plan: plan(), onClearAll: vi.fn() });
+    const button = screen.getByRole('button', { name: 'ล้างตัวกรองทั้งหมด' });
+    const heading = screen.getByRole('heading', { name: 'ตัวกรองสินค้า' });
+    expect(button.parentElement).toBe(heading.parentElement);
+    expect(screen.getAllByRole('button', { name: /ล้างตัวกรอง/ })).toHaveLength(1);
+  });
+
+  it('กล่องตัวกรองมือถือ (bare) ไม่มีหัวแถบ — ปุ่มล้างอยู่ท้ายรายการ', () => {
+    show({ minPrice: 30000 }, { plan: plan(), onClearAll: vi.fn(), bare: true });
+    expect(screen.queryByRole('heading', { name: 'ตัวกรองสินค้า' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'ล้างตัวกรองทั้งหมด' })).toBeInTheDocument();
+  });
+});
+
 describe('id ไม่ซ้ำระหว่างแถบข้าง (desktop) กับกล่องตัวกรองมือถือ', () => {
   it('สอง instance → ไม่มี id ซ้ำ · label "รุ่น" / "จำนวนงวด" ผูกกับช่องของ instance ตัวเอง', () => {
     const models = [{ model: 'iPhone 15', count: 3 }];
@@ -143,7 +165,7 @@ describe('ช่วงราคาที่เลือกอยู่', () => {
       return <FilterSidebar filters={filters} onChange={setFilters} models={[]} />;
     }
     render(<Harness />);
-    const band = () => within(price()).getByRole('button', { name: '฿10,000 – ฿15,000' });
+    const band = () => within(price()).getByRole('button', { name: '฿10,000–15,000' });
     expect(isPressed(band())).toBe(true);
     fireEvent.click(band());
     expect(isPressed(band())).toBe(true);

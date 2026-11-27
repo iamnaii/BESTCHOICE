@@ -102,7 +102,7 @@ describe('storefront navigation glyphs', () => {
     expect(screen.getByLabelText('URL').textContent).toBe('/products?search=iPhone%2015#catalog');
 
     const internalLinks = footer.getAllByRole('link').filter((link) => link.getAttribute('href')?.startsWith('/'));
-    expect(internalLinks).toHaveLength(11);
+    expect(internalLinks).toHaveLength(12);
     expect(internalLinks.every((link) => !link.querySelector('svg, img'))).toBe(true);
     const footerLine = footer.getByRole('link', { name: /^LINE$/ });
     const textLine = footer.getByRole('link', { name: `LINE ${shopInfo.lineHandle}` });

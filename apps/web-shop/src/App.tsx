@@ -2,12 +2,14 @@ import { useEffect } from 'react';
 import { Routes, Route, useLocation, useParams, Navigate } from 'react-router';
 import { trackPageView } from './lib/tracking';
 import { ScrollToTop } from './components/ScrollToTop';
+import ConsentUi from './components/consent/ConsentUi';
 import HomePage from './pages/HomePage';
 import CatalogPage from './pages/CatalogPage';
 import ProductDetailPage from './pages/ProductDetailPage';
 import HowItWorksPage from './pages/HowItWorksPage';
 import ShippingPage from './pages/ShippingPage';
 import ReturnsPage from './pages/ReturnsPage';
+import PrivacyPage from './pages/PrivacyPage';
 import AboutPage from './pages/AboutPage';
 import ContactPage from './pages/ContactPage';
 import OrdersPage from './pages/OrdersPage';
@@ -57,6 +59,7 @@ export default function App() {
         <Route path="/how-it-works" element={<HowItWorksPage />} />
         <Route path="/shipping" element={<ShippingPage />} />
         <Route path="/returns" element={<ReturnsPage />} />
+        <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/about" element={<AboutPage />} />
         <Route path="/contact" element={<ContactPage />} />
         <Route path="/orders" element={<OrdersPage />} />
@@ -97,6 +100,7 @@ export default function App() {
         <Route path="/auth/line-callback" element={<LineCallbackPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
+      <ConsentUi />
     </>
   );
 }

@@ -100,16 +100,37 @@
   {
     "path": "apps/web-shop/src/components/hero/PhoneShowcase.tsx",
     "kind": "image-or-css-icon",
-    "context": "PhoneShowcase > figure > div > <div data-phone-back className=\"phone-showcase__back\"> > <img src=\"/logo-icon.svg\" alt=\"\" className=\"phone-showcase__back-logo\" /> > @src > \"/logo-icon.svg\"",
-    "reason": "BESTCHOICE identity printed on the illustrated handset.",
+    "context": "PhoneShowcase > figure > div > div > div > div > div > div > <div className=\"phone-showcase__wordmark\"> > <img src=\"/logo-icon.svg\" alt=\"\" width={313} height={281} /> > @src > \"/logo-icon.svg\"",
+    "reason": "BESTCHOICE identity on the brand screen drawn over the hero handset photo.",
     "category": "brand"
   },
   {
-    "path": "apps/web-shop/src/components/hero/PhoneShowcase.tsx",
+    "path": "apps/web-shop/src/components/hero/hero-phone-images.ts",
     "kind": "image-or-css-icon",
-    "context": "PhoneShowcase > figure > div > div > div > <div className=\"phone-showcase__wordmark\"> > <img src=\"/logo-icon.svg\" alt=\"\" /> > @src > \"/logo-icon.svg\"",
-    "reason": "BESTCHOICE identity printed on the illustrated handset.",
-    "category": "brand"
+    "context": "'@/assets/hero/hero-phone-back-184.webp?no-inline'",
+    "reason": "Home hero handset photo (back view, small size) — product imagery, not an icon.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web-shop/src/components/hero/hero-phone-images.ts",
+    "kind": "image-or-css-icon",
+    "context": "'@/assets/hero/hero-phone-back-262.webp?no-inline'",
+    "reason": "Home hero handset photo (back view, large size) — product imagery, not an icon.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web-shop/src/components/hero/hero-phone-images.ts",
+    "kind": "image-or-css-icon",
+    "context": "'@/assets/hero/hero-phone-front-240.webp?no-inline'",
+    "reason": "Home hero handset photo (front view, small size) — product imagery, not an icon.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web-shop/src/components/hero/hero-phone-images.ts",
+    "kind": "image-or-css-icon",
+    "context": "'@/assets/hero/hero-phone-front-344.webp?no-inline'",
+    "reason": "Home hero handset photo (front view, large size) — product imagery, not an icon.",
+    "category": "graphic"
   },
   {
     "path": "apps/web-shop/src/components/layout/ShopFooter.tsx",

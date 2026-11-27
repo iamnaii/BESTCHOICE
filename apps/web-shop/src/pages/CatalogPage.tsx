@@ -340,8 +340,12 @@ export default function CatalogPage() {
         </section>
 
         <div id="catalog" className="grid lg:grid-cols-4 gap-4 md:gap-6 mt-4 md:mt-6">
-          {/* Sidebar — sticky on desktop, replaced by a dialog on mobile. */}
-          <div className="hidden lg:flex lg:flex-col gap-4 lg:sticky lg:top-20 lg:self-start">
+          {/* Sidebar — sticky on desktop, replaced by a dialog on mobile. Capped at the
+              viewport below the sticky header (top-20 + 1rem breathing room): a taller
+              column would hide the price filter until the end of the product list —
+              the filter box shrinks and scrolls inside instead. The waitlist card lives
+              at the end of the list on every screen size so the filters get the full height. */}
+          <div className="hidden lg:flex lg:flex-col lg:sticky lg:top-20 lg:self-start lg:max-h-[calc(100dvh-6rem)]">
             <FilterSidebar
               filters={filters}
               onChange={updateFilters}
@@ -349,7 +353,6 @@ export default function CatalogPage() {
               models={models}
               plan={priceMode === 'installment' ? plan : undefined}
             />
-            <WaitlistCard />
           </div>
 
           <div className="lg:col-span-3 min-w-0">
@@ -583,9 +586,9 @@ export default function CatalogPage() {
               </div>
             )}
 
-            {/* Mobile gets the waitlist block at the end of the list instead of
-                in a sidebar it does not have. */}
-            <div className="lg:hidden mt-6">
+            {/* Waitlist block at the end of the list — "didn't find the model?" comes
+                after browsing, and keeps the sticky filter column free for filters. */}
+            <div className="mt-6 lg:mx-auto lg:mt-10 lg:max-w-md">
               <WaitlistCard />
             </div>
           </div>

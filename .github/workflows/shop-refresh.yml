@@ -1,0 +1,235 @@
+name: หน้าร้าน — build ใหม่วันละ 2 รอบ (ราคา/สต๊อกที่ Google เห็น)
+
+# หน้าร้านเป็น HTML ที่ prerender ตอน build (apps/web-shop/scripts/prerender.mjs ดึงข้อมูลจาก API จริง) — เดิม build
+# เฉพาะตอนมีโค้ดเข้า main ⇒ ราคา สต๊อก รายการเครื่อง และ sitemap ที่ Google / AI เห็นค้างตั้งแต่ deploy ครั้งล่าสุด
+# (คนที่เปิดเว็บเห็นของสดอยู่แล้ว — หน้าโหลดข้อมูลใหม่หลังเปิด ค้างเฉพาะ HTML ดิบที่บอทอ่าน)
+#
+# รอบนี้ build ใหม่จาก "คอมมิตที่ขึ้นเว็บอยู่" (ไม่ใช่หัว main) แล้ว deploy เฉพาะ hosting:shop
+# ไม่แตะ API / ฐานข้อมูล / หลังร้าน · แผนและเหตุผลทุกขั้น: docs/superpowers/plans/2026-11-27-shop-daily-refresh.md
+#
+#   1. หาคอมมิตที่ขึ้นเว็บ + deploy หลัก (deploy-gcp.yml) กำลังรันไหม — กำลังรัน/รอคิว = ข้ามรอบนี้
+#   2. build:prerender โหมดเข้ม PRERENDER_STRICT=1 — ข้อมูลจาก API ไม่ครบ = ล้ม
+#   3. หน้าเครื่องใน build เหลือน้อยกว่าครึ่งของที่ขึ้นเว็บอยู่ = ล้ม (กัน API ตอบรายการขาดแบบไม่ error)
+#   4. ตรวจข้อ 1 ซ้ำก่อน deploy — deploy หลักเริ่ม หรือมีคอมมิตใหม่ขึ้นเว็บระหว่างนั้น = ข้าม (ไม่ deploy โค้ดเก่าทับ)
+#   5. firebase deploy --only hosting:shop แล้วตรวจหน้าร้านขึ้น + sitemap บนเว็บตรงกับที่ build
+#   ล้มขั้นไหน = เว็บคงของเดิม + GitHub ส่งอีเมลแจ้ง run ล้ม · ข้ามรอบ = run เขียว เหตุผลอยู่ในสรุปของ run
+#
+# กดรันเอง (Actions › หน้าร้าน — build ใหม่… › Run workflow): ติ๊ก allow_big_drop เมื่อขายออกจริงเกินครึ่งร้าน
+
+on:
+  schedule:
+    # เวลา UTC: 06:00 น. ไทย (ก่อนร้านเปิด) และ 15:00 น. ไทย (หลังช่วงขายเช้า) — เจ้าของเลือก 28 พ.ย. 2569
+    # GitHub เริ่มรอบตั้งเวลาช้าได้หลายนาทีช่วงคนใช้เยอะ
+    - cron: '0 23 * * *'
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+    inputs:
+      allow_big_drop:
+        description: 'ยอมให้หน้าเครื่องลดเกินครึ่งจากที่ขึ้นเว็บอยู่ (ใช้เมื่อขายออกจริงจำนวนมาก)'
+        type: boolean
+        default: false
+  # PR ที่แตะด่านของรอบนี้ = รันเทสต์อย่างเดียว ไม่ build ไม่ deploy
+  # (เทสต์ของหน้าร้านด้วย vitest ไม่ได้รันใน CI — ด่านของรอบนี้จึงเป็น node --test ที่รันตรงนี้)
+  pull_request:
+    paths:
+      - .github/workflows/shop-refresh.yml
+      - .github/workflows/deploy-gcp.yml
+      - tools/shop-refresh/**
+      - apps/web-shop/scripts/**
+
+# group ของตัวเองเท่านั้น — ห้ามใช้ group ร่วมกับ deploy-gcp.yml: GitHub ยกเลิก run ที่รอคิวอยู่เมื่อมี run ใหม่
+# เข้า group เดียวกัน ⇒ รอบตั้งเวลาอาจไปยกเลิก deploy จริงที่รอคิว (ใช้การเช็ค busy ในขั้น 1 และ 4 แทน)
+concurrency:
+  group: shop-refresh
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read # อ่าน run/job ของ deploy-gcp.yml (tools/shop-refresh/live-deploy.mjs)
+
+env:
+  NODE_VERSION: '24'
+
+jobs:
+  tests:
+    name: เทสต์ด่านของรอบ build ตั้งเวลา
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      # ไม่ต้อง npm ci — ทั้งสามไฟล์ไม่มี dependency
+      - name: node --test
+        run: >-
+          node --test
+          tools/shop-refresh/sitemap-products.test.mjs
+          tools/shop-refresh/live-deploy.test.mjs
+          apps/web-shop/scripts/prerender-products.test.mjs
+
+  refresh:
+    name: build + deploy หน้าร้าน
+    needs: tests
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    # GH_TOKEN ใส่เฉพาะสองขั้นที่ถาม GitHub API — ไม่ให้โค้ดใน node_modules ตอน npm ci / build เห็น
+    # (เหตุผลเดียวกับที่ Authenticate to GCP อยู่หลัง build)
+    env:
+      NODE_OPTIONS: --max-old-space-size=6144
+      SHOP_SITEMAP: https://www.bestchoicephone.com/sitemap.xml
+      SHOP_SITEMAP_FALLBACK: https://bestchoicephone-shop.web.app/sitemap.xml
+      BUILT_SITEMAP: apps/web-shop/dist/sitemap.xml
+    steps:
+      # เครื่องมือมาจากคอมมิตของ workflow นี้ (คอมมิตที่ขึ้นเว็บอาจเก่ากว่าเครื่องมือ) — คัดลอกไว้ใน RUNNER_TEMP
+      # ก่อน checkout คอมมิตที่ขึ้นเว็บลงที่ workspace
+      - uses: actions/checkout@v4
+        with:
+          path: refresh-tools
+          sparse-checkout: tools/shop-refresh
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: เตรียมเครื่องมือ
+        run: |
+          mkdir -p "$RUNNER_TEMP/shop-refresh"
+          cp refresh-tools/tools/shop-refresh/*.mjs "$RUNNER_TEMP/shop-refresh/"
+
+      - name: หาคอมมิตที่ขึ้นเว็บอยู่ + deploy หลักกำลังรันไหม
+        id: live
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node "$RUNNER_TEMP/shop-refresh/live-deploy.mjs"
+
+      - name: รอบนี้ต้องทำไหม
+        env:
+          LIVE_SHA: ${{ steps.live.outputs.sha }}
+          LIVE_RUN: ${{ steps.live.outputs.run_url }}
+          BUSY: ${{ steps.live.outputs.busy }}
+          BUSY_URL: ${{ steps.live.outputs.busy_url }}
+        run: |
+          {
+            echo "## หน้าร้าน — build ใหม่"
+            echo "คอมมิตที่ขึ้นเว็บอยู่: \`$LIVE_SHA\` ($LIVE_RUN)"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$BUSY" = "true" ]; then
+            echo "SKIP=deploy หลักกำลังรันหรือรอคิว ($BUSY_URL) — ข้ามรอบนี้ deploy หลักจะ build หน้าร้านพร้อมข้อมูลใหม่ให้เอง" >> "$GITHUB_ENV"
+          fi
+
+      - name: checkout คอมมิตที่ขึ้นเว็บอยู่
+        if: ${{ !env.SKIP }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.live.outputs.sha }}
+
+      # คอมมิตที่ขึ้นเว็บก่อนมีรอบนี้ไม่รู้จัก PRERENDER_STRICT ⇒ build แบบ best effort (สินค้าอาจหายถ้า API สะดุด)
+      # จึงข้ามจนกว่า deploy หลักจะขึ้นคอมมิตที่มีโหมดเข้ม
+      - name: คอมมิตที่ขึ้นเว็บรองรับรอบตั้งเวลาไหม
+        if: ${{ !env.SKIP }}
+        run: |
+          if ! grep -q 'PRERENDER_STRICT' apps/web-shop/scripts/prerender.mjs; then
+            echo "SKIP=คอมมิตที่ขึ้นเว็บยังไม่มีโหมดเข้มของ prerender — ข้ามจนกว่า deploy หลักจะขึ้นคอมมิตที่มี" >> "$GITHUB_ENV"
+          fi
+
+      - uses: ./.github/actions/setup-deps
+        if: ${{ !env.SKIP }}
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          prisma: shop # เหมือน build-web ของ deploy-gcp.yml
+
+      - name: Install Playwright Chromium (shop prerender)
+        if: ${{ !env.SKIP }}
+        uses: ./.github/actions/playwright-chromium
+
+      - name: build หน้าร้าน (prerender โหมดเข้ม)
+        if: ${{ !env.SKIP }}
+        env:
+          PRERENDER_STRICT: '1'
+        run: npm run build:prerender --workspace=apps/web-shop
+
+      - name: หน้าเครื่องไม่หายเกินครึ่ง
+        if: ${{ !env.SKIP }}
+        env:
+          ALLOW_DROP: ${{ inputs.allow_big_drop && '--allow-drop' || '' }}
+        run: |
+          # $ALLOW_DROP ไม่ใส่เครื่องหมายคำพูดโดยตั้งใจ — ว่าง = ไม่ส่งอาร์กิวเมนต์
+          node "$RUNNER_TEMP/shop-refresh/sitemap-products.mjs" check-drop "$BUILT_SITEMAP" "$SHOP_SITEMAP" $ALLOW_DROP
+
+      # ติดตั้ง CLI ก่อนตรวจซ้ำ ให้ช่วงระหว่างตรวจซ้ำกับ deploy สั้นที่สุด
+      - name: Authenticate to GCP
+        if: ${{ !env.SKIP }}
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - name: Install Firebase CLI
+        if: ${{ !env.SKIP }}
+        run: npm install -g firebase-tools@latest
+
+      - name: ตรวจซ้ำก่อน deploy
+        if: ${{ !env.SKIP }}
+        id: recheck
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node "$RUNNER_TEMP/shop-refresh/live-deploy.mjs"
+
+      - name: ยัง deploy ได้ไหม
+        if: ${{ !env.SKIP }}
+        env:
+          BUILT_SHA: ${{ steps.live.outputs.sha }}
+          NOW_SHA: ${{ steps.recheck.outputs.sha }}
+          BUSY: ${{ steps.recheck.outputs.busy }}
+          BUSY_URL: ${{ steps.recheck.outputs.busy_url }}
+        run: |
+          if [ "$BUSY" = "true" ]; then
+            echo "SKIP=deploy หลักเริ่มระหว่างรอบนี้ ($BUSY_URL) — ไม่ deploy ทับ" >> "$GITHUB_ENV"
+          elif [ "$NOW_SHA" != "$BUILT_SHA" ]; then
+            echo "SKIP=มีคอมมิตใหม่ขึ้นเว็บระหว่างรอบนี้ ($NOW_SHA) — ไม่ deploy โค้ดเก่าทับ" >> "$GITHUB_ENV"
+          fi
+
+      - name: deploy หน้าร้าน (hosting:shop เท่านั้น)
+        if: ${{ !env.SKIP }}
+        env:
+          PROJECT: ${{ secrets.GCP_PROJECT_ID }}
+          LIVE_SHA: ${{ steps.live.outputs.sha }}
+        run: |
+          firebase deploy \
+            --only hosting:shop \
+            --project "$PROJECT" \
+            --message "shop-refresh run ${{ github.run_id }} · ${LIVE_SHA:0:9}" \
+            --non-interactive
+
+      - name: หน้าร้านขึ้นจริง + sitemap ตรงกับที่ build
+        if: ${{ !env.SKIP }}
+        run: |
+          set -uo pipefail
+          # ด่านเดียวกับ "Verify shop is actually live" ของ deploy-gcp.yml (เหตุผลของ case/pipefail อยู่ที่นั่น)
+          check() {
+            body=$(curl -fsS --max-time 20 "$1" 2>/dev/null || true)
+            case "$body" in *BESTCHOICE*) return 0 ;; *) return 1 ;; esac
+          }
+          www_ok=0; legacy_ok=0
+          for i in 1 2 3; do
+            check https://www.bestchoicephone.com/ && www_ok=1
+            check https://bestchoicephone-shop.web.app/ && legacy_ok=1
+            [ "$www_ok" = 1 ] && break
+            echo "รอบ $i: www ยังไม่ขึ้น (web.app=$legacy_ok) — รอ 15 วิ"
+            sleep 15
+          done
+          echo "www=$www_ok legacy=$legacy_ok"
+          if [ "$www_ok" != 1 ] && [ "$legacy_ok" != 1 ]; then
+            echo "::error::หน้าร้านไม่ขึ้นทั้ง www และ bestchoicephone-shop.web.app — hosting deploy น่าจะพังจริง"
+            exit 1
+          fi
+          node "$RUNNER_TEMP/shop-refresh/sitemap-products.mjs" verify-live "$BUILT_SITEMAP" "$SHOP_SITEMAP" "$SHOP_SITEMAP_FALLBACK"
+          count=$(node "$RUNNER_TEMP/shop-refresh/sitemap-products.mjs" count "$BUILT_SITEMAP")
+          echo "deploy แล้ว — หน้าเครื่องใน sitemap $count หน้า" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: สรุปเมื่อข้ามรอบ
+        if: ${{ always() && env.SKIP }}
+        run: |
+          echo "ข้ามรอบนี้ — $SKIP" >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice::$SKIP"

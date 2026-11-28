@@ -1953,13 +1953,6 @@
     "category": "content"
   },
   {
-    "path": "apps/web/src/pages/StickerPrintPage/index.tsx",
-    "kind": "unicode-symbol",
-    "context": "StickerPrintPage > div > div > div > <section className=\"min-w-0 rounded-xl border border-border bg-card p-4\"> > <p className=\"mt-3 text-xs text-muted-foreground leading-snug\"> > เรียงตามวันที่รับเข้า ใหม่ → เก่า เป็นค่าเริ่มต้น · กดหัวคอลัมน์ รุ่น / เงินสด / รับเข้า เพื่อเรียงอย่างอื่น · ตัวเลขเรท 1 (ผ่อนกับร้าน) และเรท 2 (ไฟแนนซ์) เป็นชุดเดียวกับหน้ารายละเอียดสินค้า",
-    "reason": "Printed sticker workflow help describes the default sort direction.",
-    "category": "content"
-  },
-  {
     "path": "apps/web/src/pages/StickerPrintPage/stickerSizes.ts",
     "kind": "unicode-symbol",
     "context": "STICKER_SIZES > '60x40' > label > '60 × 40 มม.'",

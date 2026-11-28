@@ -1,0 +1,307 @@
+/*
+ * แบนเนอร์หัวหน้ารายการสินค้า: ข้อความซ้าย รูป iPhone จริงสองเครื่องขวา (แบบร่างที่เจ้าของเคาะ 2026-11-27)
+ * สี ฟอนต์ ความโค้งมุม และพื้นไล่สีเขียวมินต์ คงตามแบนเนอร์เดิม
+ * อัตราส่วนรูปและกรอบกระจกมาจาก catalog-banner-images.ts ผ่านตัวแปร --cb-*
+ * การเคลื่อนไหวใช้ transform + opacity เท่านั้น · พื้นที่ภาพจองขนาดตายตัว ไม่ขึ้นกับการโหลดรูป
+ */
+.catalog-banner {
+  --cb-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  position: relative;
+  border-radius: 24px;
+  border: 1px solid var(--color-border);
+  background: linear-gradient(to bottom right, var(--color-mint-tint), var(--color-card));
+  box-shadow: var(--shadow-sm);
+  padding: 12px 16px;
+}
+
+.catalog-banner__title {
+  margin: 0;
+  /* จอแคบ: เว้นที่ให้ภาพที่มุมขวาบน */
+  padding-right: 92px;
+  font-size: 20px;
+  line-height: 1.375;
+  font-weight: 700;
+  color: var(--color-ink);
+  /* จุดตัดบรรทัดคุมด้วยกลุ่มคำ ไม่ใช้ตัวจัดสมดุลของหัวข้อ */
+  text-wrap: wrap;
+}
+.catalog-banner__line {
+  display: block;
+}
+.catalog-banner__line--accent {
+  color: var(--color-brand-green-dark);
+}
+.catalog-banner__nobr {
+  white-space: nowrap;
+}
+
+.catalog-banner__chips {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.catalog-banner__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  padding: 3px 10px 3px 7px;
+  border-radius: 999px;
+  background: var(--color-card);
+  border: 1px solid var(--color-emerald-100);
+  color: var(--color-ink);
+  font-size: 12px;
+  line-height: 1.5;
+  font-weight: 500;
+}
+.catalog-banner__chip svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  color: var(--color-brand-green);
+}
+
+/* พื้นที่ภาพ — จอแคบ: มุมขวาบน สูงเท่าหัวข้อ 3 บรรทัด ป้ายอยู่ใต้ภาพ · ยอดเครื่องล้นขอบบนได้เล็กน้อย */
+.catalog-banner__stage {
+  position: absolute;
+  right: 8px;
+  top: -10px;
+  width: 92px;
+  height: 110px;
+  margin: 0;
+  pointer-events: none;
+}
+.catalog-banner__slot {
+  position: absolute;
+}
+/* เครื่องหลังเอียงสวนทาง และถูกเครื่องหน้าบังราวหนึ่งในสาม */
+.catalog-banner__slot--back {
+  left: 6%;
+  top: 9%;
+  height: 86%;
+  aspect-ratio: var(--cb-back-ratio);
+  transform: rotate(-8deg);
+}
+.catalog-banner__slot--front {
+  left: 38%;
+  top: 3%;
+  height: 92%;
+  aspect-ratio: var(--cb-front-ratio);
+  transform: rotate(10deg);
+  z-index: 1;
+}
+.catalog-banner__enter,
+.catalog-banner__layer,
+.catalog-banner__float {
+  width: 100%;
+  height: 100%;
+}
+.catalog-banner__float {
+  position: relative;
+}
+.catalog-banner__photo {
+  display: block;
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 10px 12px color-mix(in srgb, var(--color-ink) 22%, transparent));
+}
+
+/* แถบแสง: อยู่ในกรอบกระจกหน้าจอของเครื่องหน้าเท่านั้น ขยับด้วย transform */
+.catalog-banner__shine {
+  position: absolute;
+  inset: var(--cb-glass-inset);
+  border-radius: var(--cb-glass-radius);
+  overflow: hidden;
+}
+.catalog-banner__shine::before {
+  content: '';
+  position: absolute;
+  top: -20%;
+  left: 0;
+  width: 60%;
+  height: 140%;
+  background: linear-gradient(
+    100deg,
+    transparent 0%,
+    rgb(255 255 255 / 0) 30%,
+    rgb(255 255 255 / 0.5) 50%,
+    transparent 70%
+  );
+  transform: translate3d(-180%, 0, 0);
+}
+
+@media (min-width: 640px) {
+  .catalog-banner {
+    padding: 20px 24px;
+  }
+  .catalog-banner__copy {
+    padding-right: 190px;
+  }
+  .catalog-banner__title {
+    padding-right: 0;
+    font-size: 30px;
+  }
+  .catalog-banner__chips {
+    margin-top: 12px;
+    gap: 8px;
+  }
+  .catalog-banner__chip {
+    padding: 4px 12px 4px 8px;
+    font-size: 13px;
+  }
+  /* จอกลาง: บรรทัดสีเขียวแยกเป็นสองบรรทัดเสมอ (ยอดดาวน์ / จำนวนงวด) — ความสูงแบนเนอร์ไม่ขึ้นกับความยาวยอดดาวน์ */
+  .catalog-banner__line--accent .catalog-banner__nobr {
+    display: block;
+  }
+  /* ภาพอยู่ขวา กึ่งกลางแนวตั้ง ขนาดตายตัว */
+  .catalog-banner__stage {
+    right: 20px;
+    top: calc(50% - 88px);
+    width: 170px;
+    height: 176px;
+  }
+}
+
+@media (min-width: 768px) {
+  .catalog-banner {
+    border-radius: 40px;
+    padding: 32px 40px;
+  }
+  .catalog-banner__copy {
+    padding-right: 250px;
+  }
+  .catalog-banner__chips {
+    margin-top: 14px;
+  }
+  .catalog-banner__chip {
+    font-size: 14px;
+  }
+  .catalog-banner__stage {
+    right: 32px;
+    top: calc(50% - 109px);
+    width: 236px;
+    height: 218px;
+  }
+  .catalog-banner__photo {
+    filter: drop-shadow(0 16px 18px color-mix(in srgb, var(--color-ink) 24%, transparent));
+  }
+}
+
+/* จอใหญ่ (ขนาดตามแบบร่าง): หัวข้อบรรทัดล่างอยู่บรรทัดเดียว ภาพสูงเท่าแบนเนอร์และล้นขอบบนเล็กน้อย */
+@media (min-width: 1024px) {
+  .catalog-banner__copy {
+    padding-right: 280px;
+  }
+  .catalog-banner__title {
+    font-size: 36px;
+  }
+  .catalog-banner__line--accent .catalog-banner__nobr {
+    display: inline;
+  }
+  .catalog-banner__stage {
+    right: 44px;
+    top: -18px;
+  }
+}
+
+/* ───── การเคลื่อนไหว: transform + opacity เท่านั้น ───── */
+@keyframes catalog-banner-rise {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 14px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes catalog-banner-in-back {
+  from {
+    opacity: 0;
+    transform: translate3d(56px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes catalog-banner-in-front {
+  from {
+    opacity: 0;
+    transform: translate3d(72px, 0, 0) rotate(16deg);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes catalog-banner-bob {
+  0%,
+  100% {
+    transform: translate3d(0, calc(var(--cb-amp) * -1), 0);
+  }
+  50% {
+    transform: translate3d(0, var(--cb-amp), 0);
+  }
+}
+@keyframes catalog-banner-sweep {
+  0% {
+    transform: translate3d(-180%, 0, 0);
+  }
+  18%,
+  100% {
+    transform: translate3d(280%, 0, 0);
+  }
+}
+
+/* ค่าตั้งต้น = ภาพนิ่งที่เห็นครบ · สั่งขยับเฉพาะเมื่อผู้ใช้ไม่ได้ขอลดการเคลื่อนไหว */
+@media (prefers-reduced-motion: no-preference) {
+  /* 1) ข้อความเข้าจอ: หัวข้อทีละบรรทัด ห่าง 80 มิลลิวินาที แล้วป้ายทีละป้าย */
+  .catalog-banner__line {
+    animation: catalog-banner-rise 420ms var(--cb-ease) both;
+  }
+  .catalog-banner__line + .catalog-banner__line {
+    animation-delay: 80ms;
+  }
+  .catalog-banner__chip {
+    animation: catalog-banner-rise 360ms var(--cb-ease) 200ms both;
+  }
+  .catalog-banner__chip:nth-child(2) {
+    animation-delay: 270ms;
+  }
+  .catalog-banner__chip:nth-child(3) {
+    animation-delay: 340ms;
+  }
+
+  /* 2) ภาพเข้าจอ: เครื่องหลังเลื่อนเข้าจากขวาก่อน เครื่องหน้าตามแล้วหมุนเข้าที่ จบที่ 680 มิลลิวินาที */
+  .catalog-banner__slot--back .catalog-banner__enter {
+    animation: catalog-banner-in-back 420ms var(--cb-ease) both;
+  }
+  .catalog-banner__slot--front .catalog-banner__enter {
+    animation: catalog-banner-in-front 520ms var(--cb-ease) 160ms both;
+  }
+
+  /* 3) ลอยขึ้นลง: เครื่องหน้า 8 พิกเซล รอบละ 5.5 วินาที · เครื่องหลัง 6 พิกเซล รอบละ 6 วินาที เหลื่อมจังหวะ */
+  .catalog-banner__slot--front .catalog-banner__float {
+    --cb-amp: 4px;
+    animation: catalog-banner-bob 5.5s ease-in-out infinite;
+  }
+  .catalog-banner__slot--back .catalog-banner__float {
+    --cb-amp: 3px;
+    animation: catalog-banner-bob 6s ease-in-out -2.4s infinite;
+  }
+
+  /* 4) แถบแสงผ่านหน้าจอเครื่องหน้า ทุก 6 วินาที */
+  .catalog-banner__shine::before {
+    animation: catalog-banner-sweep 6s cubic-bezier(0.4, 0, 0.2, 1) 1.2s infinite;
+  }
+
+  /* แบนเนอร์เลื่อนพ้นจอ = หยุดทุกวง */
+  .catalog-banner[data-offscreen] .catalog-banner__float,
+  .catalog-banner[data-offscreen] .catalog-banner__shine::before {
+    animation-play-state: paused;
+  }
+}

@@ -9,7 +9,7 @@ import { copy, shopInfo } from '@/lib/copy';
 import { downFloorText, useKnownDownFloor } from '@/hooks/useDownFloor';
 
 // ห้ามซ้ำคำใน h1 (ไม่เช็กบูโร / ดาวน์เริ่ม … / ไม่ต้องมีผู้ค้ำ) — chip มีไม่กี่สล็อต ใช้ขาย claim ที่พาดหัวยังไม่พูดถึง
-const HERO_CHIPS = ['ไม่ต้องมีบัตรเครดิต', 'ผ่อนสูงสุด 15 งวด', 'มือสองประกันร้าน 60 วัน'];
+const HERO_CHIPS = ['ไม่ต้องมีบัตรเครดิต', 'ผ่อนสูงสุด 15 งวด', 'มือ 2 ประกันร้าน 60 วัน'];
 
 // เอียงตามเมาส์: องศาสูงสุด (ry/rx) และระยะเลื่อน px (dx/dy) ต่อชิ้น — เครื่องหน้ามากสุด ไม่เกิน 6°
 const HERO_TILT = [
@@ -106,7 +106,7 @@ export function HomeHero() {
               data-hero-copy
               className="font-head text-xs font-semibold tracking-wide text-primary leading-snug"
             >
-              BESTCHOICE · ร้าน iPhone ลพบุรี
+              BESTCHOICE · ผ่อนไอโฟนลพบุรี
             </p>
             <h1
               id="home-hero-title"

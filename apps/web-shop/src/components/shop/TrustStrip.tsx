@@ -34,7 +34,7 @@ const defaultItems = (floor: DownFloor | null): Item[] => [
   downTrustItem(floor),
   {
     icon: <ShieldCheck className="size-6" />,
-    title: 'มือสองประกันร้าน 60 วัน',
+    title: 'มือ 2 ประกันร้าน 60 วัน',
     description: 'เครื่องใหม่ใช้ประกันศูนย์',
   },
   {

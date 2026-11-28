@@ -60,7 +60,7 @@ const whyUsItems = (downFloor: DownFloor | null) => [
       },
   {
     icon: <ShieldCheck className="size-7" />,
-    title: 'มือสองประกันร้าน 60 วัน',
+    title: 'มือ 2 ประกันร้าน 60 วัน',
     description: 'ตรวจ 30 จุดก่อนส่งมอบ มีปัญหาซ่อม/เปลี่ยนให้ฟรี · เครื่องใหม่ใช้ประกันศูนย์',
   },
   {
@@ -145,7 +145,7 @@ export default function HomePage() {
           {/* ย่อหน้าแนะนำร้าน (ผลตรวจ SEO ข้อ 12) — อยู่ใน HTML ที่ prerender ให้ Google/AI อ่าน
               ข้อความรวม = copy.home.shopSummary ทุกตัวอักษร (เทสต์ตรวจ) · เวลาเปิดและเบอร์โทรห้ามตัดกลางบรรทัด */}
           <p className="reading-block mb-6 max-w-3xl text-muted-foreground md:mb-8">
-            {copy.home.shopSummaryLead} หน้าร้านอยู่ {shopInfo.address}{' '}
+            {copy.home.shopSummaryLead} อยู่{shopInfo.street}{' '}
             <span className="whitespace-nowrap">{shopInfo.hours}</span> ทักไลน์{' '}
             {shopInfo.lineHandle} หรือโทร{' '}
             <span className="whitespace-nowrap">{shopInfo.phoneDisplay}</span>
@@ -181,7 +181,7 @@ export default function HomePage() {
         <Container>
           <SectionHeader
             title={copy.home.whyUsTitle}
-            description="ซื้อ iPhone มือ 1 และมือสองอย่างสบายใจ ผ่อนง่าย รับประกันจริง"
+            description="ซื้อ iPhone มือ 1 และมือ 2 อย่างสบายใจ ผ่อนง่าย รับประกันจริง"
           />
           <StaggerChildren className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {whyUsItems(downFloor).map((item, i) => (

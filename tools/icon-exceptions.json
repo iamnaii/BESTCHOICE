@@ -105,6 +105,34 @@
     "category": "brand"
   },
   {
+    "path": "apps/web-shop/src/components/catalog/catalog-banner-images.ts",
+    "kind": "image-or-css-icon",
+    "context": "'@/assets/catalog/catalog-phone-back-150.webp?no-inline'",
+    "reason": "Catalog banner handset photo (back view, small size) — product imagery, not an icon.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web-shop/src/components/catalog/catalog-banner-images.ts",
+    "kind": "image-or-css-icon",
+    "context": "'@/assets/catalog/catalog-phone-back-300.webp?no-inline'",
+    "reason": "Catalog banner handset photo (back view, large size) — product imagery, not an icon.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web-shop/src/components/catalog/catalog-banner-images.ts",
+    "kind": "image-or-css-icon",
+    "context": "'@/assets/catalog/catalog-phone-front-160.webp?no-inline'",
+    "reason": "Catalog banner handset photo (front view, small size) — product imagery, not an icon.",
+    "category": "graphic"
+  },
+  {
+    "path": "apps/web-shop/src/components/catalog/catalog-banner-images.ts",
+    "kind": "image-or-css-icon",
+    "context": "'@/assets/catalog/catalog-phone-front-320.webp?no-inline'",
+    "reason": "Catalog banner handset photo (front view, large size) — product imagery, not an icon.",
+    "category": "graphic"
+  },
+  {
     "path": "apps/web-shop/src/components/hero/hero-phone-images.ts",
     "kind": "image-or-css-icon",
     "context": "'@/assets/hero/hero-phone-back-184.webp?no-inline'",
@@ -264,13 +292,6 @@
     "context": "SORTS > label > 'ราคา สูง → ต่ำ'",
     "reason": "Text names the sort order and its two endpoints.",
     "category": "content"
-  },
-  {
-    "path": "apps/web-shop/src/pages/CatalogPage.tsx",
-    "kind": "inline-svg",
-    "context": "CatalogPage > ShopLayout > Container > section > <div className=\"flex items-center gap-6 md:gap-10\"> > <div className=\"hidden sm:block shrink-0\"> > <svg width=\"96\" height=\"96\" viewBox=\"0 0 118 118\" aria-hidden=\"true\"> <rect x=\"30\" y=\"10\" width=\"58\" height=\"98\" rx=\"13\" fill=\"var(--color-brand-green)\" /> <rec… sha256:8701f9201a932cebe6cb47661f77158bc94d8d516512c66f9ee028d69c1ae489",
-    "reason": "Catalog hero illustration of consumer phones.",
-    "category": "graphic"
   },
   {
     "path": "apps/web-shop/src/pages/HomePage.tsx",

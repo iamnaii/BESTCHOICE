@@ -7,6 +7,9 @@ import CatalogPage from './CatalogPage';
 
 const { get } = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock('@/lib/api', () => ({ api: { get } }));
+// แบนเนอร์หัวหน้าถามยอดดาวน์ตามสต๊อกจาก /api/shop/products ด้วย (คำขอเดียวกับแถบโปรใน ShopLayout ที่จำลองไว้ข้างล่าง)
+// — ไฟล์นี้นับเฉพาะคำขอรายการสินค้าของตัวกรอง จึงถอดแบนเนอร์ออกเหมือนกัน (เทสต์ของแบนเนอร์อยู่ที่ CatalogBanner.test.tsx)
+vi.mock('@/components/catalog/CatalogBanner', () => ({ CatalogBanner: () => null }));
 vi.mock('@/components/layout/ShopLayout', () => ({
   default: ({ children }: { children: ReactNode }) => <main>{children}</main>,
 }));

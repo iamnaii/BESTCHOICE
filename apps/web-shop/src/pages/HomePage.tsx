@@ -263,7 +263,7 @@ export default function HomePage() {
               </a>
             </div>
             <div className={REVIEW_PANEL}>
-              <div className="num text-4xl font-bold leading-none">33,000+</div>
+              <div className="num text-4xl font-bold leading-none">38,000+</div>
               <p className="text-sm text-white/80">
                 ผู้ติดตามเพจ Facebook รีวิวและเครื่องเข้าใหม่ทุกวัน
               </p>

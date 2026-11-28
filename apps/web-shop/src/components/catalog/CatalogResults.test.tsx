@@ -104,7 +104,7 @@ it('preserves existing cards, focus and photo selection when more results arrive
 
 it.each([undefined, '', 'unknown', ' '])('renders an ungraded used phone without a grade placeholder (%s)', grade => {
   render(<MemoryRouter><CatalogResults products={[{ ...product, conditionGrade: grade, conditionGrades: [] }]} total={1} loading={false} error={false} updating={false} resultKey="ungraded" priceMode="cash" onRetry={() => undefined} /></MemoryRouter>);
-  expect(screen.getByLabelText('เครื่องมือสอง')).toBeInTheDocument();
+  expect(screen.getByLabelText('เครื่องมือ 2')).toBeInTheDocument();
   expect(screen.queryByText('·')).not.toBeInTheDocument();
   expect(screen.queryByText(/GRADE/)).not.toBeInTheDocument();
 });

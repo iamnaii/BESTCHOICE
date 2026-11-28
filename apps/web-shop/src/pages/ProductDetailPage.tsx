@@ -379,7 +379,7 @@ export default function ProductDetailPage() {
                 {deviceOriginLabel(selectedUnit ? selectedUnit.deviceOrigin : data.deviceOrigin)}
               </Badge>
               <Badge variant={isNew ? 'condition-new' : 'condition-b'} size="md">
-                {isNew ? 'เครื่องใหม่ · มือ 1' : 'มือสอง · มือ 2'}
+                {isNew ? 'เครื่องใหม่ · มือ 1' : 'มือ 2'}
               </Badge>
               {showGrades &&
                 gradeKeys.map((g) => (

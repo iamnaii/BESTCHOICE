@@ -29,7 +29,7 @@ import { formatNumber } from '@/lib/format';
 
 const CATEGORY_LABELS: Record<string, string> = {
   PHONE_NEW: 'มือถือใหม่',
-  PHONE_USED: 'มือถือมือสอง',
+  PHONE_USED: 'มือถือมือ 2',
   TABLET: 'แท็บเล็ต',
   ACCESSORY: 'อุปกรณ์เสริม',
 };

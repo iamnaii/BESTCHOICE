@@ -56,7 +56,7 @@ export default function ShopFooter({
               </span>
             </div>
             <p className="mt-4 text-sm leading-snug text-white/75">
-              ร้านขาย iPhone มือ 1 และมือสองที่ลพบุรี ผ่อนได้ด้วยบัตรประชาชนใบเดียว
+              ร้านขาย iPhone มือ 1 และมือ 2 ที่ลพบุรี ผ่อนได้ด้วยบัตรประชาชนใบเดียว
               เครื่องผ่านตรวจ 30 จุดทุกเครื่อง
             </p>
             <div className="mt-5 flex gap-2.5">

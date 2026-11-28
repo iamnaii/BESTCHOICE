@@ -197,7 +197,7 @@ export function ProductCard({
           : cn(grade ? 'p-0.5 sm:pr-2' : 'px-1.5 py-0.5 sm:px-2', USED_CHIP),
       )}
       aria-label={
-        isNew ? 'เครื่องมือ 1 ของใหม่' : grade ? `สภาพเครื่องเกรด ${grade}` : 'เครื่องมือสอง'
+        isNew ? 'เครื่องมือ 1 ของใหม่' : grade ? `สภาพเครื่องเกรด ${grade}` : 'เครื่องมือ 2'
       }
     >
       {!isNew && grade && (

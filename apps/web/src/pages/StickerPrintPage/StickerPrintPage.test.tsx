@@ -149,7 +149,7 @@ const pageStyles = () =>
     .join('\n');
 
 describe('หน้าพิมพ์สติกเกอร์ — ตารางเลือกเครื่อง', () => {
-  it('ขอสินค้าพร้อมขายเรียงตามวันที่รับเข้า ใหม่ → เก่า เป็นค่าเริ่มต้น และโชว์ข้อมูลชุดเดียวกับสติกเกอร์ในแต่ละแถว', async () => {
+  it('ขอสินค้าพร้อมขายเรียงตามวันที่รับเข้า ใหม่ → เก่า เป็นค่าเริ่มต้น และแต่ละแถวมีแค่ข้อมูลที่ใช้หาเครื่อง', async () => {
     renderPage();
 
     await waitFor(() => expect(screen.getByText('iPhone 17')).toBeInTheDocument());
@@ -158,27 +158,38 @@ describe('หน้าพิมพ์สติกเกอร์ — ตาร�
     });
 
     const table = screen.getByTestId('data-table');
-    // แถว iPhone 15: IMEI เต็ม · สเปก · ประกันศูนย์ · เงินสด · เรท 1 = ผ่อนกับร้าน · เรท 2 = ตาราง GFIN · วันที่รับเข้า
+    // แถว iPhone 15: รุ่น · สี/ความจุ · IMEI เต็ม · วันที่รับเข้า · เงินสด
     const row = within(table).getByText('351000000007919').closest('tr')!;
+    expect(within(row).getByText('iPhone 15')).toBeInTheDocument();
     expect(within(row).getByText('ดำ · 128GB')).toBeInTheDocument();
-    expect(within(row).getByText('27/08/27')).toBeInTheDocument();
+    expect(within(row).getByText('11 ส.ค. 69')).toBeInTheDocument();
     expect(within(row).getByText('19,900')).toBeInTheDocument();
-    // ค่างวดเรท 1 ที่แสดงปัดขึ้นบาทเต็ม (1,838.43 → 1,839) เหมือนหน้าราคาและบอท
-    await waitFor(() => expect(within(row).getByText('1,839')).toBeInTheDocument());
-    expect(within(row).getByText('ดาวน์ 3,000')).toBeInTheDocument();
-    expect(within(row).getByText('3,327')).toBeInTheDocument();
-    expect(within(row).getByText('ดาวน์ 1,900')).toBeInTheDocument();
-    expect(within(row).getByText('11/08/2569')).toBeInTheDocument();
+    // ค่างวด/ประกันไม่อยู่ในตารางแล้ว — ดูที่ตัวอย่างดวงในคิว (ตารางไม่คำนวณค่างวดเลย)
+    expect(within(row).queryByText(/ดาวน์/)).not.toBeInTheDocument();
+    expect(within(row).queryByText('27/08/27')).not.toBeInTheDocument();
+    expect(mocks.get.mock.calls.some(([url]) => String(url).startsWith('/gfin-config'))).toBe(false);
 
-    // มือสอง: %แบต + กล่อง · รุ่นที่ไม่มีในตาราง GFIN บอกตรง ๆ
+    // มือสอง: ป้าย "มือสอง" · มือ 1 ไม่มีป้าย
     const used = within(table).getByText('351000000055433').closest('tr')!;
-    expect(within(used).getByText('91%')).toBeInTheDocument();
-    expect(within(used).getByText('มีกล่อง')).toBeInTheDocument();
-    await waitFor(() => expect(within(used).getByText('ไม่มีใน GFIN')).toBeInTheDocument());
+    expect(within(used).getByText('มือสอง')).toBeInTheDocument();
+    expect(within(row).queryByText('มือ 1')).not.toBeInTheDocument();
 
     // ยังไม่ตั้งราคา
     const noPrice = within(table).getByText('351000000110866').closest('tr')!;
     expect(within(noPrice).getByText('ยังไม่ตั้งราคา')).toBeInTheDocument();
+  });
+
+  it('เลือกยี่ห้อจากช่องเลือกแล้วส่ง brand ไปกับคำขอ (กลับไปหน้า 1)', async () => {
+    renderPage();
+    await waitFor(() => expect(screen.getByText('iPhone 17')).toBeInTheDocument());
+
+    fireEvent.change(await screen.findByRole('combobox', { name: 'ยี่ห้อ' }), { target: { value: 'Samsung' } });
+
+    await waitFor(() =>
+      expect(lastStockParams()).toEqual({
+        params: { status: 'IN_STOCK', page: 1, limit: 20, sortBy: 'stockInDate', sortDirection: 'desc', brand: 'Samsung' },
+      }),
+    );
   });
 
   it('กดหัวคอลัมน์ "เงินสด" แล้วขอเรียงใหม่จากเซิร์ฟเวอร์', async () => {
@@ -198,7 +209,7 @@ describe('หน้าพิมพ์สติกเกอร์ — ตาร�
     renderPage();
     await waitFor(() => expect(screen.getByText('iPhone 17')).toBeInTheDocument());
 
-    fireEvent.change(screen.getByPlaceholderText('ค้นหาแบรนด์ / รุ่น / IMEI ในสต็อก…'), {
+    fireEvent.change(screen.getByRole('textbox', { name: 'ค้นหารุ่น หรือ IMEI ในสต็อก' }), {
       target: { value: 'S24' },
     });
 
@@ -211,15 +222,14 @@ describe('หน้าพิมพ์สติกเกอร์ — ตาร�
 });
 
 describe('หน้าพิมพ์สติกเกอร์ — ค่าตั้งต้นจากราคากลาง (ตัวเลขเดียวกับหน้าราคาและบอท)', () => {
-  it('ราคากลางตั้งดาวน์เรท 1 (ราคาผ่อนเท่าราคากลาง) → ตารางและดวงใช้ดาวน์ของราคากลาง', async () => {
+  it('ราคากลางตั้งดาวน์เรท 1 (ราคาผ่อนเท่าราคากลาง) → ดวงใช้ดาวน์ของราคากลาง', async () => {
     termsById = { p1: { bcPrice: '19900', rate1TermMonths: 12, rate1DownPayment: '5000', rate2TermMonths: null } };
     renderPage('/stickers?productIds=p1');
 
-    await waitFor(() => expect(screen.getByText('iPhone 17')).toBeInTheDocument());
-    const table = screen.getByTestId('data-table');
-    const row = within(table).getByText('351000000007919').closest('tr')!;
-    await waitFor(() => expect(within(row).getByText('ดาวน์ 5,000')).toBeInTheDocument());
-    await waitFor(() => expect(within(screen.getAllByTestId('sticker')[0]).getByText('ดาวน์ 5,000')).toBeInTheDocument());
+    const preview = await screen.findByTestId('sticker-preview');
+    await waitFor(() => expect(within(preview).getByText('ดาวน์ 5,000')).toBeInTheDocument());
+    const printSet = screen.getByTestId('print-set');
+    expect(within(within(printSet).getAllByTestId('sticker')[0]).getByText('ดาวน์ 5,000')).toBeInTheDocument();
   });
 });
 
@@ -227,10 +237,13 @@ describe('หน้าพิมพ์สติกเกอร์ — คิว�
   it('รับ productIds จาก URL → ดวงพิมพ์ใช้ข้อมูลจากตัวเครื่อง (รุ่นอย่างเดียว ประกันศูนย์ ชิปมือสอง) และข้ามเครื่องที่ไม่มีราคา', async () => {
     renderPage('/stickers?productIds=p1,s24,p14');
 
-    await waitFor(() => expect(screen.getAllByTestId('sticker').length).toBeGreaterThan(0));
-    // ดวงที่พิมพ์: p1 + s24 (พรีวิว + ชุดพิมพ์อย่างละชุด) — p14 ไม่มีราคา ไม่พิมพ์
-    await waitFor(() => expect(screen.getAllByTestId('sticker')).toHaveLength(4));
-    const stickers = screen.getAllByTestId('sticker');
+    // ชุดพิมพ์จริง: p1 + s24 — p14 ไม่มีราคา ไม่พิมพ์ · ตัวอย่างโชว์ทีละดวง (ดวงแรกที่พิมพ์ได้)
+    const printSet = screen.getByTestId('print-set');
+    await waitFor(() => expect(within(printSet).getAllByTestId('sticker')).toHaveLength(2));
+    const preview = screen.getByTestId('sticker-preview');
+    expect(within(preview).getAllByTestId('sticker')).toHaveLength(1);
+    expect(within(preview).getByText('iPhone 15')).toBeInTheDocument();
+    const stickers = within(printSet).getAllByTestId('sticker');
     const first = stickers[0];
     expect(within(first).getByText('iPhone 15')).toBeInTheDocument();
     expect(within(first).queryByText(/apple/i)).not.toBeInTheDocument();
@@ -250,9 +263,23 @@ describe('หน้าพิมพ์สติกเกอร์ — คิว�
     expect(within(used).getByText('ประกันศูนย์ 12/03/27')).toBeInTheDocument();
 
     // คิว: เครื่องไม่มีราคาถูกเตือน และปุ่มพิมพ์นับเฉพาะดวงที่พิมพ์ได้
-    expect(screen.getByText(/ยังไม่ตั้งราคา — จะไม่ถูกพิมพ์/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /พิมพ์สติกเกอร์/ })).toHaveTextContent('2 ดวง');
-    expect(screen.getByRole('button', { name: /พิมพ์สติกเกอร์/ })).toHaveTextContent('ข้าม 1 เครื่องที่ยังไม่ตั้งราคา');
+    expect(screen.getByText('ยังไม่ตั้งราคา — ไม่พิมพ์')).toBeInTheDocument();
+    const printButton = screen.getByRole('button', { name: /พิมพ์สติกเกอร์/ });
+    expect(printButton).toHaveTextContent('2 ดวง');
+    expect(printButton).toHaveTextContent('ข้าม 1 เครื่องที่ยังไม่ตั้งราคา');
+    await waitFor(() => expect(printButton).toBeEnabled());
+  });
+
+  it('กดรายการในคิว → ตัวอย่างเปลี่ยนเป็นดวงนั้น', async () => {
+    renderPage('/stickers?productIds=p1,s24');
+    const queue = await screen.findByRole('list', { name: 'คิวพิมพ์' });
+    await waitFor(() => expect(within(screen.getByTestId('sticker-preview')).getByText('iPhone 15')).toBeInTheDocument());
+
+    fireEvent.click(within(queue).getByText('Galaxy S24'));
+
+    const preview = screen.getByTestId('sticker-preview');
+    await waitFor(() => expect(within(preview).getByText('Galaxy S24')).toBeInTheDocument());
+    expect(within(preview).getByText('แบต 91%')).toBeInTheDocument();
   });
 
   it('ตั้งค่าม้วน 50×40 และปิด QR → @page เปลี่ยนตาม หัวหน้าบอกขนาด และดวงไม่มี QR', async () => {
@@ -264,7 +291,7 @@ describe('หน้าพิมพ์สติกเกอร์ — คิว�
     await waitFor(() => expect(first).toHaveClass('sticker--50x40'));
     expect(within(first).queryByTestId('sticker-qr')).toBeNull();
     expect(pageStyles()).toContain('@page { size: 50mm 40mm; margin: 0; }');
-    expect(screen.getByText('เลือกเครื่องเข้าคิวเพื่อพิมพ์สติกเกอร์ 50 × 40 มม.')).toBeInTheDocument();
+    expect(screen.getByText('ม้วน 50 × 40 มม. · ไม่มี QR')).toBeInTheDocument();
   });
 
   it('ยิงบาร์โค้ด IMEI ในช่องสแกน → ค้นด้วย IMEI ได้ตรง ๆ และเข้าคิว', async () => {
@@ -285,7 +312,7 @@ describe('หน้าพิมพ์สติกเกอร์ — คิว�
     await waitFor(() => expect(within(queue).getByText('Galaxy S24')).toBeInTheDocument());
   });
 
-  it('ปุ่ม "เพิ่ม" ในตารางเข้าคิว และ +/− ปรับจำนวนดวง', async () => {
+  it('ปุ่ม "เพิ่ม" ในตารางเข้าคิว · +/− ที่คิวปรับจำนวนดวง · กด "ในคิว" อีกครั้งเอาออก', async () => {
     renderPage();
     await waitFor(() => expect(screen.getByText('iPhone 17')).toBeInTheDocument());
     const row = screen.getByText('351000000047514').closest('tr')!;
@@ -294,7 +321,15 @@ describe('หน้าพิมพ์สติกเกอร์ — คิว�
     const queue = screen.getByRole('list', { name: 'คิวพิมพ์' });
     await waitFor(() => expect(within(queue).getByText('iPhone 17')).toBeInTheDocument());
 
-    fireEvent.click(within(row).getByRole('button', { name: 'เพิ่มจำนวนดวง' }));
-    await waitFor(() => expect(screen.getByRole('button', { name: /พิมพ์สติกเกอร์/ })).toHaveTextContent('2 ดวง'));
+    const printButton = screen.getByRole('button', { name: /พิมพ์สติกเกอร์/ });
+    await waitFor(() => expect(printButton).toHaveTextContent('1 ดวง'));
+    expect(within(queue).getByRole('button', { name: 'ลดจำนวนดวง' })).toBeDisabled();
+    fireEvent.click(within(queue).getByRole('button', { name: 'เพิ่มจำนวนดวง' }));
+    await waitFor(() => expect(printButton).toHaveTextContent('2 ดวง'));
+    expect(within(row).getByRole('button', { name: 'เอา iPhone 17 ออกจากคิว' })).toHaveTextContent('ในคิว (2)');
+
+    fireEvent.click(within(row).getByRole('button', { name: 'เอา iPhone 17 ออกจากคิว' }));
+    await waitFor(() => expect(screen.queryByRole('list', { name: 'คิวพิมพ์' })).not.toBeInTheDocument());
+    expect(within(row).getByRole('button', { name: 'เพิ่ม' })).toBeInTheDocument();
   });
 });
